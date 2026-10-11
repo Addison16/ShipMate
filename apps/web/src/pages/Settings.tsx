@@ -8,6 +8,7 @@ import { OidcSettings } from "../components/OidcSettings.js";
 import { PhotoSettings } from "../components/PhotoSettings.js";
 import { ProfileSettings } from "../components/ProfileSettings.js";
 import { PushSettings } from "../components/PushSettings.js";
+import { SandboxSettings } from "../components/SandboxSettings.js";
 import { Badge, Button, Card, ErrorText, Page, PageHeader, TextField } from "../components/ui.js";
 import { VoiceSettings } from "../components/VoiceSettings.js";
 import { useResource } from "../lib/useResource.js";
@@ -30,6 +31,7 @@ export function SettingsPage() {
         <PhotoSettings />
         <VoiceSettings />
         <OidcSettings />
+        <SandboxSettings />
         <BackupSettings />
         <MyAccount />
       </div>

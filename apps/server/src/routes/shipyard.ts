@@ -1,4 +1,8 @@
-import type { CreateProjectRequest, UpdateProjectRequest } from "@shipmate/core";
+import type {
+  CreateProjectRequest,
+  UpdateProjectRequest,
+  UpdateSandboxEndpointRequest,
+} from "@shipmate/core";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireRole } from "../auth.js";
@@ -22,6 +26,16 @@ const Flow = z.object({
   notes: z.string().max(20_000).optional(),
 });
 
+const SandboxEndpoint = z.object({
+  mode: z.enum(["env", "socket", "tcp"]),
+  socketPath: z.string().max(300).optional(),
+  host: z.string().max(300).optional(),
+  tlsCa: z.string().max(32_000).optional(),
+  tlsCert: z.string().max(32_000).optional(),
+  tlsKey: z.string().max(32_000).optional(),
+  workspacesPath: z.string().max(500).optional(),
+});
+
 type Id = { Params: { id: string } };
 
 export async function shipyardRoutes(app: FastifyInstance, s: Services) {
@@ -30,6 +44,33 @@ export async function shipyardRoutes(app: FastifyInstance, s: Services) {
   app.get("/api/shipyard", async (req) => {
     const [status, projects] = await Promise.all([y.status(), y.list(req.user)]);
     return { status, projects };
+  });
+
+  // Where sandboxes run: owner only, since it decides which machine runs the crew's code.
+  app.get("/api/shipyard/sandbox", async (req) => {
+    requireRole(req.user, "owner");
+    return { sandbox: await y.getEndpoint() };
+  });
+
+  app.put("/api/shipyard/sandbox", async (req) => {
+    requireRole(req.user, "owner");
+    const body = strip(SandboxEndpoint.parse(req.body)) as UpdateSandboxEndpointRequest;
+    const sandbox = await y.setEndpoint(body);
+    await s.audit.record({
+      userId: req.user.id,
+      crewMemberId: null,
+      action: "shipyard.sandbox",
+      summary: `Set the Shipyard sandbox endpoint to ${sandbox.effective}`,
+      decision: null,
+      detail: { mode: body.mode },
+    });
+    return { sandbox };
+  });
+
+  app.post("/api/shipyard/sandbox/test", async (req) => {
+    requireRole(req.user, "owner");
+    const body = strip(SandboxEndpoint.parse(req.body)) as UpdateSandboxEndpointRequest;
+    return { check: await y.endpoints.test(body) };
   });
 
   app.post("/api/shipyard/projects", async (req) => {

@@ -564,6 +564,48 @@ export interface ShipyardStatusDto {
   reason: string | null;
   /** Default sandbox image for new projects. */
   sandboxImage: string;
+  /** Where sandboxes run, e.g. "unix:///var/run/docker.sock" or "tcp://nas.lan:2376 (TLS)". */
+  endpoint: string;
+}
+/**
+ * Where the Shipyard starts sandboxes (owner only). The environment (DOCKER_HOST,
+ * DOCKER_TLS_VERIFY, DOCKER_CERT_PATH, DOCKER_SOCKET) gives the default; the owner can
+ * override it here. TLS material is stored encrypted and never returned.
+ */
+export interface SandboxEndpointDto {
+  /** "env": the server environment decides; "socket" / "tcp": set here by the owner. */
+  mode: "env" | "socket" | "tcp";
+  /** For socket mode: Docker's /var/run/docker.sock or rootless Podman's podman.sock. */
+  socketPath: string | null;
+  /** For tcp mode: "tcp://host:port". */
+  host: string | null;
+  /** Which TLS files are stored for tcp mode. */
+  tls: { ca: boolean; cert: boolean; key: boolean };
+  /** The workspaces folder as the sandbox host sees it (remote hosts, or a different mount). */
+  workspacesPath: string | null;
+  /** What is in effect now, described without secrets. */
+  effective: string;
+  /** What the environment alone would give. */
+  fromEnv: string;
+}
+/** PUT /api/shipyard/sandbox. PEM fields: omit to keep, "" to clear. */
+export interface UpdateSandboxEndpointRequest {
+  mode: "env" | "socket" | "tcp";
+  socketPath?: string;
+  host?: string;
+  tlsCa?: string;
+  tlsCert?: string;
+  tlsKey?: string;
+  workspacesPath?: string;
+}
+export interface SandboxCheckDto {
+  ok: boolean;
+  endpoint: string;
+  /** "Docker 27.3.1" or "Podman 5.2.0" when reachable. */
+  engine: string | null;
+  error: string | null;
+  /** Things that work but deserve a second look (no TLS, no workspaces path). */
+  warnings: string[];
 }
 export type ProjectProvider = "github" | "local";
 export interface ProjectDto {
@@ -664,6 +706,10 @@ export interface StartFlowRequest {
  *   conversation with the project's crew member, started with the flow's prompt)
  * POST /api/shipyard/projects/:id/conversations → { conversation } (an empty one, for chat)
  * POST /api/hooks/github/:projectId (public; X-Hub-Signature-256 checked) → { ok: true }
+ * GET /api/shipyard/sandbox (owner) → { sandbox: SandboxEndpointDto }
+ * PUT /api/shipyard/sandbox (owner) UpdateSandboxEndpointRequest → { sandbox }
+ * POST /api/shipyard/sandbox/test (owner) UpdateSandboxEndpointRequest → { check: SandboxCheckDto }
+ *   (tries the given settings without saving them; omitted TLS files use the stored ones)
  */
 
 // ---------- sign-in with OIDC (phase 4) ----------

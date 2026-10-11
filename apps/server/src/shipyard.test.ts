@@ -191,13 +191,142 @@ describe.skipIf(!db)("Shipmate phase 3: the Shipyard", () => {
   it("reports the Shipyard unavailable without Docker and seeds the Shipwright", async () => {
     const res = (await api("GET", "/api/shipyard")).json();
     expect(res.status).toMatchObject({ available: false, sandboxImage: "node:22-bookworm" });
-    expect(res.status.reason).toContain("Docker");
+    expect(res.status.reason).toContain("no socket at unix://");
+    expect(res.status.endpoint).toBe(`unix://${join(root, "no-docker.sock")}`);
     expect(res.projects).toEqual([]);
     const crew = (await api("GET", "/api/crew")).json().crew;
     expect(crew.find((c: { slug: string }) => c.slug === "shipwright")).toMatchObject({
       name: "Shipwright",
       status: "active",
     });
+  });
+
+  it("lets the owner point the Shipyard at another sandbox engine", async () => {
+    const fake = createServer((req, res) => {
+      res.setHeader("Content-Type", "application/json");
+      if (req.url === "/_ping") return res.end("OK");
+      if (req.url === "/v1.41/version") {
+        return res.end(
+          JSON.stringify({
+            Version: "5.2.0",
+            ApiVersion: "1.41",
+            Components: [{ Name: "Podman Engine", Version: "5.2.0" }],
+          }),
+        );
+      }
+      res.statusCode = 404;
+      res.end("{}");
+    });
+    const sock = join(root, "podman.sock");
+    await new Promise<void>((r) => fake.listen(sock, r));
+    try {
+      const initial = (await api("GET", "/api/shipyard/sandbox")).json().sandbox;
+      expect(initial).toMatchObject({
+        mode: "env",
+        effective: `unix://${join(root, "no-docker.sock")}`,
+      });
+      expect((await api("GET", "/api/shipyard/sandbox", undefined, memberCookie)).statusCode).toBe(
+        403,
+      );
+      expect(
+        (
+          await api(
+            "PUT",
+            "/api/shipyard/sandbox",
+            { mode: "socket", socketPath: sock },
+            memberCookie,
+          )
+        ).statusCode,
+      ).toBe(403);
+
+      // Test without saving: works, and nothing changes yet.
+      const check = (
+        await api("POST", "/api/shipyard/sandbox/test", { mode: "socket", socketPath: sock })
+      ).json().check;
+      expect(check).toEqual({
+        ok: true,
+        endpoint: `unix://${sock}`,
+        engine: "Podman 5.2.0",
+        error: null,
+        warnings: [],
+      });
+      expect((await api("GET", "/api/shipyard")).json().status.available).toBe(false);
+      const bad = await api("POST", "/api/shipyard/sandbox/test", {
+        mode: "tcp",
+        host: "ssh://nas",
+      });
+      expect(bad.statusCode).toBe(400);
+      const plain = (
+        await api("POST", "/api/shipyard/sandbox/test", { mode: "tcp", host: "tcp://127.0.0.1:1" })
+      ).json().check;
+      expect(plain.ok).toBe(false);
+      expect(plain.warnings.join(" ")).toContain("no TLS");
+
+      // Save: the Shipyard uses it straight away.
+      const saved = (
+        await api("PUT", "/api/shipyard/sandbox", { mode: "socket", socketPath: sock })
+      ).json().sandbox;
+      expect(saved).toMatchObject({
+        mode: "socket",
+        socketPath: sock,
+        effective: `unix://${sock}`,
+      });
+      expect((await api("GET", "/api/shipyard")).json().status).toMatchObject({
+        available: true,
+        endpoint: `unix://${sock}`,
+      });
+
+      // TLS files are stored encrypted, never returned; half a key pair is refused.
+      const KEY = "-----BEGIN PRIVATE KEY-----\nSECRETKEYMATERIAL\n-----END PRIVATE KEY-----";
+      const CERT = "-----BEGIN CERTIFICATE-----\nCERTMATERIAL\n-----END CERTIFICATE-----";
+      expect(
+        (
+          await api("PUT", "/api/shipyard/sandbox", {
+            mode: "tcp",
+            host: "tcp://nas:2376",
+            tlsKey: KEY,
+          })
+        ).statusCode,
+      ).toBe(400);
+      expect(
+        (
+          await api("PUT", "/api/shipyard/sandbox", {
+            mode: "tcp",
+            host: "tcp://nas:2376",
+            tlsKey: "nope",
+          })
+        ).statusCode,
+      ).toBe(400);
+      const tcp = await api("PUT", "/api/shipyard/sandbox", {
+        mode: "tcp",
+        host: "tcp://nas:2376",
+        tlsCert: CERT,
+        tlsKey: KEY,
+        workspacesPath: "/mnt/shipmate/workspaces",
+      });
+      expect(tcp.statusCode).toBe(200);
+      expect(tcp.body).not.toContain("SECRETKEYMATERIAL");
+      expect(tcp.json().sandbox).toMatchObject({
+        mode: "tcp",
+        host: "tcp://nas:2376",
+        tls: { ca: false, cert: true, key: true },
+        workspacesPath: "/mnt/shipmate/workspaces",
+        effective: "tcp://nas:2376 (TLS)",
+      });
+      const stored = await t.app.db.select().from(secrets);
+      expect(stored.filter((r) => r.ref.startsWith("shipyard:sandbox:"))).toHaveLength(2);
+      expect(JSON.stringify(stored)).not.toContain("SECRETKEYMATERIAL");
+
+      // Back to the environment: TLS files are removed.
+      const env = (await api("PUT", "/api/shipyard/sandbox", { mode: "env" })).json().sandbox;
+      expect(env).toMatchObject({ mode: "env", tls: { cert: false, key: false } });
+      expect((await api("GET", "/api/shipyard")).json().status.available).toBe(false);
+      const left = await t.app.db.select().from(secrets);
+      expect(left.some((r) => r.ref.startsWith("shipyard:sandbox:"))).toBe(false);
+    } finally {
+      fake.closeAllConnections();
+      await new Promise((r) => fake.close(r));
+    }
   });
 
   it("creates projects (admin only) and never returns the token", async () => {
@@ -297,7 +426,7 @@ describe.skipIf(!db)("Shipmate phase 3: the Shipyard", () => {
     });
     const sb = await api("POST", `/api/shipyard/projects/${gp.id}/sandbox`, { action: "start" });
     expect(sb.statusCode).toBe(503);
-    expect(sb.json().error).toMatch(/^the Shipyard needs the Docker socket/);
+    expect(sb.json().error).toMatch(/^the Shipyard needs a sandbox engine/);
     expect(
       (
         await api(

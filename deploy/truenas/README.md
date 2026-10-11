@@ -28,6 +28,13 @@ To use a Postgres you already run, delete the `db` service and `depends_on`, and
 sandbox containers. Whatever holds the socket controls Docker on the NAS; remove the line to
 keep the Shipyard off.
 
+**No socket?** If you would rather not hand Shipmate the NAS's Docker socket, run sandboxes on
+another machine instead: a small Linux box or VM with Docker (TLS on port 2376) or Podman.
+Share the `data/workspaces` folder of the data dataset with it over NFS, then in Shipmate open
+**Settings → Shipyard sandbox**, choose **A remote Docker or Podman host**, paste the TLS
+files, set the workspaces path as that machine mounts it, and press **Test connection**. Or
+use the `DOCKER_HOST` lines in the YAML. Step by step: [docs/shipyard.md](../../docs/shipyard.md#sandboxes-without-the-docker-socket).
+
 Updating: **Apps → shipmate → Update** (or edit the YAML to pin a version tag). Migrations run
 on every start.
 

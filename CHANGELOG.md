@@ -66,6 +66,12 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   approvals, spend caps and anything that looks like a key are left out. **Crew → Import** reads
   such a file or an https link (public hosts only, 512 KB at most), shows a preview with
   warnings, and brings the crew member aboard awaiting review, with its skills pending approval.
+- **Shipyard sandboxes without the Docker socket**: point the Shipyard at rootless Podman's
+  socket, or at a Docker or Podman host elsewhere over TCP with TLS client certificates, from
+  **Settings → Shipyard sandbox** (owner) or with `DOCKER_HOST`, `DOCKER_TLS_VERIFY` and
+  `DOCKER_CERT_PATH`. **Test connection** says which engine answered or why it did not. The
+  "Code cannot run right now" notice explains the options; see
+  [docs/shipyard.md](docs/shipyard.md).
 
 ## 1.0.0 — 2026-10-11
 

@@ -28,6 +28,7 @@ import { StarterService } from "./services/starters.js";
 import { UsageService } from "./services/usage.js";
 import { WatchService } from "./services/watches.js";
 import { WeatherService } from "./services/weather.js";
+import { endpointFromEnv } from "./shipyard/docker.js";
 import { ShipyardService } from "./shipyard/service.js";
 import type { SlackPort } from "./slack/port.js";
 import { SlackService } from "./slack/service.js";
@@ -137,9 +138,11 @@ export async function createServices(
     vault,
     bridge,
     crew,
+    settings,
     workspacesDir: config.dirs.workspaces,
     hostDataDir: process.env.SHIPMATE_HOST_DATA_DIR || undefined,
-    dockerSocket: process.env.DOCKER_SOCKET || "/var/run/docker.sock",
+    dockerEndpoint: endpointFromEnv(),
+    sandboxWorkspaces: process.env.SHIPMATE_SANDBOX_WORKSPACES || undefined,
     sandboxImage: process.env.SHIPMATE_SANDBOX_IMAGE || undefined,
     publicUrl: config.SHIPMATE_URL,
     githubApi: process.env.SHIPMATE_GITHUB_API || undefined,
@@ -159,6 +162,7 @@ export async function createServices(
   const current = await settings.get();
   await crew.boot({ name: current.captainName });
   await providers.sync();
+  await shipyard.loadEndpoint();
 
   const discord = new DiscordService({
     db,

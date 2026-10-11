@@ -19,6 +19,7 @@ import type {
   ShipyardStatusDto,
   StartFlowRequest,
   UpdateProjectRequest,
+  UpdateSandboxEndpointRequest,
 } from "@shipmate/core";
 import type { CrewFolder } from "@shipmate/crew";
 import { conversations, type Db, projectEvents, projects, secrets, users } from "@shipmate/db";
@@ -27,13 +28,18 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { atLeast, HttpError, type UserRow } from "../auth.js";
 import type { Bridge, WorkspaceProvider } from "../bridge.js";
 import type { CrewService } from "../services/crew.js";
+import type { SettingsService } from "../services/settings.js";
 import {
+  checkSandbox,
   DEFAULT_SANDBOX_IMAGE,
   DockerClient,
+  type DockerEndpoint,
   DockerError,
   SANDBOX_WORKDIR,
   Sandbox,
+  type SandboxCheck,
 } from "./docker.js";
+import { type ResolvedEndpoint, SandboxEndpointStore } from "./endpoint.js";
 import {
   cloneOrFetch,
   currentBranch,
@@ -50,7 +56,7 @@ type ProjectRow = typeof projects.$inferSelect;
 
 export const DEFAULT_CREW = "shipwright";
 export const DOCKER_UNAVAILABLE =
-  "the Shipyard needs the Docker socket: mount /var/run/docker.sock into Shipmate (or set DOCKER_SOCKET). Code never runs outside a sandbox.";
+  "the Shipyard needs a sandbox engine: mount the Docker socket into Shipmate, point it at rootless Podman's socket, or at a remote Docker or Podman host (Settings → Sandbox). Code never runs outside a sandbox.";
 /** Internal timeline rows: a crew member opened (or was asked to follow) a pull request. */
 const PR_OPENED = "shipmate.pr_opened";
 const PR_FOLLOWED = "shipmate.pr_followed";
@@ -63,11 +69,15 @@ export interface ShipyardOptions {
   vault: SecretVault;
   bridge: Bridge;
   crew: CrewService;
+  settings: SettingsService;
   /** <dataDir>/workspaces inside this process. */
   workspacesDir: string;
   /** The host path of the data dir when Shipmate itself runs in Docker (bind sources). */
   hostDataDir?: string | undefined;
-  dockerSocket: string;
+  /** The sandbox engine from the environment; the owner can override it in Settings. */
+  dockerEndpoint: DockerEndpoint;
+  /** The workspaces folder as the environment's sandbox host sees it (SHIPMATE_SANDBOX_WORKSPACES). */
+  sandboxWorkspaces?: string | undefined;
   sandboxImage?: string | undefined;
   /** Public base URL, for webhook URLs. */
   publicUrl: string;
@@ -85,7 +95,10 @@ const IMAGE = /^[A-Za-z0-9][A-Za-z0-9_.\-/:@]{0,199}$/;
  * vault that only host-side tools use.
  */
 export class ShipyardService implements WorkspaceProvider {
-  readonly docker: DockerClient;
+  #docker: DockerClient;
+  /** The workspaces folder as the sandbox host sees it, when set. */
+  #sandboxWorkspaces: string | null;
+  readonly endpoints: SandboxEndpointStore;
   readonly sandboxImage: string;
   #locks = new Map<string, Promise<unknown>>();
   /** Conversations running a webhook-triggered turn. */
@@ -93,20 +106,54 @@ export class ShipyardService implements WorkspaceProvider {
   #hostWorkspaces: Promise<string> | undefined;
 
   constructor(private readonly o: ShipyardOptions) {
-    this.docker = new DockerClient(o.dockerSocket);
+    this.#docker = new DockerClient(o.dockerEndpoint);
+    this.#sandboxWorkspaces = o.sandboxWorkspaces || null;
     this.sandboxImage = o.sandboxImage || DEFAULT_SANDBOX_IMAGE;
+    this.endpoints = new SandboxEndpointStore(o.db, o.settings, o.vault, {
+      endpoint: o.dockerEndpoint,
+      workspacesPath: o.sandboxWorkspaces || null,
+    });
+  }
+
+  /** The client for the sandbox engine in effect (it changes when the owner edits Settings). */
+  get docker(): DockerClient {
+    return this.#docker;
+  }
+
+  /** Apply the owner's saved sandbox endpoint, if any (on boot). */
+  async loadEndpoint(): Promise<void> {
+    this.#useEndpoint(await this.endpoints.resolve());
+  }
+
+  #useEndpoint(r: ResolvedEndpoint) {
+    this.#docker = new DockerClient(r.endpoint);
+    this.#sandboxWorkspaces = r.workspacesPath;
+    this.#hostWorkspaces = undefined;
+  }
+
+  async getEndpoint() {
+    return this.endpoints.dto(this.#docker.endpoint);
+  }
+
+  async setEndpoint(req: UpdateSandboxEndpointRequest) {
+    this.#useEndpoint(await this.endpoints.save(req));
+    return this.getEndpoint();
+  }
+
+  /** Is the sandbox engine reachable? Never throws (the health page calls this). */
+  checkSandbox(): Promise<SandboxCheck> {
+    return checkSandbox(this.#docker);
   }
 
   // ---------- status and projects ----------
 
   async status(): Promise<ShipyardStatusDto> {
-    const available = await this.docker.ping();
+    const check = await this.checkSandbox();
     return {
-      available,
-      reason: available
-        ? null
-        : `No Docker socket at ${this.o.dockerSocket}. Mount /var/run/docker.sock into Shipmate to run code in sandboxes.`,
+      available: check.ok,
+      reason: check.ok ? null : `Cannot reach a sandbox engine: ${check.error}.`,
       sandboxImage: this.sandboxImage,
+      endpoint: check.endpoint,
     };
   }
 
@@ -342,7 +389,10 @@ export class ShipyardService implements WorkspaceProvider {
    * (found by inspecting our own container), else the path as we see it.
    */
   async #bindSource(row: ProjectRow): Promise<string> {
+    if (this.#sandboxWorkspaces) return join(this.#sandboxWorkspaces, row.slug);
     if (this.o.hostDataDir) return join(this.o.hostDataDir, "workspaces", row.slug);
+    // A remote host cannot be asked about our own container; same paths on both is the guess.
+    if (this.#docker.endpoint.kind === "tcp") return this.workspace(row);
     this.#hostWorkspaces ??= this.#detectHostWorkspaces();
     return join(await this.#hostWorkspaces, row.slug);
   }
@@ -540,10 +590,14 @@ I'm following this PR: later CI failures and review comments on #${n} will come 
     const row = await this.row(projectId);
     const dir = this.workspace(row);
     mkdirSync(dir, { recursive: true });
-    const bash = new Sandbox(this.docker, dir, async () => {
-      // Re-read the project so an image change or reset since the session began applies.
-      return this.ensureSandbox(await this.row(projectId));
-    });
+    const bash = new Sandbox(
+      () => this.docker,
+      dir,
+      async () => {
+        // Re-read the project so an image change or reset since the session began applies.
+        return this.ensureSandbox(await this.row(projectId));
+      },
+    );
     const tools = row.provider === "github" ? this.#tools(projectId, crew, conversationId) : [];
     const lines = [
       "# Shipyard project",

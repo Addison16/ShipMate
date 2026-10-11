@@ -47,6 +47,12 @@ Then **Docker → Add Container → Template: shipmate** and fill in:
   off. Whatever holds the socket can control Docker on the server.
 - **SHIPMATE_SECRET**: leave empty to have one generated into `/data/.secret`.
 
+**No socket?** Remove the Docker socket path and run sandboxes elsewhere: rootless Podman on
+another machine, or a Docker host with TLS. Share `/mnt/user/appdata/shipmate/workspaces` with
+it (NFS), then set it up under **Settings → Shipyard sandbox** in Shipmate (or the advanced
+`DOCKER_HOST` variables) and press **Test connection**. Step by step:
+[docs/shipyard.md](../../docs/shipyard.md#sandboxes-without-the-docker-socket).
+
 Start it, open the Web UI, and create the owner account. Migrations run on every start, so
 updating is "Check for updates → Apply update".
 

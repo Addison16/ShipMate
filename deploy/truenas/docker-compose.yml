@@ -18,9 +18,17 @@ services:
       SHIPMATE_HOST_DATA_DIR: /mnt/tank/apps/shipmate/data
       # Optional: where backups are written (default /data/backups).
       # SHIPMATE_BACKUP_DIR: /backups
+      # Optional, instead of the Docker socket: a Docker or Podman host elsewhere, with TLS
+      # client certificates in the data dataset (ca.pem, cert.pem, key.pem). The owner can
+      # also set this in Settings → Shipyard sandbox. See docs/shipyard.md.
+      # DOCKER_HOST: tcp://sandbox-host.lan:2376
+      # DOCKER_TLS_VERIFY: "1"
+      # DOCKER_CERT_PATH: /data/sandbox-certs
+      # SHIPMATE_SANDBOX_WORKSPACES: /mnt/shipmate/workspaces
     volumes:
       - /mnt/tank/apps/shipmate/data:/data
-      # Optional: sandboxes for the Shipyard. Remove to keep the Shipyard off.
+      # Optional: sandboxes for the Shipyard. Remove to keep the Shipyard off, or to use a
+      # remote sandbox host (DOCKER_HOST above) instead.
       - /var/run/docker.sock:/var/run/docker.sock
       # Optional: backups on another dataset (pair with SHIPMATE_BACKUP_DIR above).
       # - /mnt/tank/backups/shipmate:/backups

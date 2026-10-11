@@ -119,7 +119,9 @@ function CrewSelect({
 }
 
 function StatusBanner({ status }: { status: ShipyardStatusDto | null }) {
+  const user = useUser();
   if (!status || status.available) return null;
+  const code = (t: string) => <code className="font-mono text-xs">{t}</code>;
   return (
     <div
       role="status"
@@ -128,10 +130,36 @@ function StatusBanner({ status }: { status: ShipyardStatusDto | null }) {
       <p className="font-medium">Code cannot run right now.</p>
       {status.reason && <p className="mt-1">{status.reason}</p>}
       <p className="mt-1">
-        Crew members run code in a sandbox container started through Docker. Mount the Docker socket
-        into the Shipmate container (
-        <code className="font-mono text-xs">/var/run/docker.sock:/var/run/docker.sock</code>) and
-        restart it. You can still add projects in the meantime.
+        Crew members run code in a sandbox container, started through a Docker-compatible API. Any
+        one of these works:
+      </p>
+      <ul className="mt-1 list-disc space-y-0.5 pl-5">
+        <li>
+          Mount the Docker socket into Shipmate ({code("/var/run/docker.sock:/var/run/docker.sock")}
+          ) and restart it.
+        </li>
+        <li>
+          Use rootless Podman: run {code("systemctl --user enable --now podman.socket")} and mount{" "}
+          {code("$XDG_RUNTIME_DIR/podman/podman.sock")} instead. Nothing runs as root.
+        </li>
+        <li>
+          Use a Docker or Podman host elsewhere on your network over TCP with TLS client
+          certificates, for a NAS that cannot share its socket.
+        </li>
+      </ul>
+      <p className="mt-1">
+        {user.role === "owner" ? (
+          <>
+            Choose and test one under{" "}
+            <a href={href("/settings")} className="underline underline-offset-2">
+              Settings → Shipyard sandbox
+            </a>
+            .
+          </>
+        ) : (
+          "The owner can set this up under Settings."
+        )}{" "}
+        You can still add projects in the meantime.
       </p>
     </div>
   );

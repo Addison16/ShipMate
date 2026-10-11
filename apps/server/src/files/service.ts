@@ -153,7 +153,8 @@ export class AttachmentService {
     let text: string | null = null;
     if (found.kind === "pdf") {
       try {
-        text = (await this.pdf(new Uint8Array(input.data))).trim();
+        // Text layers of some PDFs carry NUL for unmapped glyphs; Postgres text refuses them.
+        text = (await this.pdf(new Uint8Array(input.data))).replaceAll("\u0000", "").trim();
       } catch {
         throw new HttpError(
           422,

@@ -1,9 +1,10 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, type Model } from "@earendil-works/pi-ai";
 import type { ServerEvent } from "@shipmate/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { detectFile } from "./files/service.js";
+import { AttachmentService, detectFile } from "./files/service.js";
 import { TEST_DATABASE_URL, testApp } from "./testing.js";
 
 const db = TEST_DATABASE_URL;
@@ -267,5 +268,21 @@ describe.skipIf(!db)("files in chat", () => {
 
     // Restore the Captain for other tests.
     await api("PUT", "/api/crew/captain", { manifestYaml: yaml });
+  });
+  it("keeps a PDF whose text layer has NUL characters (Postgres text cannot hold them)", async () => {
+    const conv = (await api("POST", "/api/conversations", {})).json().conversation;
+    const me = (await api("GET", "/api/auth/me")).json().user;
+    const files = new AttachmentService(
+      t.app.db,
+      mkdtempSync(join(tmpdir(), "shipmate-files-")),
+      async () => "Total\u0000 due: 12",
+    );
+    const a = await files.upload(me.id, conv.id, {
+      name: "bill.pdf",
+      type: "application/pdf",
+      data: tinyPdf("x"),
+    });
+    const [row] = await files.claim(me.id, conv.id, [a.id]);
+    expect(row?.text).toBe("Total due: 12");
   });
 });

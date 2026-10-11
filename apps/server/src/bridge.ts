@@ -62,6 +62,8 @@ export interface WorkspaceProvider {
     projectId: string,
     user: UserRow,
     crew: CrewFolder,
+    /** The conversation the session belongs to (e.g. to follow the PRs it opens). */
+    conversationId: string,
   ): Promise<{
     dir: string;
     bash: BashOperations;
@@ -331,6 +333,11 @@ export class Bridge {
       run.busy = false;
       this.#dispose(conversationId);
     }
+  }
+
+  /** Whether a turn is running in this conversation. */
+  isBusy(conversationId: string): boolean {
+    return this.#runs.get(conversationId)?.busy ?? false;
   }
 
   async close(): Promise<void> {
@@ -641,7 +648,7 @@ export class Bridge {
     }
     const workspace =
       conv.projectId && this.#workspaces
-        ? await this.#workspaces.forConversation(conv.projectId, user, folder)
+        ? await this.#workspaces.forConversation(conv.projectId, user, folder, conv.id)
         : undefined;
     const created = await createCrewSession({
       crew: folder,

@@ -4,9 +4,11 @@ import { isAdmin, useAuth, useUser } from "../auth.js";
 import { AuditPage } from "../pages/Audit.js";
 import { BridgePage } from "../pages/Bridge.js";
 import { CrewPage } from "../pages/Crew.js";
+import { DiscordPage } from "../pages/Discord.js";
 import { McpPage } from "../pages/Mcp.js";
 import { ProvidersPage } from "../pages/Providers.js";
 import { SettingsPage } from "../pages/Settings.js";
+import { ShipyardPage } from "../pages/Shipyard.js";
 import { SkillsPage } from "../pages/Skills.js";
 import { UsagePage } from "../pages/Usage.js";
 import { UsersPage } from "../pages/Users.js";
@@ -30,6 +32,7 @@ const NAV: Array<{ group: string | null; items: NavItem[] }> = [
     items: [
       { path: "bridge", label: "Bridge" },
       { path: "watches", label: "Watches" },
+      { path: "shipyard", label: "Shipyard" },
     ],
   },
   {
@@ -47,6 +50,7 @@ const NAV: Array<{ group: string | null; items: NavItem[] }> = [
       { path: "usage", label: "Usage" },
       { path: "audit", label: "Audit" },
       { path: "users", label: "Users", adminOnly: true },
+      { path: "discord", label: "Discord" },
       { path: "settings", label: "Settings" },
     ],
   },
@@ -212,6 +216,12 @@ export function Shell() {
           runId={route[2] === "runs" ? (route[3] ?? null) : null}
         />
       );
+      break;
+    case "shipyard":
+      page = <ShipyardPage projectId={route[1] ?? null} tab={route[2] ?? null} />;
+      break;
+    case "discord":
+      page = <DiscordPage />;
       break;
     case "skills":
       page = <SkillsPage skillId={route[1] ?? null} />;

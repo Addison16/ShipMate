@@ -2,6 +2,7 @@ import type { ConversationDto, CrewDto } from "@shipmate/core";
 import {
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -14,8 +15,9 @@ import { useApprovals } from "../approvals.js";
 import { useUser } from "../auth.js";
 import { ApprovalCard } from "../components/ApprovalCard.js";
 import { TimelineView } from "../components/Timeline.js";
-import { Button, cx, ErrorText, focusRing } from "../components/ui.js";
+import { Badge, Button, cx, ErrorText, focusRing } from "../components/ui.js";
 import { formatTime } from "../lib/format.js";
+import { surfaceLabel } from "../lib/shipyard.js";
 import { initialTimeline, timelineReducer } from "../lib/timeline.js";
 import { useResource } from "../lib/useResource.js";
 import { href, navigate } from "../router.js";
@@ -28,6 +30,50 @@ function conversationTitle(c: ConversationDto, crew: CrewDto[]): string {
     return `Direct: ${member?.name ?? c.crewSlug ?? "crew"}`;
   }
   return "New bridge chat";
+}
+
+/** Project names for conversations that work in a Shipyard project; fetched only when needed. */
+function useProjectNames(needed: boolean): Map<string, string> {
+  const projects = useResource(
+    () => (needed ? api.getShipyard().then((r) => r.projects) : Promise.resolve([])),
+    [needed],
+  );
+  return new Map((projects.data ?? []).map((p) => [p.id, p.name]));
+}
+
+function ConversationTags({
+  c,
+  projectNames,
+  linkProject,
+}: {
+  c: ConversationDto;
+  projectNames: Map<string, string>;
+  linkProject?: boolean;
+}) {
+  const surface = surfaceLabel(c.surface);
+  const projectName = c.projectId ? (projectNames.get(c.projectId) ?? "Project") : null;
+  return (
+    <>
+      {surface && <Badge tone={c.surface === "discord" ? "accent" : "neutral"}>{surface}</Badge>}
+      {c.projectId &&
+        (linkProject ? (
+          <a
+            href={href(`/shipyard/${c.projectId}`)}
+            title="Open the project in the Shipyard"
+            className={cx(
+              "inline-flex max-w-40 items-center truncate rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 hover:underline dark:bg-amber-900/50 dark:text-amber-100",
+              focusRing,
+            )}
+          >
+            {projectName}
+          </a>
+        ) : (
+          <span className="inline-flex max-w-40 items-center truncate rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">
+            {projectName}
+          </span>
+        ))}
+    </>
+  );
 }
 
 export function BridgePage({ conversationId }: { conversationId: string | null }) {
@@ -56,6 +102,9 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
   const crewList = crew.data ?? [];
   const noModels = models.data !== null && !models.data.some((m) => m.available);
   const current = conversations.data?.find((c) => c.id === conversationId) ?? null;
+  const projectNames = useProjectNames(
+    conversations.data?.some((c) => c.projectId !== null) ?? false,
+  );
 
   async function create(kind: "bridge" | "direct", crewSlug?: string) {
     setCreating(true);
@@ -160,8 +209,9 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
                         {formatTime(c.updatedAt)}
                       </span>
                     </span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                    <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
                       {c.kind === "bridge" ? "Bridge" : "Direct"}
+                      <ConversationTags c={c} projectNames={projectNames} />
                     </span>
                   </a>
                 </li>
@@ -179,6 +229,11 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
               conversationId={conversationId}
               conversation={current}
               title={current ? conversationTitle(current, crewList) : ""}
+              tags={
+                current ? (
+                  <ConversationTags c={current} projectNames={projectNames} linkProject />
+                ) : null
+              }
               onRenamed={(c) =>
                 conversations.setData(
                   (conversations.data ?? []).map((x) => (x.id === c.id ? c : x)),
@@ -212,12 +267,14 @@ function Thread({
   conversationId,
   conversation,
   title,
+  tags,
   onRenamed,
   onDeleted,
 }: {
   conversationId: string;
   conversation: ConversationDto | null;
   title: string;
+  tags: ReactNode;
   onRenamed: (c: ConversationDto) => void;
   onDeleted: () => void;
 }) {
@@ -364,7 +421,10 @@ function Thread({
           </form>
         ) : (
           <>
-            <h1 className="min-w-0 flex-1 truncate font-semibold">{title}</h1>
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <h1 className="min-w-0 truncate font-semibold">{title}</h1>
+              <span className="flex shrink-0 items-center gap-1.5">{tags}</span>
+            </div>
             {conversation && (
               <>
                 <Button

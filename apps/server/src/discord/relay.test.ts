@@ -1,0 +1,179 @@
+import type { ApprovalDecision, MessageDto, ServerEvent } from "@shipmate/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { FakeDiscordPort } from "./fake.js";
+import { DiscordRelay, type RelayLookup, TYPING_REFRESH_MS } from "./relay.js";
+
+const PERSON = "100000000000000001";
+const STRANGER = "100000000000000002";
+
+function setup(options: { webhook?: boolean } = {}) {
+  const port = new FakeDiscordPort();
+  const channelId = port.addChannel("captain");
+  const webhook = { id: "w1", token: "t1" };
+  port.webhooks.set("w1", { ...webhook, channelId });
+  const lookup: RelayLookup = {
+    target: async (id) => (id === "conv-d" ? { channelId, discordUserId: PERSON } : null),
+    webhook: async () => (options.webhook === false ? null : webhook),
+    userByDiscordId: async (id) => (id === PERSON ? { id: "u1" } : null),
+    userName: async () => "Addison",
+  };
+  const decided: { userId: string; id: string; decision: ApprovalDecision }[] = [];
+  const relay = new DiscordRelay(port, lookup, {
+    decide: (userId, id, decision) => {
+      decided.push({ userId, id, decision });
+      relay.handle(userId, { type: "approval_resolved", approvalId: id, decision });
+    },
+  });
+  port.listen((event) => {
+    if (event.type === "button") void relay.button(event);
+  });
+  return { port, relay, channelId, decided };
+}
+
+const crewMessage = (conversationId: string, content: string, name = "Captain"): ServerEvent => ({
+  type: "message",
+  conversationId,
+  message: {
+    id: "m1",
+    conversationId,
+    role: "assistant",
+    content,
+    author: { kind: "crew", slug: name.toLowerCase(), name },
+    meta: null,
+    createdAt: new Date().toISOString(),
+  } satisfies MessageDto,
+});
+
+const approval = (id: string): ServerEvent => ({
+  type: "approval_request",
+  approval: {
+    id,
+    conversationId: "conv-d",
+    routineId: null,
+    crew: { slug: "galley", name: "Galley" },
+    toolName: "bash",
+    summary: "Galley wants to run bash: ls",
+    detail: '{\n  "command": "ls"\n}',
+    createdAt: new Date().toISOString(),
+  },
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe("DiscordRelay", () => {
+  it("posts crew replies through the webhook under the speaker's name, mentioning the person once", async () => {
+    const { port, relay, channelId } = setup();
+    const long = `${"a".repeat(1500)}\n\n${"b".repeat(1500)}`;
+    relay.handle("u1", crewMessage("conv-d", long, "Galley"));
+    await relay.idle();
+    expect(port.webhookPosts).toHaveLength(2);
+    expect(port.webhookPosts[0]).toMatchObject({
+      channelId,
+      username: "Galley",
+      mentionUserIds: [PERSON],
+    });
+    expect(port.webhookPosts[0]?.content.startsWith(`<@${PERSON}> a`)).toBe(true);
+    expect(port.webhookPosts[1]).toMatchObject({ mentionUserIds: [] });
+    expect(port.webhookPosts[1]?.content).toBe("b".repeat(1500));
+  });
+
+  it("ignores web conversations, the person's own echo and streaming noise", async () => {
+    const { port, relay } = setup();
+    relay.handle("u1", crewMessage("conv-web", "hello"));
+    relay.handle("u1", {
+      type: "message",
+      conversationId: "conv-d",
+      message: {
+        id: "m0",
+        conversationId: "conv-d",
+        role: "user",
+        content: "hi",
+        author: { kind: "user", id: "u1", name: "Addison" },
+        meta: null,
+        createdAt: "",
+      },
+    });
+    relay.handle("u1", { type: "delta", conversationId: "conv-d", streamId: "s", text: "x" });
+    await relay.idle();
+    expect(port.webhookPosts).toEqual([]);
+    expect(port.botMessages).toEqual([]);
+  });
+
+  it("falls back to a labelled bot message when the channel has no webhook", async () => {
+    const { port, relay } = setup({ webhook: false });
+    relay.handle("u1", crewMessage("conv-d", "Aye"));
+    await relay.idle();
+    expect(port.botMessages[0]?.content).toBe(`<@${PERSON}> **Captain:** Aye`);
+  });
+
+  it("posts hand-offs and errors, in order", async () => {
+    const { port, relay } = setup();
+    relay.handle("u1", {
+      type: "handoff",
+      conversationId: "conv-d",
+      from: { slug: "captain", name: "Captain" },
+      to: { slug: "galley", name: "Galley" },
+      task: "plan\ndinner",
+    });
+    relay.handle("u1", crewMessage("conv-d", "Pasta.", "Galley"));
+    relay.handle("u1", { type: "error", conversationId: "conv-d", message: "model failed" });
+    await relay.idle();
+    expect(port.webhookPosts.map((p) => [p.username, p.content])).toEqual([
+      ["Captain", "_Captain asked Galley: plan dinner_"],
+      ["Galley", `<@${PERSON}> Pasta.`],
+    ]);
+    expect(port.botMessages[0]?.content).toBe("⚠️ model failed");
+  });
+
+  it("shows typing while busy and stops when done", async () => {
+    vi.useFakeTimers();
+    const { port, relay, channelId } = setup();
+    relay.handle("u1", { type: "status", conversationId: "conv-d", busy: true });
+    await relay.idle();
+    expect(port.typingCalls).toEqual([channelId]);
+    await vi.advanceTimersByTimeAsync(TYPING_REFRESH_MS * 2);
+    expect(port.typingCalls).toHaveLength(3);
+    relay.handle("u1", { type: "status", conversationId: "conv-d", busy: false });
+    await relay.idle();
+    await vi.advanceTimersByTimeAsync(TYPING_REFRESH_MS * 3);
+    expect(port.typingCalls).toHaveLength(3);
+  });
+
+  it("posts approval cards that only the requesting person can answer", async () => {
+    const { port, relay, decided } = setup();
+    relay.handle("u1", approval("a1"));
+    await relay.idle();
+    const card = port.botMessages[0];
+    expect(card?.content).toContain(`<@${PERSON}> **Galley wants to run bash: ls**`);
+    expect(card?.content).toContain('"command": "ls"');
+    expect(card?.buttons?.map((b) => b.label)).toEqual([
+      "Allow once",
+      "Always allow for Galley",
+      "Deny",
+    ]);
+    const allow = card?.buttons?.[0]?.customId ?? "";
+
+    expect(await port.click(STRANGER, card?.id ?? "", allow)).toBe("Only Addison can answer this.");
+    expect(decided).toEqual([]);
+
+    expect(await port.click(PERSON, card?.id ?? "", allow)).toBe("acknowledged");
+    expect(decided).toEqual([{ userId: "u1", id: "a1", decision: "allow" }]);
+    await relay.idle();
+    expect(port.edits[0]).toMatchObject({ messageId: card?.id, buttons: [] });
+    expect(port.edits[0]?.content).toContain("Addison allowed it once");
+
+    expect(await port.click(PERSON, card?.id ?? "", allow)).toBe(
+      "This request is no longer waiting for an answer.",
+    );
+  });
+
+  it("marks a card expired when nobody answers", async () => {
+    const { port, relay } = setup();
+    relay.handle("u1", approval("a2"));
+    relay.handle("u1", { type: "approval_resolved", approvalId: "a2", decision: "expired" });
+    await relay.idle();
+    expect(port.edits[0]?.content).toContain("Nobody answered in time");
+  });
+});

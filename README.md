@@ -26,6 +26,17 @@ docker compose up -d
 open http://localhost:3000
 ```
 
+### Discord (optional)
+
+1. Create an application at <https://discord.com/developers/applications>, open **Bot**, copy
+   its token, and turn on the **Message Content intent** (Privileged Gateway Intents). Without
+   it the bot cannot read what people write.
+2. In Shipmate, open **Discord** as the owner, paste the token, then use the invite link to add
+   the bot to your server and press **Sync channels**. Each crew member gets a channel in a
+   "Shipmate" category and posts there under its own name.
+3. Each person presses **Link Discord** and types `/shipmate link` with the code in Discord.
+   Messages from unlinked accounts are not run.
+
 ## Develop
 
 ```bash

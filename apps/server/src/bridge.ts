@@ -717,10 +717,17 @@ export class Bridge {
         ))
       ) {
         restore = own;
-        await this.#note(
-          conv,
-          `${crew.name}'s model can't see photos, so ${vision.name} (${vision.provider}/${vision.id}) answers this message.`,
-        );
+        try {
+          await this.#note(
+            conv,
+            `${crew.name}'s model can't see photos, so ${vision.name} (${vision.provider}/${vision.id}) answers this message.`,
+          );
+        } catch (err) {
+          // The turn ends here, before the finally below that would switch back; the session
+          // is cached, so it must not keep the vision model for later messages.
+          await session.session.setModel(own).catch(() => {});
+          throw err;
+        }
       } else {
         images = [];
         prompt = `${prompt}\n\n(${user.displayName} attached photos you cannot see: ${(options.imageNames ?? []).join(", ")}.)`;

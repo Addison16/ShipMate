@@ -737,4 +737,34 @@ describe.skipIf(!db)("Shipyard issue-to-PR jobs, webhooks and the reviewer", () 
     expect((await jobOf(23))?.detail).toContain("did not push a fix");
     expect(t.faux.getPendingResponseCount()).toBe(0);
   });
+
+  it("keeps a job cancelled when its CI-fix turn fails after the cancel", async () => {
+    t.faux.setResponses([
+      fauxAssistantMessage([
+        fauxToolCall("open_pull_request", { title: "Fix 24", body: "Fixes #24", head: "fix/24-x" }),
+      ]),
+      fauxAssistantMessage("Opened."),
+    ]);
+    gh.checks.set("fix_24-x-1", [{ name: "test", status: "in_progress", conclusion: null }]);
+    const id = (
+      await api("POST", `/api/shipyard/projects/${project.id}/jobs`, { issue: 24 })
+    ).json().job.id as string;
+    await until(async () => (await statusOf(24)) === "ci_running");
+    // The person cancels during the fix turn, and the aborted turn rejects.
+    const bridge = t.app.services.bridge;
+    const runTurn = bridge.runTurn;
+    let cancelled = 0;
+    bridge.runTurn = async () => {
+      cancelled = (await api("POST", `/api/shipyard/jobs/${id}/cancel`)).statusCode;
+      throw new Error("Request was aborted");
+    };
+    try {
+      gh.checks.set("fix_24-x-1", [{ name: "test", status: "completed", conclusion: "failure" }]);
+      await t.app.services.shipyard.jobs.advance(id);
+    } finally {
+      bridge.runTurn = runTurn;
+    }
+    expect(cancelled).toBe(200);
+    expect(await jobOf(24)).toMatchObject({ status: "cancelled", detail: "Cancelled by Addison" });
+  });
 });

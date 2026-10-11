@@ -187,8 +187,7 @@ export class ShipyardJobs {
         await this.d.bridge.send(user, conv.id, prompt);
       } catch (err) {
         // Refused before the turn began (a usage cap, the crew member paused): say so on the card.
-        if (!isActive((await this.#job(jobId)).status)) return;
-        await this.#set(jobId, {
+        await this.#setWhileActive(jobId, {
           status: "needs_input",
           detail: (err as Error).message.slice(0, 300),
         });
@@ -202,10 +201,11 @@ export class ShipyardJobs {
   async cancel(user: UserRow, id: string): Promise<ShipyardJobDto> {
     const job = await this.#owned(user, id);
     if (!isActive(job.status)) throw new HttpError(409, "this job has already finished");
-    const updated = await this.#set(id, {
+    const updated = await this.#setWhileActive(id, {
       status: "cancelled",
       detail: `Cancelled by ${user.displayName}`,
     });
+    if (!updated) throw new HttpError(409, "this job has already finished");
     if (job.conversationId && this.d.bridge.isBusy(job.conversationId)) {
       const [owner] = await this.d.db.select().from(users).where(eq(users.id, job.userId));
       if (owner) await this.d.bridge.abort(owner, job.conversationId).catch(() => {});
@@ -285,13 +285,18 @@ export class ShipyardJobs {
   ): Promise<void> {
     const job = await this.jobForConversation(conversationId);
     if (!job || job.prNumber || !["working", "needs_input"].includes(job.status)) return;
-    await this.#set(job.id, {
-      status: "pr_open",
-      prNumber: pr.number,
-      prUrl: pr.url,
-      branch: pr.branch,
-      detail: "Draft pull request opened; waiting for CI",
-    });
+    const opened = await this.#setWhileActive(
+      job.id,
+      {
+        status: "pr_open",
+        prNumber: pr.number,
+        prUrl: pr.url,
+        branch: pr.branch,
+        detail: "Draft pull request opened; waiting for CI",
+      },
+      ["working", "needs_input"],
+    );
+    if (!opened) return;
     // Opened in a reply to the person (not the job's own step): start following it.
     if (!this.#busy.has(job.id)) {
       setTimeout(() => void this.advance(job.id), 5000).unref?.();
@@ -311,10 +316,11 @@ export class ShipyardJobs {
     const row = await this.d.host.row(job.projectId);
     if (row.reviewerSlug !== reviewerSlug) return;
     // A plain comment review is not a verdict: the PR goes to people with a note to read it.
-    await this.#set(job.id, {
-      reviewVerdict: verdict === "comment" ? null : verdict,
-      reviewNotes: body.slice(0, 20_000),
-    });
+    await this.#setWhileActive(
+      job.id,
+      { reviewVerdict: verdict === "comment" ? null : verdict, reviewNotes: body.slice(0, 20_000) },
+      ["reviewing"],
+    );
   }
 
   // ---------- GitHub events ----------
@@ -474,7 +480,7 @@ export class ShipyardJobs {
       const client = await this.d.host.client(row);
       const pr = await client.pullState(job.prNumber);
       if (pr.state === "merged" || pr.state === "closed") {
-        await this.#set(id, {
+        await this.#setWhileActive(id, {
           status: pr.state,
           detail: pr.state === "merged" ? "Merged" : "Closed without merging",
         });
@@ -482,10 +488,13 @@ export class ShipyardJobs {
       }
       if (!following) return;
       const ci = await client.checkSummary(pr.headSha);
-      if (pr.headSha !== job.headSha) await this.#set(id, { headSha: pr.headSha });
+      if (pr.headSha !== job.headSha) {
+        // Cancelled while GitHub was asked: leave it be.
+        if (!(await this.#setWhileActive(id, { headSha: pr.headSha }))) return;
+      }
       if (ci.state === "pending" || (ci.state === null && age(job) < NO_CI_GRACE_MS)) {
         if (job.status !== "ci_running")
-          await this.#set(id, { status: "ci_running", detail: "CI running" });
+          await this.#setWhileActive(id, { status: "ci_running", detail: "CI running" });
         return;
       }
       // The next steps compare against the head this check saw, not the one stored before it.
@@ -494,16 +503,16 @@ export class ShipyardJobs {
       else await this.#green(seen, row, client, ci.state === null);
     }).catch(async (err: Error) => {
       // GitHub was unreachable or refused: say so on the card and try again on the next poll.
-      await this.#set(id, { detail: `Could not check GitHub: ${err.message}`.slice(0, 300) }).catch(
-        () => {},
-      );
+      await this.#setWhileActive(id, {
+        detail: `Could not check GitHub: ${err.message}`.slice(0, 300),
+      }).catch(() => {});
     });
   }
 
   async #fixCi(job: JobRow, row: ProjectRow, client: GitHubClient, failing: string[]) {
     const names = failing.join(", ") || "a check";
     if (job.attempts >= job.maxAttempts) {
-      await this.#set(job.id, {
+      await this.#setWhileActive(job.id, {
         status: "gave_up",
         detail: `CI still failing after ${job.attempts} fix attempt${job.attempts === 1 ? "" : "s"}: ${names}`,
       });
@@ -512,11 +521,12 @@ export class ShipyardJobs {
     const ctx = await this.#context(job);
     if (!ctx) return;
     const attempt = job.attempts + 1;
-    await this.#set(job.id, {
+    const failed = await this.#setWhileActive(job.id, {
       status: "ci_failed",
       attempts: attempt,
       detail: `Failing: ${names}`.slice(0, 300),
     });
+    if (!failed) return;
     const before = job.headSha;
     const ok = await this.#turn(
       job,
@@ -528,13 +538,13 @@ export class ShipyardJobs {
     if (!ok) return;
     const after = (await client.pullState(job.prNumber as number)).headSha;
     if (after !== before) {
-      await this.#set(job.id, {
+      await this.#setWhileActive(job.id, {
         status: "ci_running",
         headSha: after,
         detail: "Fix pushed; CI running",
       });
     } else {
-      await this.#set(job.id, {
+      await this.#setWhileActive(job.id, {
         status: "needs_input",
         detail: `${this.#name(job.crewSlug)} did not push a fix. Answer in the conversation, or press Try again.`,
       });
@@ -560,12 +570,13 @@ export class ShipyardJobs {
     }
     const ctx = await this.#context(job);
     if (!ctx) return;
-    await this.#set(job.id, {
+    const reviewing = await this.#setWhileActive(job.id, {
       status: "reviewing",
       reviewVerdict: null,
       reviewNotes: null,
       detail: `${green}; ${this.#name(reviewer)} is reviewing`,
     });
+    if (!reviewing) return;
     const ok = await this.#turn(
       job,
       reviewer,
@@ -588,11 +599,16 @@ export class ShipyardJobs {
       );
       return;
     }
-    await this.#set(job.id, {
-      status: "addressing_review",
-      reviewRounds: reviewed.reviewRounds + 1,
-      detail: `${this.#name(job.crewSlug)} is addressing ${this.#name(reviewer)}'s review`,
-    });
+    const addressing = await this.#setWhileActive(
+      job.id,
+      {
+        status: "addressing_review",
+        reviewRounds: reviewed.reviewRounds + 1,
+        detail: `${this.#name(job.crewSlug)} is addressing ${this.#name(reviewer)}'s review`,
+      },
+      ["reviewing"],
+    );
+    if (!addressing) return;
     const before = (await client.pullState(job.prNumber as number)).headSha;
     const addressed = await this.#turn(
       job,
@@ -604,7 +620,7 @@ export class ShipyardJobs {
     if (!addressed) return;
     const after = (await client.pullState(job.prNumber as number)).headSha;
     if (after !== before) {
-      await this.#set(job.id, {
+      await this.#setWhileActive(job.id, {
         status: "ci_running",
         headSha: after,
         detail: "Review addressed; CI running",
@@ -626,7 +642,7 @@ export class ShipyardJobs {
     } catch (err) {
       note = ` (still a draft: ${(err as Error).message})`;
     }
-    await this.#set(job.id, {
+    await this.#setWhileActive(job.id, {
       status: "ready",
       detail: `Ready for review: ${detail}${note}`.slice(0, 300),
     });
@@ -635,14 +651,14 @@ export class ShipyardJobs {
   /** The job's owner and conversation, or null (and the job says why) when it cannot run now. */
   async #context(job: JobRow): Promise<{ user: UserRow; conv: string } | null> {
     if (!job.conversationId) {
-      await this.#set(job.id, {
+      await this.#setWhileActive(job.id, {
         status: "needs_input",
         detail: "The job's conversation was deleted",
       });
       return null;
     }
     if (this.d.bridge.isBusy(job.conversationId)) {
-      await this.#set(job.id, { detail: "Waiting for the conversation to be free" });
+      await this.#setWhileActive(job.id, { detail: "Waiting for the conversation to be free" });
       return null;
     }
     const [user] = await this.d.db.select().from(users).where(eq(users.id, job.userId));
@@ -658,9 +674,14 @@ export class ShipyardJobs {
       // Cancelled while the turn ran.
       return isActive(now.status);
     } catch (err) {
+      // Cancelled (or merged, or closed) while the turn ran: the abort's error is not news, and
+      // must not put the job back in play.
       const message = (err as Error).message;
-      this.d.bridge.emit(user.id, { type: "error", conversationId: conv, message });
-      await this.#set(job.id, { status: "needs_input", detail: message.slice(0, 300) });
+      const stopped = await this.#setWhileActive(job.id, {
+        status: "needs_input",
+        detail: message.slice(0, 300),
+      });
+      if (stopped) this.d.bridge.emit(user.id, { type: "error", conversationId: conv, message });
       return false;
     }
   }
@@ -674,10 +695,14 @@ export class ShipyardJobs {
       return;
     }
     if (job.status === "working") {
-      await this.#set(id, {
-        status: "needs_input",
-        detail: `${this.#name(job.crewSlug)} stopped without opening a pull request. Answer in the conversation, or cancel.`,
-      });
+      await this.#setWhileActive(
+        id,
+        {
+          status: "needs_input",
+          detail: `${this.#name(job.crewSlug)} stopped without opening a pull request. Answer in the conversation, or cancel.`,
+        },
+        ["working"],
+      );
     }
   }
 
@@ -753,6 +778,30 @@ export class ShipyardJobs {
       .where(eq(shipyardJobs.id, id))
       .returning();
     if (!job) throw new HttpError(404, "job not found");
+    this.d.bridge.broadcast({
+      type: "shipyard_job",
+      projectId: job.projectId,
+      jobId: job.id,
+      status: job.status as ShipyardJobStatus,
+    });
+    return job;
+  }
+
+  /**
+   * Like #set, but only while the job is still in one of `from` (any active status by default):
+   * a cancel, merge or close that landed while a step was awaiting sticks. Null when it did not.
+   */
+  async #setWhileActive(
+    id: string,
+    patch: Partial<typeof shipyardJobs.$inferInsert>,
+    from: readonly string[] = ACTIVE_JOB_STATUSES,
+  ): Promise<JobRow | null> {
+    const [job] = await this.d.db
+      .update(shipyardJobs)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(and(eq(shipyardJobs.id, id), inArray(shipyardJobs.status, [...from])))
+      .returning();
+    if (!job) return null;
     this.d.bridge.broadcast({
       type: "shipyard_job",
       projectId: job.projectId,

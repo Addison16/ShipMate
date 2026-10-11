@@ -17,6 +17,7 @@ import { ApprovalCard } from "../components/ApprovalCard.js";
 import { AttachButtons, PendingFiles, useComposerFiles } from "../components/Attachments.js";
 import { TimelineView } from "../components/Timeline.js";
 import { Badge, Button, cx, ErrorText, focusRing } from "../components/ui.js";
+import { MicButton, speaker, useHandsFree, useVoiceStatus } from "../components/Voice.js";
 import { formatTime } from "../lib/format.js";
 import { splitHighlights } from "../lib/search.js";
 import { surfaceLabel } from "../lib/shipyard.js";
@@ -339,6 +340,16 @@ function Thread({
 
   useServerEvents((event) => dispatch({ type: "event", event }));
 
+  const voice = useVoiceStatus();
+  const [handsFree, setHandsFree] = useHandsFree();
+  // Hands-free: crew replies in this conversation are read aloud as they arrive.
+  useServerEvents((event) => {
+    if (!handsFree || !voice || event.type !== "message") return;
+    if (event.conversationId !== conversationId || event.message.author.kind !== "crew") return;
+    void speaker.speak(event.message.id, event.message.content, voice.tts);
+  });
+  useEffect(() => () => speaker.stop(), []);
+
   const load = useCallback(async () => {
     dispatch({ type: "open", conversationId });
     setLoadError(null);
@@ -383,9 +394,10 @@ function Thread({
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }
 
-  function send(e?: FormEvent) {
+  /** `spoken`: text from the mic in hands-free mode, sent as is (with any attached files). */
+  function send(e?: FormEvent, spoken?: string) {
     e?.preventDefault();
-    const body = text.trim();
+    const body = (spoken ?? text).trim();
     if ((!body && !files.ids.length) || state.busy || files.uploading) return;
     const attachments = files.ids.length ? { attachments: files.ids } : {};
     if (!socket.send({ type: "send", conversationId, text: body, ...attachments })) {
@@ -393,7 +405,7 @@ function Thread({
       return;
     }
     setSendError(null);
-    setText("");
+    if (spoken === undefined) setText("");
     files.clear();
     stick.current = true;
   }
@@ -478,6 +490,17 @@ function Thread({
               <h1 className="min-w-0 truncate font-semibold">{title}</h1>
               <span className="flex shrink-0 items-center gap-1.5">{tags}</span>
             </div>
+            {voice && voice.stt !== "off" && (
+              <Button
+                size="sm"
+                variant={handsFree ? "primary" : "ghost"}
+                aria-pressed={handsFree}
+                title="Read replies aloud and send what you say right away"
+                onClick={() => setHandsFree(!handsFree)}
+              >
+                Hands-free
+              </Button>
+            )}
             {conversation && (
               <>
                 <Button
@@ -556,6 +579,18 @@ function Thread({
           <PendingFiles items={files.items} onRemove={files.remove} />
           <div className="flex items-end gap-2">
             <AttachButtons onFiles={files.add} disabled={files.full} />
+            {voice && voice.stt !== "off" && (
+              <MicButton
+                mode={voice.stt}
+                disabled={state.busy && handsFree}
+                onError={setSendError}
+                onText={(heard) => {
+                  if (handsFree) send(undefined, heard);
+                  else setText((t) => (t.trim() ? `${t.trimEnd()} ${heard}` : heard));
+                  if (!handsFree) inputRef.current?.focus();
+                }}
+              />
+            )}
             <label htmlFor="composer" className="sr-only">
               Message
             </label>
@@ -597,7 +632,9 @@ function Thread({
             )}
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Enter to send, Shift+Enter for a new line.
+            {handsFree
+              ? "Hands-free: tap the mic, speak, tap again to send. Replies are read aloud."
+              : "Enter to send, Shift+Enter for a new line."}
           </p>
         </div>
       </form>

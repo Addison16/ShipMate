@@ -35,6 +35,7 @@ import { SlackWebApi } from "./slack/webapi.js";
 import { TelegramBotApi } from "./telegram/botapi.js";
 import type { TelegramPort } from "./telegram/port.js";
 import { TelegramService } from "./telegram/service.js";
+import { type VoiceFetch, VoiceService } from "./voice/service.js";
 
 export interface Services {
   db: Db;
@@ -61,6 +62,7 @@ export interface Services {
   crewBundles: CrewBundleService;
   push: PushService;
   files: AttachmentService;
+  voice: VoiceService;
 }
 
 /**
@@ -84,6 +86,8 @@ export async function createServices(
     weather?: WeatherService;
     /** Stand-in for the Web Push services (tests). */
     pushFetch?: PushFetch;
+    /** Stand-in for speech services (tests). */
+    voiceFetch?: VoiceFetch;
   } = {},
 ): Promise<Services> {
   const vault = new SecretVault(config.SHIPMATE_SECRET);
@@ -207,6 +211,7 @@ export async function createServices(
     starters: new StarterService(config.TEMPLATES_DIR, crew, settings, mcp, watches),
     push,
     files,
+    voice: new VoiceService(db, vault, settings, options.voiceFetch),
     backups: new BackupService(
       db,
       settings,

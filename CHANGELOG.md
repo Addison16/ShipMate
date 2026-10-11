@@ -21,6 +21,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   see images, a vision-capable model takes that message (pick it in Settings → Photos) and the
   chat says so. PDFs and text files are passed as text. Files show as thumbnails and chips in
   the conversation and only their uploader can open them.
+- **Voice**: talk to the crew with the mic button and hear replies with the speaker button, or
+  turn on **Hands-free** to have replies read aloud and your words sent as you speak. Speech
+  runs through a provider you already have (OpenAI or OpenAI-compatible), your own speech
+  server (local Whisper and Kokoro; an optional `voice` service ships in docker-compose behind
+  the `voice` profile), or the browser's built-in voice. Set it up in Settings → Voice.
 
 - **Light, Dark and Auto** appearance per user, saved to the account so it follows you to every
   device. Auto follows the device and switches live. Pick it in Settings or from the sidebar.

@@ -9,6 +9,7 @@ import { ProfileSettings } from "../components/ProfileSettings.js";
 import { PhotoSettings } from "../components/PhotoSettings.js";
 import { PushSettings } from "../components/PushSettings.js";
 import { Badge, Button, Card, ErrorText, Page, PageHeader, TextField } from "../components/ui.js";
+import { VoiceSettings } from "../components/VoiceSettings.js";
 import { useResource } from "../lib/useResource.js";
 
 function Saved({ show }: { show: boolean }) {
@@ -27,6 +28,7 @@ export function SettingsPage() {
         <PushSettings />
         <InstanceSettings />
         <PhotoSettings />
+        <VoiceSettings />
         <OidcSettings />
         <BackupSettings />
         <MyAccount />

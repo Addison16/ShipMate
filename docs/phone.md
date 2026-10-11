@@ -67,3 +67,55 @@ conversation.
   share sheets hand over JPEG; otherwise set Settings → Camera → Formats → Most Compatible.
 - Discord, Telegram and Slack bridges take text only for now; send photos and files in the web
   app.
+
+## Voice
+
+Tap the **mic** next to the message box, speak, and tap again: what you said lands in the box
+to check and send. The **speaker** on a crew reply reads it aloud. **Hands-free** (in the
+conversation's header) reads every reply aloud as it arrives and sends what you say straight
+away, so you can talk to the Captain while cooking or driving. Code in replies is skipped when
+reading aloud.
+
+The owner chooses where speech goes in **Settings → Voice**:
+
+| | Choices |
+| --- | --- |
+| Speech to text (your voice) | Off (default, no mic button) · a provider · a speech server · the browser's own recognition |
+| Text to speech (replies) | The browser's own voice (default, no setup) · a provider · a speech server |
+
+- **A provider** reuses an OpenAI (or any OpenAI-compatible) provider from the Providers page,
+  its key and address included. Defaults: `gpt-4o-mini-transcribe` to listen, `gpt-4o-mini-tts`
+  with the `alloy` voice to speak. Speech goes to that provider and is billed by it.
+- **A speech server** is any server with OpenAI's `/v1/audio/transcriptions` and
+  `/v1/audio/speech` endpoints: [speaches](https://speaches.ai) (faster-whisper and Kokoro),
+  faster-whisper-server, LocalAI, or a remote one. The API key is optional and stored
+  encrypted. Defaults: `Systran/faster-distil-whisper-small.en` and
+  `speaches-ai/Kokoro-82M-v1.0-ONNX` with the `af_heart` voice.
+- **The browser** needs nothing on the server. Its speech synthesis works everywhere; its
+  speech recognition works in Chrome, Edge and Safari, and may send audio to the browser's
+  maker to recognise it.
+
+If the server's voice fails, replies fall back to the browser's voice. Recordings are at most
+two minutes and 25 MB; nothing is stored. Voice use is not counted on the Usage page.
+
+### Local voice with Docker Compose
+
+The bundled `docker-compose.yml` has an optional `voice` service (speaches, CPU build), off by
+default:
+
+```bash
+docker compose --profile voice up -d
+```
+
+The first start downloads the Whisper and Kokoro models (about 1 GB) into the `shipmate-voice`
+volume. Then, in **Settings → Voice**, pick **A speech server** for both directions with the
+address `http://voice:8000/v1` and press **Try the voice**. For other languages, use a
+multilingual Whisper model such as `Systran/faster-whisper-small` (add it to `PRELOAD_MODELS`
+and type it as the model). With an NVIDIA GPU, use the `latest-cuda` image instead.
+
+In development, `docker compose -f docker-compose.dev.yml --profile voice up -d` serves it on
+`http://localhost:8000/v1`.
+
+The mic needs a secure origin (HTTPS or localhost), like notifications. On iPhone, replies can
+only start playing on their own after you have tapped something in the conversation (the mic or
+the Hands-free button does it).

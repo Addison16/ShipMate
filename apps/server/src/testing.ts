@@ -12,6 +12,7 @@ import type { WeatherService } from "./services/weather.js";
 import type { PushFetch } from "./push/webpush.js";
 import type { SlackPort } from "./slack/port.js";
 import type { TelegramPort } from "./telegram/port.js";
+import type { VoiceFetch } from "./voice/service.js";
 
 /**
  * Database for integration tests; they are skipped when it is unset. The tests wipe it, so it is
@@ -42,6 +43,7 @@ export async function testApp(
     slackPort?: SlackPort;
     weather?: WeatherService;
     pushFetch?: PushFetch;
+    voiceFetch?: VoiceFetch;
   } = {},
 ) {
   await resetDatabase(url);
@@ -72,6 +74,7 @@ export async function testApp(
     ...(options.slackPort ? { slackPort: options.slackPort } : {}),
     ...(options.weather ? { weather: options.weather } : {}),
     ...(options.pushFetch ? { pushFetch: options.pushFetch } : {}),
+    ...(options.voiceFetch ? { voiceFetch: options.voiceFetch } : {}),
   });
   await app.ready();
   return { app, faux, config };

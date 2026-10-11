@@ -1,4 +1,5 @@
 # Postgres only, for local development: docker compose -f docker-compose.dev.yml up -d
+# Add `--profile voice` for a local speech server on http://localhost:8000/v1 (docs/phone.md).
 services:
   db:
     image: postgres:17-alpine
@@ -8,5 +9,13 @@ services:
       POSTGRES_PASSWORD: shipmate
       POSTGRES_DB: shipmate
     volumes: [shipmate-db-dev:/var/lib/postgresql/data]
+  voice:
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    profiles: ["voice"]
+    ports: ["8000:8000"]
+    environment:
+      PRELOAD_MODELS: '["Systran/faster-distil-whisper-small.en","speaches-ai/Kokoro-82M-v1.0-ONNX"]'
+    volumes: [shipmate-voice-dev:/home/ubuntu/.cache/huggingface/hub]
 volumes:
   shipmate-db-dev:
+  shipmate-voice-dev:

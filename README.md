@@ -36,7 +36,9 @@ Version 1.0. See [CHANGELOG.md](CHANGELOG.md) for what is in it and
   Telegram and Slack.
 - **On your phone**: push notifications for approvals (approve or deny from the notification),
   watch results and crew replies, and photos, PDFs and files in chat (a receipt for the Purser,
-  a fridge photo for the Galley). See [docs/phone.md](docs/phone.md).
+  a fridge photo for the Galley), and voice: talk to the Captain and hear the replies, hands-free
+  if you like, with a provider's speech or a local Whisper and Kokoro. See
+  [docs/phone.md](docs/phone.md).
 - **Backups**: nightly or on demand, restorable from the UI or the CLI.
 
 ## Quick start

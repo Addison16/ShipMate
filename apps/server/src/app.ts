@@ -31,6 +31,7 @@ import { slackRoutes } from "./routes/slack.js";
 import { telegramRoutes } from "./routes/telegram.js";
 import { settingsRoutes, usageRoutes } from "./routes/usage.js";
 import { userRoutes } from "./routes/users.js";
+import { voiceRoutes } from "./routes/voice.js";
 import { watchRoutes } from "./routes/watches.js";
 import { createServices } from "./services.js";
 
@@ -76,6 +77,8 @@ export async function buildApp(
     weather?: import("./services/weather.js").WeatherService;
     /** Stand-in for the Web Push services (tests). */
     pushFetch?: import("./push/webpush.js").PushFetch;
+    /** Stand-in for speech services (tests). */
+    voiceFetch?: import("./voice/service.js").VoiceFetch;
   } = {},
 ) {
   const app = Fastify({
@@ -163,6 +166,7 @@ export async function buildApp(
   await claudeCliRoutes(app, services);
   await pushRoutes(app, services);
   await fileRoutes(app, services);
+  await voiceRoutes(app, services);
   await oidcRoutes(app, services, { secureCookies: config.secureCookies });
 
   // The Bridge's live channel: streams crew replies and takes messages from the person.

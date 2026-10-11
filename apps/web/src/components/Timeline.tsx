@@ -8,6 +8,7 @@ import { MessageFiles } from "./Attachments.js";
 import { Avatar } from "./Avatar.js";
 import { Markdown } from "./Markdown.js";
 import { cx } from "./ui.js";
+import { ListenButton } from "./Voice.js";
 
 export function HandoffLine({ handoff }: { handoff: Handoff }) {
   return (
@@ -83,6 +84,7 @@ function Bubble({
   children,
   live,
   files = [],
+  actions,
 }: {
   name: string;
   mine: boolean;
@@ -92,6 +94,8 @@ function Bubble({
   live?: boolean;
   /** Photos and files sent with the message, shown above its text. */
   files?: AttachmentDto[];
+  /** Small buttons next to the name (e.g. read aloud). */
+  actions?: ReactNode;
 }) {
   return (
     <div className={cx("flex flex-col", mine ? "items-end" : "items-start")}>
@@ -100,6 +104,7 @@ function Bubble({
         <span className="font-medium text-slate-700 dark:text-slate-200">{name}</span>
         {time && <time>{time}</time>}
         {live && <span className="text-accent-700 dark:text-accent-300">typing…</span>}
+        {actions}
       </div>
       {tools.length > 0 && (
         <div className="mb-1.5 flex max-w-[85%] flex-wrap gap-1.5">
@@ -149,6 +154,11 @@ function MessageView({ message, selfId }: { message: MessageDto; selfId: string 
         mine={mine}
         time={formatTime(message.createdAt)}
         tools={metaTools(message)}
+        actions={
+          a.kind === "crew" && message.content ? (
+            <ListenButton id={message.id} text={message.content} />
+          ) : undefined
+        }
         files={files}
       >
         {message.content || !files.length ? <Markdown text={message.content} /> : null}

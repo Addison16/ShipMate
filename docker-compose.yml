@@ -35,6 +35,20 @@ services:
       retries: 20
     restart: unless-stopped
 
+  # Optional local voice: Whisper speech-to-text and Kokoro text-to-speech behind an
+  # OpenAI-compatible API (speaches). Off unless started with `--profile voice`; then choose
+  # "A speech server" at http://voice:8000/v1 in Settings → Voice. See docs/phone.md.
+  voice:
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    profiles: ["voice"]
+    environment:
+      # Downloaded once into the volume on first start (about 1 GB together).
+      PRELOAD_MODELS: '["Systran/faster-distil-whisper-small.en","speaches-ai/Kokoro-82M-v1.0-ONNX"]'
+    volumes:
+      - shipmate-voice:/home/ubuntu/.cache/huggingface/hub
+    restart: unless-stopped
+
 volumes:
   shipmate-data:
   shipmate-db:
+  shipmate-voice:

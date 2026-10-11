@@ -7,6 +7,7 @@ import type { HealthDto } from "@shipmate/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { checkApiKey } from "./health/checks.js";
 import { compareVersions, ReleaseChecker } from "./health/releases.js";
+import { HealthService } from "./health/service.js";
 import {
   dockerApiVersion,
   manualCommands,
@@ -313,6 +314,33 @@ describe("one-click update", () => {
     } finally {
       await docker.stop();
     }
+  });
+});
+
+describe("starting an update", () => {
+  it("starts one helper even when two clicks arrive together", async () => {
+    let runs = 0;
+    let fail = true;
+    const updater = {
+      run: async () => {
+        runs++;
+        await new Promise((r) => setTimeout(r, 20));
+        if (fail) throw new Error("pull failed");
+        return { helper: `helper-${runs}` };
+      },
+    } as unknown as Updater;
+    const releases = new ReleaseChecker({ current: "1.0.0", enabled: false });
+    const health = new HealthService({} as never, releases, updater, "1.0.0");
+
+    // A failed start frees the slot again.
+    await expect(health.update()).rejects.toMatchObject({ statusCode: 409 });
+    fail = false;
+    const [a, b] = await Promise.allSettled([health.update(), health.update()]);
+    expect(runs).toBe(2);
+    expect(a).toMatchObject({ status: "fulfilled", value: { helper: "helper-2" } });
+    expect(b).toMatchObject({ status: "rejected", reason: { statusCode: 409 } });
+    await expect(health.update()).rejects.toThrow(/already running/);
+    expect(runs).toBe(2);
   });
 });
 

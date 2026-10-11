@@ -35,12 +35,14 @@ export class HealthService {
     if (Date.now() - this.#updateStartedAt < 5 * 60_000) {
       throw new HttpError(409, "An update is already running; Shipmate restarts when it is done.");
     }
-    const release = await this.releases.check();
+    // Claim the slot before the first await, so a second click (or a second owner) arriving
+    // while the helper is being pulled and created cannot start another one.
+    this.#updateStartedAt = Date.now();
     try {
-      const started = await this.updater.run(release.latest?.version ?? null);
-      this.#updateStartedAt = Date.now();
-      return started;
+      const release = await this.releases.check();
+      return await this.updater.run(release.latest?.version ?? null);
     } catch (err) {
+      this.#updateStartedAt = 0;
       if (err instanceof HttpError) throw err;
       throw new HttpError(409, (err as Error).message);
     }

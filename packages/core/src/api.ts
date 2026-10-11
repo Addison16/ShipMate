@@ -132,6 +132,8 @@ export interface ModelOption {
   name: string;
   /** Credentials are configured so this model can actually be called. */
   available: boolean;
+  /** The model can look at images (photos in chat). */
+  images: boolean;
 }
 /** GET /api/models → { models: ModelOption[] } (available ones first). */
 
@@ -293,8 +295,16 @@ export interface SettingsDto {
   defaultModel: string;
   /** Core MCP servers are started for crew sessions. */
   mcpEnabled: boolean;
+  /**
+   * Model that looks at photos when a crew member's own model cannot; "" picks one
+   * automatically (a vision-capable model from the same provider if there is one).
+   */
+  visionModel: string;
 }
-/** GET /api/settings → SettingsDto. PUT /api/settings (owner) Partial<captainName, defaultModel> → SettingsDto */
+/**
+ * GET /api/settings → SettingsDto.
+ * PUT /api/settings (owner) Partial<captainName, defaultModel, visionModel> → SettingsDto
+ */
 
 // ---------- skills (phase 2) ----------
 
@@ -1057,7 +1067,8 @@ export interface CrewImportRequest {
 // ---------- WebSocket: /api/ws ----------
 
 export type ClientEvent =
-  | { type: "send"; conversationId: string; text: string }
+  /** `attachments`: ids of files uploaded for this message (see phone.ts). */
+  | { type: "send"; conversationId: string; text: string; attachments?: string[] | undefined }
   | { type: "abort"; conversationId: string }
   /** Answer an approval_request (phase 2). */
   | { type: "approve"; approvalId: string; decision: ApprovalDecision };

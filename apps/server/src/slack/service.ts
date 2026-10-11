@@ -325,6 +325,12 @@ export class SlackService {
     }
     if (!text) return;
 
+    const typed = this.relay.answer(m.channelId, user.id, text);
+    if (typed.handled) {
+      if (typed.reply) await tell(typed.reply);
+      return;
+    }
+
     const outcome = await deliver(this.deps, {
       user,
       slug,

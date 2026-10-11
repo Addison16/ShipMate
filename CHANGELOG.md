@@ -6,6 +6,27 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Push notifications** on phones and desktops (Web Push, no third-party account): approval
+  requests, watch results, and crew replies while no tab is open. Turn them on per device in
+  Settings → Notifications and choose what each device gets; **Send a test** checks them all.
+  On iPhone and iPad, add Shipmate to the Home Screen first. See [docs/phone.md](docs/phone.md).
+- **Approve or deny from the notification**: approval notifications have Approve and Deny
+  buttons backed by a one-time token for that request and person, so they work without opening
+  the app. Where buttons are not supported, a tap opens the request.
+- **Typed approvals in chat bridges**: besides the buttons, answer an approval card in Discord,
+  Telegram or Slack by typing `approve`, `deny` or `always` (or `yes` / `no`). Only the person
+  who was asked can answer.
+- **Photos and files in chat**: attach photos (or take one with the phone's camera), PDFs and
+  text files on the Bridge. Photos go to the model as images; when a crew member's model cannot
+  see images, a vision-capable model takes that message (pick it in Settings → Photos) and the
+  chat says so. PDFs and text files are passed as text. Files show as thumbnails and chips in
+  the conversation and only their uploader can open them.
+- **Voice**: talk to the crew with the mic button and hear replies with the speaker button, or
+  turn on **Hands-free** to have replies read aloud and your words sent as you speak. Speech
+  runs through a provider you already have (OpenAI or OpenAI-compatible), your own speech
+  server (local Whisper and Kokoro; an optional `voice` service ships in docker-compose behind
+  the `voice` profile), or the browser's built-in voice. Set it up in Settings → Voice.
+
 - **Light, Dark and Auto** appearance per user, saved to the account so it follows you to every
   device. Auto follows the device and switches live. Pick it in Settings or from the sidebar.
 - **Color themes** with a nautical feel: Harbor (teal, the default), Open Sea, Coral Reef,

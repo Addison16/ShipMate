@@ -56,6 +56,11 @@ export class ApprovalService {
     return [...this.#pending.values()].filter((p) => p.userId === userId).map((p) => p.dto);
   }
 
+  /** Who a pending approval belongs to, or null when it is not waiting (any more). */
+  ownerOf(id: string): string | null {
+    return this.#pending.get(id)?.userId ?? null;
+  }
+
   decide(userId: string, id: string, decision: ApprovalDecision): void {
     const p = this.#pending.get(id);
     if (!p || p.userId !== userId) throw new HttpError(404, "no pending approval with that id");

@@ -415,6 +415,12 @@ export class DiscordService {
     }
     if (!text) return;
 
+    const typed = this.relay.answer(m.channelId, user.id, text);
+    if (typed.handled) {
+      if (typed.reply) await port.reply(m.channelId, m.id, typed.reply);
+      return;
+    }
+
     let crew: Awaited<ReturnType<CrewService["assertVisible"]>>;
     try {
       crew = await this.deps.crew.assertVisible(slug, user);

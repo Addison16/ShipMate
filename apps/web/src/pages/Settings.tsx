@@ -5,8 +5,11 @@ import { AppearanceSettings } from "../components/AppearanceSettings.js";
 import { BackupSettings } from "../components/BackupSettings.js";
 import { ModelSelect } from "../components/ModelSelect.js";
 import { OidcSettings } from "../components/OidcSettings.js";
+import { PhotoSettings } from "../components/PhotoSettings.js";
 import { ProfileSettings } from "../components/ProfileSettings.js";
+import { PushSettings } from "../components/PushSettings.js";
 import { Badge, Button, Card, ErrorText, Page, PageHeader, TextField } from "../components/ui.js";
+import { VoiceSettings } from "../components/VoiceSettings.js";
 import { useResource } from "../lib/useResource.js";
 
 function Saved({ show }: { show: boolean }) {
@@ -22,7 +25,10 @@ export function SettingsPage() {
       <div className="space-y-6">
         <AppearanceSettings />
         <ProfileSettings />
+        <PushSettings />
         <InstanceSettings />
+        <PhotoSettings />
+        <VoiceSettings />
         <OidcSettings />
         <BackupSettings />
         <MyAccount />

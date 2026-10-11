@@ -61,6 +61,7 @@ export async function settingsRoutes(app: FastifyInstance, s: Services) {
       captainSlug: CAPTAIN_SLUG,
       defaultModel: settings.defaultModel,
       mcpEnabled: s.mcp.isEnabled,
+      visionModel: settings.visionModel,
     };
   };
 
@@ -74,6 +75,10 @@ export async function settingsRoutes(app: FastifyInstance, s: Services) {
         defaultModel: z
           .string()
           .regex(/^[a-z0-9-]+\/.+$/)
+          .optional(),
+        visionModel: z
+          .string()
+          .regex(/^([a-z0-9-]+\/.+)?$/)
           .optional(),
       })
       .parse(req.body);

@@ -183,6 +183,7 @@ export class ProviderService {
       id: m.id,
       name: m.name,
       available: available.has(`${m.provider}/${m.id}`),
+      images: m.input.includes("image"),
     }));
     return all.sort((a, b) => Number(b.available) - Number(a.available));
   }

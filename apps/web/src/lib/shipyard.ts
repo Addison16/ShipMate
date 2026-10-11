@@ -158,5 +158,7 @@ export function projectChanges(
 export function surfaceLabel(surface: string): string | null {
   if (surface === "discord") return "Discord";
   if (surface === "watch") return "Watch";
+  if (surface === "telegram") return "Telegram";
+  if (surface === "slack") return "Slack";
   return null;
 }

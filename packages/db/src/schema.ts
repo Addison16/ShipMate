@@ -383,3 +383,51 @@ export const userProfiles = pgTable("user_profiles", {
   shared: boolean("shared").notNull().default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+// ---------- phone, voice and files ----------
+
+/** A browser or installed app subscribed to Web Push (one row per device). */
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** The push service URL; unique per browser profile. */
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    /** "Pixel 9, Chrome", guessed from the browser; the person can tell devices apart. */
+    label: text("label").notNull(),
+    /** Which notifications this device gets: { approvals, watches, messages }. */
+    events: jsonb("events").$type<Record<string, boolean>>().notNull().default({}),
+    lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("push_subscriptions_user_idx").on(t.userId)],
+);
+
+/** Files people attach in chat. The bytes live in <data>/files/<id>; only the uploader reads them. */
+export const attachments = pgTable(
+  "attachments",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    /** Set once the file is sent with a message; unsent uploads are cleaned up after a day. */
+    messageId: uuid("message_id").references(() => messages.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    /** image | pdf | text */
+    kind: text("kind").notNull(),
+    size: integer("size").notNull(),
+    /** Text pulled out of a PDF or text file, passed to the model as text. */
+    text: text("text"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("attachments_conversation_idx").on(t.conversationId)],
+);

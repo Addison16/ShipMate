@@ -8,9 +8,11 @@ import postgres from "postgres";
 import { buildApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import type { DiscordClientPort } from "./discord/port.js";
+import type { PushFetch } from "./push/webpush.js";
 import type { WeatherService } from "./services/weather.js";
 import type { SlackPort } from "./slack/port.js";
 import type { TelegramPort } from "./telegram/port.js";
+import type { VoiceFetch } from "./voice/service.js";
 
 /**
  * Database for integration tests; they are skipped when it is unset. The tests wipe it, so it is
@@ -40,6 +42,8 @@ export async function testApp(
     telegramPort?: TelegramPort;
     slackPort?: SlackPort;
     weather?: WeatherService;
+    pushFetch?: PushFetch;
+    voiceFetch?: VoiceFetch;
   } = {},
 ) {
   await resetDatabase(url);
@@ -54,7 +58,11 @@ export async function testApp(
     modelsPath: join(dataDir, "models.json"),
     allowModelNetwork: false,
   });
-  const faux = fauxProvider({ provider: "faux", models: [{ id: "m" }] });
+  // "m" sees images; "text-only" does not (photos in chat route to a vision model).
+  const faux = fauxProvider({
+    provider: "faux",
+    models: [{ id: "m" }, { id: "text-only", input: ["text"] }],
+  });
   modelRuntime.registerNativeProvider(faux.provider);
   const app = await buildApp(config, {
     modelRuntime,
@@ -65,6 +73,8 @@ export async function testApp(
     ...(options.telegramPort ? { telegramPort: options.telegramPort } : {}),
     ...(options.slackPort ? { slackPort: options.slackPort } : {}),
     ...(options.weather ? { weather: options.weather } : {}),
+    ...(options.pushFetch ? { pushFetch: options.pushFetch } : {}),
+    ...(options.voiceFetch ? { voiceFetch: options.voiceFetch } : {}),
   });
   await app.ready();
   return { app, faux, config };

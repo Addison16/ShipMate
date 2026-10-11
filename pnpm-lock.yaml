@@ -71,6 +71,9 @@ importers:
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
+      unpdf:
+        specifier: ^1.8.1
+        version: 1.8.1
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
@@ -2295,6 +2298,15 @@ packages:
     resolution: {integrity: sha512-/y4/bH9YNU5hi9NIrpOuvGXFcxrj3CMrV+/AYpowAYTpHn8gX/XPFjNy766FPoYY0miQhdW977JFWKGNhBdwyQ==}
     engines: {node: '>=22.19.0'}
 
+  unpdf@1.8.1:
+    resolution: {integrity: sha512-xkURhy2SoGpOIH0a1gLHNkASPIQYonadDJs2AQwPEfUakafeD9EA1WTWWsaR++gfTCXJpV27W7tU1nXuk82UKQ==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      '@napi-rs/canvas': ^0.1.69 || ^1.0.0
+    peerDependenciesMeta:
+      '@napi-rs/canvas':
+        optional: true
+
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
 
@@ -4240,6 +4252,8 @@ snapshots:
   undici@6.29.0: {}
 
   undici@8.10.2: {}
+
+  unpdf@1.8.1: {}
 
   util-deprecate@1.0.2: {}
 

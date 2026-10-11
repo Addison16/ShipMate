@@ -9,6 +9,9 @@ import { DiscordJsPort } from "./discord/discordjs.js";
 import type { DiscordClientPort } from "./discord/port.js";
 import { DiscordService } from "./discord/service.js";
 import { EverydayTools } from "./everyday.js";
+import { AttachmentService } from "./files/service.js";
+import { PushService } from "./push/service.js";
+import type { PushFetch } from "./push/webpush.js";
 import { ApprovalService } from "./services/approvals.js";
 import { AuditService } from "./services/audit.js";
 import { BackupService } from "./services/backups.js";
@@ -32,6 +35,7 @@ import { SlackWebApi } from "./slack/webapi.js";
 import { TelegramBotApi } from "./telegram/botapi.js";
 import type { TelegramPort } from "./telegram/port.js";
 import { TelegramService } from "./telegram/service.js";
+import { type VoiceFetch, VoiceService } from "./voice/service.js";
 
 export interface Services {
   db: Db;
@@ -56,6 +60,9 @@ export interface Services {
   lists: ListService;
   profiles: ProfileService;
   crewBundles: CrewBundleService;
+  push: PushService;
+  files: AttachmentService;
+  voice: VoiceService;
 }
 
 /**
@@ -77,6 +84,10 @@ export async function createServices(
     oidcDiscover?: OidcDiscover;
     /** Stand-in for Open-Meteo (tests). */
     weather?: WeatherService;
+    /** Stand-in for the Web Push services (tests). */
+    pushFetch?: PushFetch;
+    /** Stand-in for speech services (tests). */
+    voiceFetch?: VoiceFetch;
   } = {},
 ): Promise<Services> {
   const vault = new SecretVault(config.SHIPMATE_SECRET);
@@ -101,6 +112,7 @@ export async function createServices(
   const lists = new ListService(db, (ownerId, event) =>
     ownerId ? bridge?.emit(ownerId, event) : bridge?.broadcast(event),
   );
+  const files = new AttachmentService(db, config.dirs.files);
   bridge = new Bridge({
     db,
     crew,
@@ -111,6 +123,7 @@ export async function createServices(
     approvals,
     audit,
     skills,
+    files,
     agentDir: config.dirs.pi,
   });
   const watches = new WatchService(db, db.$client, crew, bridge, audit, emit, config.SHIPMATE_URL);
@@ -133,6 +146,15 @@ export async function createServices(
     githubWeb: process.env.SHIPMATE_GITHUB_URL || undefined,
   });
   bridge.attachWorkspaces(shipyard);
+  const push = new PushService({
+    db,
+    vault,
+    secret: config.SHIPMATE_SECRET,
+    publicUrl: config.SHIPMATE_URL,
+    extraHosts: (process.env.SHIPMATE_PUSH_HOSTS ?? "").split(","),
+    ...(options.pushFetch ? { fetch: options.pushFetch } : {}),
+  });
+  bridge.tap((userId, event) => push.handle(userId, event));
 
   const current = await settings.get();
   await crew.boot({ name: current.captainName });
@@ -187,6 +209,9 @@ export async function createServices(
     profiles,
     crewBundles: new CrewBundleService({ crew, settings, providers, mcp, skills }),
     starters: new StarterService(config.TEMPLATES_DIR, crew, settings, mcp, watches),
+    push,
+    files,
+    voice: new VoiceService(db, vault, settings, options.voiceFetch),
     backups: new BackupService(
       db,
       settings,

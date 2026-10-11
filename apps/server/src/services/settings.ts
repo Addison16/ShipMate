@@ -5,11 +5,14 @@ import { eq } from "drizzle-orm";
 export interface InstanceSettings {
   captainName: string;
   defaultModel: string;
+  /** Model for photos when a crew member's cannot see images; "" = pick automatically. */
+  visionModel: string;
 }
 
 export const DEFAULT_SETTINGS: InstanceSettings = {
   captainName: "Captain",
   defaultModel: "anthropic/claude-sonnet-5-5",
+  visionModel: "",
 };
 
 /** Instance settings stored one key per row; unknown keys fall back to defaults. */

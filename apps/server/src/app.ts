@@ -18,17 +18,20 @@ import { claudeCliRoutes } from "./routes/claude-cli.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { crewRoutes } from "./routes/crew.js";
 import { discordRoutes } from "./routes/discord.js";
+import { fileRoutes } from "./routes/files.js";
 import { listRoutes } from "./routes/lists.js";
 import { mcpRoutes } from "./routes/mcp.js";
 import { oidcRoutes } from "./routes/oidc.js";
 import { profileRoutes } from "./routes/profiles.js";
 import { providerRoutes } from "./routes/providers.js";
+import { pushRoutes } from "./routes/push.js";
 import { shipyardRoutes } from "./routes/shipyard.js";
 import { skillRoutes } from "./routes/skills.js";
 import { slackRoutes } from "./routes/slack.js";
 import { telegramRoutes } from "./routes/telegram.js";
 import { settingsRoutes, usageRoutes } from "./routes/usage.js";
 import { userRoutes } from "./routes/users.js";
+import { voiceRoutes } from "./routes/voice.js";
 import { watchRoutes } from "./routes/watches.js";
 import { createServices } from "./services.js";
 
@@ -44,13 +47,14 @@ const PUBLIC = new Set([
   "/api/auth/oidc/callback",
 ]);
 /** Prefixes reachable without signing in; each route checks its own credential (a token). */
-const PUBLIC_PREFIXES = ["/api/hooks/"];
+const PUBLIC_PREFIXES = ["/api/hooks/", "/api/push/act/"];
 
 const ClientEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("send"),
     conversationId: z.string().uuid(),
     text: z.string().max(100_000),
+    attachments: z.array(z.string().uuid()).max(8).optional(),
   }),
   z.object({ type: z.literal("abort"), conversationId: z.string().uuid() }),
   z.object({ type: z.literal("approve"), approvalId: z.string(), decision: DecisionSchema }),
@@ -71,6 +75,10 @@ export async function buildApp(
     slackPort?: import("./slack/port.js").SlackPort;
     /** Stand-in for Open-Meteo (tests). */
     weather?: import("./services/weather.js").WeatherService;
+    /** Stand-in for the Web Push services (tests). */
+    pushFetch?: import("./push/webpush.js").PushFetch;
+    /** Stand-in for speech services (tests). */
+    voiceFetch?: import("./voice/service.js").VoiceFetch;
   } = {},
 ) {
   const app = Fastify({
@@ -81,14 +89,21 @@ export async function buildApp(
   app.decorate("db", db);
   app.decorate("services", services);
   app.decorateRequest("user", null as unknown as UserRow);
+  let fileSweep: NodeJS.Timeout | undefined;
   app.addHook("onReady", async () => {
     if (options.watches !== false) await services.watches.start();
     await services.backups.start();
+    // Files of conversations or people deleted while the server was down (or by a restore), and
+    // uploads nobody sent; then hourly, so abandoned uploads don't pile up.
+    void services.files.sweep().catch(() => {});
+    fileSweep = setInterval(() => void services.files.sweep().catch(() => {}), 3600_000);
+    fileSweep.unref();
     // Chat bridges connect in the background when configured; problems show on their pages.
     void services.telegram.start();
     void services.slack.start();
   });
   app.addHook("onClose", async () => {
+    clearInterval(fileSweep);
     await services.backups.stop();
     await services.watches.stop();
     services.approvals.close();
@@ -154,6 +169,9 @@ export async function buildApp(
   await slackRoutes(app, services);
   await backupRoutes(app, services);
   await claudeCliRoutes(app, services);
+  await pushRoutes(app, services);
+  await fileRoutes(app, services);
+  await voiceRoutes(app, services);
   await oidcRoutes(app, services, { secureCookies: config.secureCookies });
 
   // The Bridge's live channel: streams crew replies and takes messages from the person.
@@ -163,7 +181,12 @@ export async function buildApp(
       if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(event));
     };
     const disconnect = services.bridge.connect(user.id, send);
-    socket.on("close", disconnect);
+    // While a tab is open, crew replies show there instead of as push notifications.
+    const present = services.push.opened(user.id);
+    socket.on("close", () => {
+      disconnect();
+      present();
+    });
     send({ type: "hello", version: SHIPMATE_VERSION, userId: user.id });
     socket.on("message", (raw: Buffer) => {
       let event: ClientEvent;
@@ -194,7 +217,12 @@ export async function buildApp(
       if (event.type === "approve") {
         services.approvals.decide(current.id, event.approvalId, event.decision);
       } else if (event.type === "send") {
-        await services.bridge.send(current, event.conversationId, event.text);
+        await services.bridge.send(
+          current,
+          event.conversationId,
+          event.text,
+          event.attachments ?? [],
+        );
       } else {
         await services.bridge.abort(current, event.conversationId);
       }

@@ -14,8 +14,10 @@ import { api, errorMessage } from "../api.js";
 import { useApprovals } from "../approvals.js";
 import { useUser } from "../auth.js";
 import { ApprovalCard } from "../components/ApprovalCard.js";
+import { AttachButtons, PendingFiles, useComposerFiles } from "../components/Attachments.js";
 import { TimelineView } from "../components/Timeline.js";
 import { Badge, Button, cx, ErrorText, focusRing } from "../components/ui.js";
+import { MicButton, speaker, useHandsFree, useVoiceStatus } from "../components/Voice.js";
 import { formatTime } from "../lib/format.js";
 import { splitHighlights } from "../lib/search.js";
 import { surfaceLabel } from "../lib/shipyard.js";
@@ -319,6 +321,8 @@ function Thread({
 }) {
   const user = useUser();
   const socketState = useSocketState();
+  // Chats from Discord, Telegram, Slack or a watch (opened from search) are shown, not continued.
+  const readOnly = conversation !== null && conversation.surface !== "web";
   const [state, dispatch] = useReducer(timelineReducer, initialTimeline);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [text, setText] = useState("");
@@ -334,8 +338,19 @@ function Thread({
       !state.items.some((it) => it.kind === "approval" && it.approval.id === a.id),
   );
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const files = useComposerFiles(conversationId);
 
   useServerEvents((event) => dispatch({ type: "event", event }));
+
+  const voice = useVoiceStatus();
+  const [handsFree, setHandsFree] = useHandsFree();
+  // Hands-free: crew replies in this conversation are read aloud as they arrive.
+  useServerEvents((event) => {
+    if (!handsFree || !voice || event.type !== "message") return;
+    if (event.conversationId !== conversationId || event.message.author.kind !== "crew") return;
+    void speaker.speak(event.message.id, event.message.content, voice.tts);
+  });
+  useEffect(() => () => speaker.stop(), []);
 
   const load = useCallback(async () => {
     dispatch({ type: "open", conversationId });
@@ -381,16 +396,19 @@ function Thread({
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }
 
-  function send(e?: FormEvent) {
+  /** `spoken`: text from the mic in hands-free mode, sent as is (with any attached files). */
+  function send(e?: FormEvent, spoken?: string) {
     e?.preventDefault();
-    const body = text.trim();
-    if (!body || state.busy) return;
-    if (!socket.send({ type: "send", conversationId, text: body })) {
+    const body = (spoken ?? text).trim();
+    if ((!body && !files.ids.length) || state.busy || files.uploading) return;
+    const attachments = files.ids.length ? { attachments: files.ids } : {};
+    if (!socket.send({ type: "send", conversationId, text: body, ...attachments })) {
       setSendError("Not connected to the server. Your message was not sent; try again shortly.");
       return;
     }
     setSendError(null);
-    setText("");
+    if (spoken === undefined) setText("");
+    files.clear();
     stick.current = true;
   }
 
@@ -474,7 +492,18 @@ function Thread({
               <h1 className="min-w-0 truncate font-semibold">{title}</h1>
               <span className="flex shrink-0 items-center gap-1.5">{tags}</span>
             </div>
-            {conversation && (
+            {voice && voice.stt !== "off" && !readOnly && (
+              <Button
+                size="sm"
+                variant={handsFree ? "primary" : "ghost"}
+                aria-pressed={handsFree}
+                title="Read replies aloud and send what you say right away"
+                onClick={() => setHandsFree(!handsFree)}
+              >
+                Hands-free
+              </Button>
+            )}
+            {conversation && !readOnly && (
               <>
                 <Button
                   size="sm"
@@ -525,61 +554,109 @@ function Thread({
         </div>
       </div>
 
-      <form
-        onSubmit={send}
-        className="border-t border-slate-200 bg-white px-3 py-3 sm:px-6 dark:border-slate-800 dark:bg-slate-900"
-      >
-        <div className="mx-auto max-w-3xl space-y-2">
-          {state.error && (
-            <div className="flex items-start gap-2">
-              <div className="flex-1">
-                <ErrorText>{state.error}</ErrorText>
+      {readOnly ? (
+        <p className="border-t border-slate-200 bg-white px-3 py-3 text-center text-sm text-slate-500 sm:px-6 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+          {conversation?.surface === "watch"
+            ? "A watch ran this conversation. It is shown here to read."
+            : `This conversation happened in ${surfaceLabel(conversation?.surface ?? "") ?? "another app"}. Reply there to continue it.`}
+        </p>
+      ) : (
+        <form
+          onSubmit={send}
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+          }}
+          onDrop={(e) => {
+            if (!e.dataTransfer.files.length) return;
+            e.preventDefault();
+            files.add(e.dataTransfer.files);
+          }}
+          className="border-t border-slate-200 bg-white px-3 py-3 sm:px-6 dark:border-slate-800 dark:bg-slate-900"
+        >
+          <div className="mx-auto max-w-3xl space-y-2">
+            {state.error && (
+              <div className="flex items-start gap-2">
+                <div className="flex-1">
+                  <ErrorText>{state.error}</ErrorText>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => dispatch({ type: "dismissError" })}
+                >
+                  Dismiss
+                </Button>
               </div>
-              <Button size="sm" variant="ghost" onClick={() => dispatch({ type: "dismissError" })}>
-                Dismiss
-              </Button>
-            </div>
-          )}
-          <ErrorText>{sendError}</ErrorText>
-          <div className="flex items-end gap-2">
-            <label htmlFor="composer" className="sr-only">
-              Message
-            </label>
-            <textarea
-              id="composer"
-              ref={inputRef}
-              rows={rows}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder={state.busy ? "The crew is working…" : "Message the crew"}
-              className={cx(
-                "min-h-[42px] flex-1 resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-[15px] dark:border-slate-600 dark:bg-slate-950",
-                focusRing,
-              )}
-            />
-            {state.busy ? (
-              <Button
-                variant="danger"
-                onClick={() => socket.send({ type: "abort", conversationId })}
-              >
-                Stop
-              </Button>
-            ) : (
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={!text.trim() || socketState !== "open"}
-              >
-                Send
-              </Button>
             )}
+            <ErrorText>{sendError}</ErrorText>
+            <PendingFiles items={files.items} onRemove={files.remove} />
+            <div className="flex items-end gap-2">
+              <AttachButtons onFiles={files.add} disabled={files.full} />
+              {voice && voice.stt !== "off" && (
+                <MicButton
+                  mode={voice.stt}
+                  disabled={state.busy && handsFree}
+                  onError={setSendError}
+                  onText={(heard) => {
+                    // Hands-free sends right away, unless it cannot yet (a file still uploading,
+                    // the crew still answering): then the words wait in the composer, not lost.
+                    if (handsFree && !state.busy && !files.uploading) {
+                      send(undefined, heard);
+                      return;
+                    }
+                    setText((t) => (t.trim() ? `${t.trimEnd()} ${heard}` : heard));
+                    inputRef.current?.focus();
+                  }}
+                />
+              )}
+              <label htmlFor="composer" className="sr-only">
+                Message
+              </label>
+              <textarea
+                id="composer"
+                ref={inputRef}
+                rows={rows}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={onKeyDown}
+                onPaste={(e) => {
+                  if (!e.clipboardData.files.length) return;
+                  e.preventDefault();
+                  files.add(e.clipboardData.files);
+                }}
+                placeholder={state.busy ? "The crew is working…" : "Message the crew"}
+                className={cx(
+                  "min-h-[42px] flex-1 resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-[15px] dark:border-slate-600 dark:bg-slate-950",
+                  focusRing,
+                )}
+              />
+              {state.busy ? (
+                <Button
+                  variant="danger"
+                  onClick={() => socket.send({ type: "abort", conversationId })}
+                >
+                  Stop
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={
+                    (!text.trim() && !files.ids.length) || files.uploading || socketState !== "open"
+                  }
+                >
+                  Send
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {handsFree
+                ? "Hands-free: tap the mic, speak, tap again to send. Replies are read aloud."
+                : "Enter to send, Shift+Enter for a new line."}
+            </p>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Enter to send, Shift+Enter for a new line.
-          </p>
-        </div>
-      </form>
+        </form>
+      )}
     </>
   );
 }

@@ -230,6 +230,26 @@ describe.skipIf(!db)("Telegram bridge", () => {
     );
   });
 
+  it("takes a typed deny as the answer to a waiting card", async () => {
+    t.faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("bash", { command: "echo typed" })]),
+      fauxAssistantMessage("Understood, I won't."),
+    ]);
+    const before = port.sent.length;
+    port.message(PERSON, PERSON, "run the other check");
+    await until(() => port.sent.slice(before).some((m) => m.buttons?.length));
+    const card = port.sent.slice(before).find((m) => m.buttons?.length);
+    if (!card) throw new Error("no card");
+    port.message(PERSON, PERSON, "no");
+    await until(() => port.edits.some((e) => e.messageId === card.id));
+    expect(port.edits.find((e) => e.messageId === card.id)?.html).toContain("Addison denied it");
+    await until(() => sentTo(PERSON).some((m) => m.html.includes("I won't")));
+    // With nothing waiting, "no" is just a message to the crew again.
+    t.faux.setResponses([fauxAssistantMessage("Fair enough.")]);
+    port.message(PERSON, PERSON, "no");
+    await until(() => sentTo(PERSON).some((m) => m.html.includes("Fair enough.")));
+  });
+
   it("shows a dropped connection, unlinks and disconnects", async () => {
     port.drop("Telegram rejected the bot token.");
     await until(async () => {

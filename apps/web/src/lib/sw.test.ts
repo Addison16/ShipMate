@@ -35,3 +35,42 @@ describe("service worker routing", () => {
     expect(strategyFor("GET", "https://cdn.example/x.js", "no-cors", O)).toBe("network");
   });
 });
+
+describe("service worker notifications", () => {
+  const self: Record<string, unknown> = { addEventListener: () => {} };
+  new Function("self", src)(self);
+  type Note = { title: string; options: Record<string, unknown> & { data: { url: string } } };
+  const notificationFor = self.notificationFor as (d: unknown) => Note;
+
+  it("adds Approve and Deny only to approvals that carry a token", () => {
+    const n = notificationFor({
+      kind: "approval",
+      title: "Captain needs your OK",
+      body: "Captain wants to run bash",
+      url: "/#/bridge/abc",
+      tag: "approval-1",
+      approval: { id: "1", token: "123.abc" },
+    });
+    expect(n.title).toBe("Captain needs your OK");
+    expect(n.options.actions).toEqual([
+      { action: "allow", title: "Approve" },
+      { action: "deny", title: "Deny" },
+    ]);
+    expect(n.options.requireInteraction).toBe(true);
+    expect(n.options.data).toEqual({
+      url: "/#/bridge/abc",
+      approval: { id: "1", token: "123.abc" },
+    });
+    expect(notificationFor({ kind: "message", title: "Galley", body: "x" }).options.actions).toBe(
+      undefined,
+    );
+  });
+
+  it("falls back to a plain notice and keeps links inside the app", () => {
+    expect(notificationFor(null).title).toBe("Shipmate");
+    expect(notificationFor({ url: "https://evil.example/" }).options.data.url).toBe("/");
+    expect(notificationFor({ url: "//evil.example/" }).options.data.url).toBe("/");
+    expect(notificationFor({ url: "/\\evil.example/" }).options.data.url).toBe("/");
+    expect(notificationFor({ url: "/#/watches" }).options.data.url).toBe("/#/watches");
+  });
+});

@@ -148,6 +148,8 @@ export const usageEvents = pgTable(
     cacheReadTokens: bigint("cache_read_tokens", { mode: "number" }).notNull().default(0),
     cacheWriteTokens: bigint("cache_write_tokens", { mode: "number" }).notNull().default(0),
     costMicroUsd: bigint("cost_micro_usd", { mode: "number" }).notNull().default(0),
+    /** How long the model took to answer this call, in ms; null for calls recorded before it was kept. */
+    durationMs: integer("duration_ms"),
     createdAt: createdAt(),
   },
   (t) => [index("usage_user_time_idx").on(t.userId, t.createdAt)],

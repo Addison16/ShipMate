@@ -769,7 +769,16 @@ export class Bridge {
         );
       }
     }
+    // Response time of each model call: from the request (a new turn, or the last user or tool
+    // result message) to the end of the assistant's message.
+    let requestedAt = performance.now();
     const unsubscribe = session.subscribe((event) => {
+      const now = performance.now();
+      const assistantEnd = event.type === "message_end" && event.message.role === "assistant";
+      const answeredInMs = assistantEnd ? now - requestedAt : null;
+      if (event.type === "turn_start" || (event.type === "message_end" && !assistantEnd)) {
+        requestedAt = now;
+      }
       this.#onEvent(
         user,
         conv,
@@ -779,6 +788,7 @@ export class Bridge {
         stream,
         event,
         options.watchId ?? null,
+        answeredInMs,
       );
       if (event.type === "message_end" && event.message.role === "assistant") {
         const t = textOf(event.message);
@@ -876,6 +886,7 @@ export class Bridge {
     stream: Stream,
     event: AgentSessionEvent,
     watchId: string | null,
+    answeredInMs: number | null,
   ) {
     switch (event.type) {
       case "message_update":
@@ -897,6 +908,7 @@ export class Bridge {
             { userId: user.id, crewMemberId, conversationId: conv.id, routineId: watchId },
             model,
             event.message.usage,
+            answeredInMs,
           );
         }
         break;

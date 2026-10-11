@@ -1,4 +1,4 @@
-import type { UsageResponse } from "@shipmate/core";
+import type { UsageResponse, UsageTotals } from "@shipmate/core";
 
 /** GET /api/usage/export: a CSV download of every model call in the month. */
 export function usageExportUrl(month: string, scope: "me" | "all"): string {
@@ -36,25 +36,76 @@ export function capTone(p: number | null): "ok" | "warn" | "danger" | "neutral" 
   return "ok";
 }
 
-/** A round axis maximum at or above `max` (1, 2 or 5 × a power of ten), in micro-USD. */
-export function niceMax(max: number): number {
-  if (max <= 0) return 10_000; // one cent, so an empty month still draws an axis
+/** What the daily chart plots. */
+export type ChartMetric = "cost" | "tokens" | "time";
+
+/**
+ * The chart to show first: cost, unless the month has calls but cost nothing (local models),
+ * where tokens say more than a flat $0 line.
+ */
+export function defaultMetric(totals: Pick<UsageTotals, "calls" | "costMicroUsd">): ChartMetric {
+  return totals.calls > 0 && totals.costMicroUsd === 0 ? "tokens" : "cost";
+}
+
+/**
+ * A round axis maximum at or above `max` (1, 2 or 5 × a power of ten). An empty chart still
+ * gets an axis of `emptyMax` (one cent by default, in micro-USD).
+ */
+export function niceMax(max: number, emptyMax = 10_000): number {
+  if (max <= 0) return emptyMax;
   const pow = 10 ** Math.floor(Math.log10(max));
   for (const step of [1, 2, 5, 10]) if (step * pow >= max) return step * pow;
   return 10 * pow;
 }
 
+type Day = UsageResponse["daily"][number];
+
+/** The value a day contributes to the chart for a metric (0 when nothing was timed). */
+export function metricValue(d: Day, metric: ChartMetric): number {
+  if (metric === "tokens") return d.tokens;
+  if (metric === "time") return d.avgResponseMs ?? 0;
+  return d.costMicroUsd;
+}
+
+const EMPTY_MAX: Record<ChartMetric, number> = { cost: 10_000, tokens: 1_000, time: 1_000 };
+
 /** Bars for the daily chart: height as a fraction of the axis maximum. */
-export function dailyBars(daily: UsageResponse["daily"]) {
-  const max = niceMax(Math.max(0, ...daily.map((d) => d.costMicroUsd)));
+export function dailyBars(daily: UsageResponse["daily"], metric: ChartMetric = "cost") {
+  const max = niceMax(Math.max(0, ...daily.map((d) => metricValue(d, metric))), EMPTY_MAX[metric]);
   return {
     max,
     bars: daily.map((d) => ({
       ...d,
       day: Number(d.date.slice(8, 10)),
-      height: d.costMicroUsd / max,
+      value: metricValue(d, metric),
+      height: metricValue(d, metric) / max,
     })),
   };
+}
+
+/** "850 ms", "1.2 s", "12 s", "2m 05s"; an em dash when there is no measurement. */
+export function formatDuration(ms: number | null): string {
+  if (ms === null || !Number.isFinite(ms)) return "—";
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  const s = ms / 1000;
+  if (s < 10) return `${s.toFixed(1)} s`;
+  if (s < 60) return `${Math.round(s)} s`;
+  const whole = Math.round(s);
+  return `${Math.floor(whole / 60)}m ${String(whole % 60).padStart(2, "0")}s`;
+}
+
+/** "950", "12k", "1.5M": short token counts for chart axes. */
+export function formatTokensShort(n: number): string {
+  if (n < 1000) return String(Math.round(n));
+  if (n < 1_000_000) return `${Number((n / 1000).toFixed(n < 10_000 ? 1 : 0))}k`;
+  return `${Number((n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0))}M`;
+}
+
+/** An axis label for a chart value in the given metric. */
+export function formatAxis(value: number, metric: ChartMetric): string {
+  if (metric === "tokens") return formatTokensShort(value);
+  if (metric === "time") return value === 0 ? "0" : formatDuration(value);
+  return formatUsdShort(value);
 }
 
 /** "$1.23", or "$0.0012" for small amounts, for chart labels. */

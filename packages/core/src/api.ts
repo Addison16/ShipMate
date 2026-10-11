@@ -263,6 +263,12 @@ export interface UsageTotals {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   costMicroUsd: number;
+  /**
+   * How long the model took to answer, averaged and at the 95th percentile, in ms. Null when no
+   * call in the group has a recorded response time (calls from before it was recorded).
+   */
+  avgResponseMs: number | null;
+  p95ResponseMs: number | null;
 }
 
 export interface UsageResponse {
@@ -278,7 +284,14 @@ export interface UsageResponse {
   /** Spend per watch (routine) this month (phase 4). */
   byWatch: Array<UsageTotals & { watchId: string; name: string; capCents: number | null }>;
   /** One entry per UTC day of the month up to today, zeros included (phase 4). */
-  daily: Array<{ date: string; costMicroUsd: number; calls: number }>;
+  daily: Array<{
+    date: string;
+    costMicroUsd: number;
+    calls: number;
+    /** Input plus output tokens. */
+    tokens: number;
+    avgResponseMs: number | null;
+  }>;
 }
 /**
  * GET /api/usage?month=YYYY-MM&scope=me|all → UsageResponse (scope=all needs owner or admin)

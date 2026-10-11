@@ -83,6 +83,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   `DOCKER_CERT_PATH`. **Test connection** says which engine answered or why it did not. The
   "Code cannot run right now" notice explains the options; see
   [docs/shipyard.md](docs/shipyard.md).
+- **Cost page for local models**: every model call now records how long the model took to
+  answer. The Cost page shows average and p95 response time per person, crew member, watch and
+  model, and the daily chart switches between cost, tokens and response time. When a month ran
+  only on free (local) models it opens on tokens instead of a flat $0 line. The CSV export gains
+  a `response_ms` column. Per-person metering and caps are unchanged.
 
 ## 1.0.0 — 2026-10-11
 

@@ -9,6 +9,7 @@ import { ChatBridgesPage } from "../pages/ChatBridges.js";
 import { CrewPage } from "../pages/Crew.js";
 import { DiscordPage } from "../pages/Discord.js";
 import { ListsPage } from "../pages/Lists.js";
+import { HealthPage } from "../pages/Health.js";
 import { McpPage } from "../pages/Mcp.js";
 import { ProvidersPage } from "../pages/Providers.js";
 import { SettingsPage } from "../pages/Settings.js";
@@ -58,6 +59,7 @@ const NAV: Array<{ group: string | null; items: NavItem[] }> = [
       { path: "audit", label: "Audit", icon: "audit" },
       { path: "users", label: "Users", icon: "users", adminOnly: true },
       { path: "bridges", label: "Chat bridges", icon: "bridges" },
+      { path: "health", label: "Health", icon: "health", adminOnly: true },
       { path: "settings", label: "Settings", icon: "settings" },
     ],
   },
@@ -308,6 +310,9 @@ export function Shell() {
       break;
     case "settings":
       page = <SettingsPage />;
+      break;
+    case "health":
+      page = isAdmin(user) ? <HealthPage /> : <NotFound />;
       break;
     default:
       page = <NotFound />;

@@ -912,6 +912,73 @@ export interface BackupSettingsDto {
  * CLI: `shipmate backup [--out file]`, `shipmate restore <file> --yes`, `shipmate doctor`
  */
 
+// ---------- health and updates ----------
+
+export type HealthStatus = "ok" | "warn" | "fail";
+
+export interface HealthCheckDto {
+  /** Stable id, e.g. "database", "provider:<id>", "bridge:discord". */
+  id: string;
+  /** Database | Models | Chat bridges | Shipyard | Storage */
+  group: string;
+  name: string;
+  status: HealthStatus;
+  /** What was found, in plain words. */
+  detail: string;
+  /** What to do about a warning or failure; null when ok. */
+  hint: string | null;
+}
+
+export interface ReleaseDto {
+  /** Semver without the leading v, e.g. "1.1.0". */
+  version: string;
+  name: string;
+  /** Release notes on GitHub. */
+  url: string;
+  publishedAt: string | null;
+}
+
+export interface ReleaseCheckDto {
+  /** False when SHIPMATE_UPDATE_CHECK=off (offline installs). */
+  enabled: boolean;
+  latest: ReleaseDto | null;
+  /** The latest release is newer than the running version. */
+  updateAvailable: boolean;
+  checkedAt: string | null;
+  /** Why the check failed (offline, rate limited); the rest of the page still works. */
+  error: string | null;
+}
+
+export interface UpdatePlanDto {
+  /** The Update button can run: the Docker socket is there and the image tag can move. */
+  oneClick: boolean;
+  /** Why (or why not), in plain words. */
+  reason: string;
+  /** Shipmate's own container and image, when it runs in Docker and can see itself. */
+  container: string | null;
+  image: string | null;
+  /** The helper image the one-click update runs (a one-shot Watchtower). */
+  updaterImage: string;
+  /** Commands to update by hand, ready to copy. */
+  commands: string[];
+}
+
+export interface HealthDto {
+  version: string;
+  release: ReleaseCheckDto;
+  checks: HealthCheckDto[];
+  update: UpdatePlanDto;
+  checkedAt: string;
+}
+/**
+ * GET /api/health (admin) → { health: HealthDto } (?refresh=1 rechecks GitHub releases now;
+ *   otherwise the release check is cached for a few hours). No check makes a paid model call.
+ * POST /api/health/update (owner) { confirm: true } → { started: true, helper: string }
+ *   Starts a short-lived helper container that pulls Shipmate's image and recreates its
+ *   container with the same settings; Shipmate restarts. 409 when one-click is not possible.
+ * GET /healthz (no sign-in) → { ok: true, version } for Docker healthchecks.
+ */
+
 // ---------- Telegram and Slack bridges (phase 5) ----------
 
 /** What POST /api/telegram/link and POST /api/slack/link return; same shape as Discord's. */

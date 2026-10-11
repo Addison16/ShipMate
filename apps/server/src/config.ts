@@ -16,6 +16,12 @@ const Env = z.object({
   TEMPLATES_DIR: z.string().optional(),
   /** "off" skips starting MCP servers for crew sessions (tests, air-gapped installs). */
   SHIPMATE_MCP: z.enum(["on", "off"]).default("on"),
+  /** "off" skips checking GitHub for new releases (offline installs). */
+  SHIPMATE_UPDATE_CHECK: z.enum(["on", "off"]).default("on"),
+  /** Helper image for one-click updates (a Watchtower build that runs once). */
+  SHIPMATE_UPDATER_IMAGE: z.string().optional(),
+  /** Shipmate's own container name, when its hostname is not the container id. */
+  SHIPMATE_CONTAINER: z.string().optional(),
   /** Ollama server to look for first (docker-compose's optional `ollama` service). */
   SHIPMATE_OLLAMA_URL: z.preprocess(
     (v) => (v === "" ? undefined : v),

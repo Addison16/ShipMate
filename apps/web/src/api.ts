@@ -22,6 +22,7 @@ import type {
   HouseholdDto,
   InstallStartersRequest,
   InstallStartersResponse,
+  HealthDto,
   IssueDto,
   ListDetailDto,
   ListDto,
@@ -225,6 +226,13 @@ export const api = {
   // usage
   usage: (month: string, scope: "me" | "all") =>
     request<UsageResponse>("GET", `/api/usage?month=${enc(month)}&scope=${scope}`),
+
+  // health and updates
+  health: (refresh = false) =>
+    request<{ health: HealthDto }>("GET", `/api/health${refresh ? "?refresh=1" : ""}`),
+  startUpdate: () =>
+    request<{ started: true; helper: string }>("POST", "/api/health/update", { confirm: true }),
+  meta: () => request<{ version: string }>("GET", "/api/meta"),
 
   // settings
   getSettings: () => request<SettingsDto>("GET", "/api/settings"),

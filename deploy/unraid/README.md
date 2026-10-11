@@ -54,7 +54,8 @@ it (NFS), then set it up under **Settings → Shipyard sandbox** in Shipmate (or
 [docs/shipyard.md](../../docs/shipyard.md#sandboxes-without-the-docker-socket).
 
 Start it, open the Web UI, and create the owner account. Migrations run on every start, so
-updating is "Check for updates → Apply update".
+updating is "Check for updates → Apply update". The **Health** page in Shipmate shows when a
+newer release is out; it leaves the update itself to Unraid so the template stays in step.
 
 ## Local models (optional)
 

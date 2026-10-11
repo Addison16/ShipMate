@@ -1,5 +1,6 @@
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { ServerEvent } from "@shipmate/core";
+import { type ServerEvent, SHIPMATE_VERSION } from "@shipmate/core";
+import { claudeCliStatus } from "@shipmate/crew";
 import type { Db } from "@shipmate/db";
 import { SecretVault } from "@shipmate/providers";
 import { SessionStore } from "./auth.js";
@@ -12,6 +13,9 @@ import { EverydayTools } from "./everyday.js";
 import { AttachmentService } from "./files/service.js";
 import { PushService } from "./push/service.js";
 import type { PushFetch } from "./push/webpush.js";
+import { ReleaseChecker } from "./health/releases.js";
+import { HealthService } from "./health/service.js";
+import { Updater } from "./health/updater.js";
 import { ApprovalService } from "./services/approvals.js";
 import { AuditService } from "./services/audit.js";
 import { BackupService } from "./services/backups.js";
@@ -30,6 +34,7 @@ import { UsageService } from "./services/usage.js";
 import { WatchService } from "./services/watches.js";
 import { WeatherService } from "./services/weather.js";
 import { endpointFromEnv } from "./shipyard/docker.js";
+import { DockerClient } from "./shipyard/docker.js";
 import { ShipyardService } from "./shipyard/service.js";
 import type { SlackPort } from "./slack/port.js";
 import { SlackService } from "./slack/service.js";
@@ -66,6 +71,7 @@ export interface Services {
   files: AttachmentService;
   voice: VoiceService;
   localAi: LocalAiService;
+  health: HealthService;
 }
 
 /**
@@ -196,6 +202,47 @@ export async function createServices(
     port: options.slackPort ?? new SlackWebApi(),
   });
 
+  const backups = new BackupService(
+    db,
+    settings,
+    audit,
+    config.dirs.root,
+    process.env.SHIPMATE_BACKUP_DIR || `${config.dirs.root}/backups`,
+  );
+  const health = new HealthService(
+    {
+      db,
+      dataDir: config.dirs.root,
+      providers: () => providers.records(),
+      chatgpt: () => providers.chatgpt.status(),
+      claudeCli: async () => {
+        const used = crew.registry.list().some((f) => f.manifest.backend === "claude-code-cli");
+        if (!used) return { used, installed: false, signedIn: false };
+        const s = await claudeCliStatus();
+        return { used, installed: s.installed, signedIn: s.signedIn };
+      },
+      bridges: [
+        { id: "discord", name: "Discord", status: () => discord.status() },
+        { id: "telegram", name: "Telegram", status: () => telegram.status() },
+        { id: "slack", name: "Slack", status: () => slack.status() },
+      ],
+      sandbox: () => shipyard.status(),
+      backups: async () => ({ list: await backups.list(), settings: await backups.getSettings() }),
+    },
+    new ReleaseChecker({
+      current: SHIPMATE_VERSION,
+      enabled: config.SHIPMATE_UPDATE_CHECK === "on",
+      apiBase: process.env.SHIPMATE_GITHUB_API || undefined,
+    }),
+    // The Docker that runs Shipmate itself (not a remote sandbox host).
+    new Updater(new DockerClient(process.env.DOCKER_SOCKET || "/var/run/docker.sock"), {
+      current: SHIPMATE_VERSION,
+      container: config.SHIPMATE_CONTAINER,
+      updaterImage: config.SHIPMATE_UPDATER_IMAGE,
+    }),
+    SHIPMATE_VERSION,
+  );
+
   return {
     db,
     sessions: new SessionStore(db, config.secureCookies),
@@ -227,6 +274,8 @@ export async function createServices(
       config.dirs.root,
       process.env.SHIPMATE_BACKUP_DIR || `${config.dirs.root}/backups`,
     ),
+    backups,
+    health,
     localAi: new LocalAiService(providers, settings, config.SHIPMATE_OLLAMA_URL),
     oidc: new OidcService({
       db,

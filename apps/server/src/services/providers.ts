@@ -148,9 +148,9 @@ export class ProviderService {
     return models;
   }
 
-  /** Push the table into pi's ModelRuntime. Called at boot and after every change. */
-  async sync(): Promise<void> {
-    const rows = await this.db.select().from(providers);
+  /** Every provider with its key decrypted (server-side only: sync and health checks). */
+  async records(): Promise<ProviderRecord[]> {
+    const rows = await this.db.select().from(providers).orderBy(providers.createdAt);
     const records: ProviderRecord[] = [];
     for (const r of rows) {
       records.push({
@@ -163,6 +163,12 @@ export class ProviderService {
         enabled: r.enabled,
       });
     }
+    return records;
+  }
+
+  /** Push the table into pi's ModelRuntime. Called at boot and after every change. */
+  async sync(): Promise<void> {
+    const records = await this.records();
     await this.#binder.sync(records);
     await this.chatgpt.boot();
     this.#configured = new Set([

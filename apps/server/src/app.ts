@@ -20,6 +20,7 @@ import { crewRoutes } from "./routes/crew.js";
 import { discordRoutes } from "./routes/discord.js";
 import { fileRoutes } from "./routes/files.js";
 import { listRoutes } from "./routes/lists.js";
+import { healthRoutes } from "./routes/health.js";
 import { localAiRoutes } from "./routes/local-ai.js";
 import { mcpRoutes } from "./routes/mcp.js";
 import { oidcRoutes } from "./routes/oidc.js";
@@ -180,6 +181,7 @@ export async function buildApp(
   await fileRoutes(app, services);
   await voiceRoutes(app, services);
   await localAiRoutes(app, services);
+  await healthRoutes(app, services);
   await oidcRoutes(app, services, { secureCookies: config.secureCookies });
 
   // The Bridge's live channel: streams crew replies and takes messages from the person.

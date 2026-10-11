@@ -44,6 +44,9 @@ Version 1.0. See [CHANGELOG.md](CHANGELOG.md) for what is in it and
   if you like, with a provider's speech or a local Whisper and Kokoro. See
   [docs/phone.md](docs/phone.md).
 - **Backups**: nightly or on demand, restorable from the UI or the CLI.
+- **Health and updates**: a Health page with the running version, newer releases and checks
+  for the database, providers, bridges, the Docker socket, disk and backups, plus a one-click
+  update when the Docker socket is mounted.
 
 ## Quick start
 
@@ -68,7 +71,9 @@ Set `SHIPMATE_URL` to the address people use to reach the instance; it is needed
 webhooks and links in chat bridges.
 
 Images are tagged `ghcr.io/addison16/shipmate:1.0.0`, `:1.0`, `:1` and `:latest`; pin a version
-tag to control upgrades. Migrations run on boot. `:edge` follows `main`.
+tag to control upgrades. Migrations run on boot. `:edge` follows `main`. **Health** (owners and
+admins) says when a newer release is out and can update in one click; see
+[docs/health-and-updates.md](docs/health-and-updates.md).
 
 To install the web app, open it in a browser and use **Install app** (desktop) or **Add to Home
 Screen** (iOS and Android). The service worker needs HTTPS (or `localhost`).

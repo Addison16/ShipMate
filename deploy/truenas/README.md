@@ -36,7 +36,9 @@ files, set the workspaces path as that machine mounts it, and press **Test conne
 use the `DOCKER_HOST` lines in the YAML. Step by step: [docs/shipyard.md](../../docs/shipyard.md#sandboxes-without-the-docker-socket).
 
 Updating: **Apps → shipmate → Update** (or edit the YAML to pin a version tag). Migrations run
-on every start.
+on every start. The **Health** page in Shipmate shows when a newer release is out and checks the
+database, providers, bridges, Docker socket, disk and backups; it leaves the update itself to
+TrueNAS.
 
 ## Local models (optional)
 

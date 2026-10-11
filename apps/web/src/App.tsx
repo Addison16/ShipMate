@@ -1,34 +1,38 @@
-import { useEffect, useState } from "react";
+import { AuthProvider, useAuth } from "./auth.js";
+import { Shell } from "./components/Shell.js";
+import { Button } from "./components/ui.js";
+import { LoginPage } from "./pages/Login.js";
+import { SetupPage } from "./pages/Setup.js";
 
-type Meta = { version: string; coreMcpServers: string[] };
+function Gate() {
+  const { loading, error, user, setupRequired, refresh } = useAuth();
+  if (loading) {
+    return (
+      <div className="grid min-h-dvh place-items-center text-sm text-slate-500">Connecting…</div>
+    );
+  }
+  if (error && !user) {
+    return (
+      <div className="grid min-h-dvh place-items-center p-4">
+        <div className="max-w-sm space-y-3 text-center">
+          <p className="font-medium">Cannot reach the Shipmate server.</p>
+          <p className="text-sm text-slate-500">{error}</p>
+          <Button variant="primary" onClick={() => void refresh()}>
+            Try again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  if (setupRequired) return <SetupPage />;
+  if (!user) return <LoginPage />;
+  return <Shell />;
+}
 
 export function App() {
-  const [meta, setMeta] = useState<Meta | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    fetch("/api/meta")
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.statusText))))
-      .then(setMeta)
-      .catch((e: Error) => setError(e.message));
-  }, []);
   return (
-    <main className="mx-auto max-w-2xl p-6 font-sans">
-      <h1 className="text-3xl font-semibold">Shipmate</h1>
-      <p className="mt-2 text-neutral-600">
-        Your crew is not aboard yet. The Bridge, Crew, Watches and Shipyard pages arrive in phase 1.
-      </p>
-      <section className="mt-6 rounded-lg border p-4 text-sm">
-        {error && <p className="text-red-600">Server unreachable: {error}</p>}
-        {meta && (
-          <>
-            <p>
-              Server version <code>{meta.version}</code>
-            </p>
-            <p className="mt-1">Core MCP servers: {meta.coreMcpServers.join(", ")}</p>
-          </>
-        )}
-        {!meta && !error && <p>Connecting…</p>}
-      </section>
-    </main>
+    <AuthProvider>
+      <Gate />
+    </AuthProvider>
   );
 }

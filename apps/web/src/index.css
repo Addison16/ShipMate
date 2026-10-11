@@ -1,1 +1,25 @@
 @import "tailwindcss";
+
+:root {
+  color-scheme: light dark;
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    background-color: #020617;
+    color: #f1f5f9;
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}

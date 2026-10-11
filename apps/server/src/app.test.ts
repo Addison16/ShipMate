@@ -1,0 +1,227 @@
+import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
+import type { ServerEvent } from "@shipmate/core";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { TEST_DATABASE_URL, testApp } from "./testing.js";
+
+const db = TEST_DATABASE_URL;
+
+describe.skipIf(!db)("Shipmate server", () => {
+  let t: Awaited<ReturnType<typeof testApp>>;
+  let ownerCookie = "";
+  const cookieOf = (res: { headers: Record<string, unknown> }) =>
+    String(res.headers["set-cookie"]).split(";")[0] ?? "";
+
+  beforeAll(async () => {
+    t = await testApp(db as string);
+  });
+  afterAll(async () => {
+    await t?.app.close();
+  });
+
+  const api = (
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+    url: string,
+    body?: unknown,
+    cookie = ownerCookie,
+  ) =>
+    t.app.inject({
+      method,
+      url,
+      ...(body !== undefined ? { payload: body as object } : {}),
+      headers: { cookie },
+    });
+
+  it("runs first-time setup once and seeds the renamed Captain", async () => {
+    const me = await api("GET", "/api/auth/me", undefined, "");
+    expect(me.json()).toEqual({ user: null, setupRequired: true });
+    const res = await api(
+      "POST",
+      "/api/setup",
+      {
+        email: "Owner@Example.com",
+        displayName: "Addison",
+        password: "correct horse",
+        captainName: "Skipper",
+      },
+      "",
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.json().user.role).toBe("owner");
+    ownerCookie = cookieOf(res);
+    const again = await api(
+      "POST",
+      "/api/setup",
+      { email: "second@example.com", displayName: "x", password: "12345678" },
+      "",
+    );
+    expect(again.statusCode).toBe(409);
+    const crew = (await api("GET", "/api/crew")).json().crew;
+    expect(crew).toHaveLength(1);
+    expect(crew[0]).toMatchObject({
+      slug: "captain",
+      name: "Skipper",
+      captain: true,
+      status: "active",
+    });
+  });
+
+  it("requires sign-in and enforces roles", async () => {
+    expect((await api("GET", "/api/crew", undefined, "")).statusCode).toBe(401);
+    const created = await api("POST", "/api/users", {
+      email: "kid@example.com",
+      displayName: "Kid",
+      password: "password1",
+      role: "member",
+    });
+    expect(created.statusCode).toBe(200);
+    const login = await api(
+      "POST",
+      "/api/auth/login",
+      { email: "kid@example.com", password: "password1" },
+      "",
+    );
+    const memberCookie = cookieOf(login);
+    expect((await api("GET", "/api/users", undefined, memberCookie)).statusCode).toBe(403);
+    expect((await api("POST", "/api/providers", { kind: "ollama" }, memberCookie)).statusCode).toBe(
+      403,
+    );
+    const bad = await api(
+      "POST",
+      "/api/auth/login",
+      { email: "kid@example.com", password: "nope" },
+      "",
+    );
+    expect(bad.statusCode).toBe(401);
+  });
+
+  it("stores provider keys encrypted and never returns them", async () => {
+    const res = await api("POST", "/api/providers", { kind: "anthropic", apiKey: "sk-ant-secret" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().provider).toMatchObject({ kind: "anthropic", hasSecret: true });
+    expect(res.body).not.toContain("sk-ant-secret");
+    const models = (await api("GET", "/api/models")).json().models;
+    expect(
+      models.find((m: { ref: string }) => m.ref === "anthropic/claude-sonnet-5-5")?.available,
+    ).toBe(true);
+    await api("DELETE", `/api/providers/${res.json().provider.id}`);
+    const ollama = await api("POST", "/api/providers", { kind: "ollama", models: ["qwen3:8b"] });
+    expect(ollama.json().provider.baseUrl).toBe("http://localhost:11434/v1");
+    const kinds = (await api("GET", "/api/providers")).json().kinds;
+    expect(kinds.find((k: { kind: string }) => k.kind === "claude-code-cli").comingSoon).toBe(true);
+  });
+
+  it("validates crew edits", async () => {
+    const res = await api("PUT", "/api/crew/captain", {
+      manifestYaml: "name: x\nrole: y\nmodel: nope",
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/model/);
+  });
+
+  it("streams a Bridge turn with recruiting, delegation, memory and usage", async () => {
+    await api("PUT", "/api/settings", { defaultModel: "faux/m" });
+    const conv = (await api("POST", "/api/conversations", {})).json().conversation;
+    const ws = await t.app.injectWS("/api/ws", { headers: { cookie: ownerCookie } });
+    const events: ServerEvent[] = [];
+    ws.on("message", (raw: Buffer) => events.push(JSON.parse(raw.toString())));
+    const waitIdle = () =>
+      new Promise<void>((resolve) => {
+        const timer = setInterval(() => {
+          const last = events.filter((e) => e.type === "status").at(-1);
+          if (last && last.type === "status" && !last.busy) {
+            clearInterval(timer);
+            resolve();
+          }
+        }, 20);
+      });
+
+    // Turn 1: the Captain recruits Galley and remembers a preference.
+    t.faux.setResponses([
+      fauxAssistantMessage([
+        fauxToolCall("recruit_crew_member", {
+          slug: "galley",
+          name: "Galley",
+          role: "meal planning",
+          persona: "# Galley\nYou plan meals.",
+        }),
+        fauxToolCall("remember", { name: "diet", description: "vegetarian", body: "No meat." }),
+      ]),
+      fauxAssistantMessage("Galley is aboard, pending your review."),
+    ]);
+    ws.send(
+      JSON.stringify({
+        type: "send",
+        conversationId: conv.id,
+        text: "I need meal plans; I'm vegetarian",
+      }),
+    );
+    await waitIdle();
+    expect(events.some((e) => e.type === "crew_changed")).toBe(true);
+    const galley = (await api("GET", "/api/crew/galley")).json().crew;
+    expect(galley.status).toBe("pending_review");
+
+    // Delegating to a crew member awaiting review fails inside the tool; approve and retry.
+    expect((await api("POST", "/api/crew/galley/approve")).json().crew.status).toBe("active");
+    events.length = 0;
+    t.faux.setResponses([
+      fauxAssistantMessage([
+        fauxText("Asking Galley."),
+        fauxToolCall("delegate", { crew: "galley", task: "Plan Tuesday dinner, vegetarian" }),
+      ]),
+      fauxAssistantMessage("Tuesday: lentil curry."),
+      fauxAssistantMessage("Galley suggests lentil curry."),
+    ]);
+    ws.send(JSON.stringify({ type: "send", conversationId: conv.id, text: "What's for Tuesday?" }));
+    await waitIdle();
+    ws.terminate();
+
+    const handoff = events.find((e) => e.type === "handoff");
+    expect(handoff).toMatchObject({ from: { slug: "captain" }, to: { slug: "galley" } });
+    const deltas = events
+      .filter((e) => e.type === "delta")
+      .map((e) => (e.type === "delta" ? e.text : ""))
+      .join("");
+    expect(deltas).toContain("lentil curry");
+
+    const messages = (await api("GET", `/api/conversations/${conv.id}/messages`)).json().messages;
+    expect(
+      messages.map(
+        (m: { author: { name: string }; content: string }) => `${m.author.name}: ${m.content}`,
+      ),
+    ).toEqual([
+      "Addison: I need meal plans; I'm vegetarian",
+      "Skipper: Galley is aboard, pending your review.",
+      "Addison: What's for Tuesday?",
+      "Skipper: Asking Galley.",
+      "Galley: Tuesday: lentil curry.",
+      "Skipper: Galley suggests lentil curry.",
+    ]);
+
+    const memory = (await api("GET", "/api/crew/captain/memory")).json();
+    expect(memory.mine.map((m: { name: string }) => m.name)).toEqual(["diet"]);
+
+    const usage = (await api("GET", "/api/usage?scope=all")).json();
+    expect(usage.totals.calls).toBe(5);
+    expect(usage.byUser[0].displayName).toBe("Addison");
+    expect(usage.byCrew.map((c: { slug: string }) => c.slug).sort()).toEqual(["captain", "galley"]);
+    const conversations = (await api("GET", "/api/conversations")).json().conversations;
+    expect(conversations[0].title).toBe("I need meal plans; I'm vegetarian");
+  });
+
+  it("blocks sending once a monthly cap is reached", async () => {
+    const users = (await api("GET", "/api/users")).json().users;
+    const owner = users.find((u: { role: string }) => u.role === "owner");
+    await api("PATCH", `/api/users/${owner.id}`, { monthlyCapCents: 0 });
+    const conv = (await api("POST", "/api/conversations", {})).json().conversation;
+    const ws = await t.app.injectWS("/api/ws", { headers: { cookie: ownerCookie } });
+    const error = new Promise<ServerEvent>((resolve) =>
+      ws.on("message", (raw: Buffer) => {
+        const e = JSON.parse(raw.toString()) as ServerEvent;
+        if (e.type === "error") resolve(e);
+      }),
+    );
+    ws.send(JSON.stringify({ type: "send", conversationId: conv.id, text: "hi" }));
+    expect(await error).toMatchObject({ message: expect.stringMatching(/monthly usage cap/) });
+    ws.terminate();
+  });
+});

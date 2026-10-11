@@ -1,14 +1,21 @@
 import { join } from "node:path";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import {
   type AgentSession,
   type AgentSessionEvent,
   createAgentSession,
+  createMcpExtension,
   DefaultResourceLoader,
+  type InlineExtension,
+  type McpServerConfig,
   ModelRuntime,
   SessionManager,
+  SettingsManager,
+  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { CREW_FILES } from "@shipmate/core";
 import type { CrewFolder } from "./folder.js";
+import { guardExtension } from "./guard.js";
 
 export interface CreateCrewSessionOptions {
   crew: CrewFolder;
@@ -19,21 +26,41 @@ export interface CreateCrewSessionOptions {
   agentDir: string;
   /** Reuse one runtime across sessions; created from agentDir when omitted. */
   modelRuntime?: ModelRuntime;
+  /** Use this model instead of resolving crew.yaml's (e.g. a fallback when that has no key). */
+  model?: Model<Api>;
   /** Continue the most recent session in this crew member's folder instead of starting fresh. */
   continueRecent?: boolean;
+  /** Reopen this pi session file (a conversation resuming). Takes precedence over continueRecent. */
+  sessionFile?: string;
   /** Keep the session out of disk storage (tests, one-off routines). */
   inMemory?: boolean;
-  /** Extra text appended to the system prompt, e.g. who is speaking and shared memory. */
+  /** Extra text appended to the system prompt, e.g. who is speaking and their memory. */
   appendSystemPrompt?: string[];
+  /** Shipmate tools (memory, crew management, delegation); always enabled. */
+  customTools?: ToolDefinition[];
+  /** MCP servers this crew member may use, already resolved from the catalog and the vault. */
+  mcpServers?: Record<string, McpServerConfig>;
+  /** Phase 1 safety net; see guard.ts. Defaults to on with the shell allowed only for `auto`. */
+  guard?: false | { allowShell: boolean };
 }
 
 export interface CrewSession {
   session: AgentSession;
   crew: CrewFolder;
+  model: Model<Api>;
   /** Stream events (text deltas, tool calls, settled) to a UI or bridge. */
   subscribe: (listener: (event: AgentSessionEvent) => void) => () => void;
   prompt: (text: string) => Promise<void>;
+  abort: () => Promise<void>;
+  sessionFile: string | undefined;
   dispose: () => void;
+}
+
+/** Split `provider/model-id` (the model id itself may contain slashes, e.g. OpenRouter). */
+export function splitModelRef(ref: string): { provider: string; id: string } | undefined {
+  const i = ref.indexOf("/");
+  if (i <= 0 || i === ref.length - 1) return undefined;
+  return { provider: ref.slice(0, i), id: ref.slice(i + 1) };
 }
 
 /**
@@ -50,16 +77,45 @@ export async function createCrewSession(options: CreateCrewSessionOptions): Prom
       modelsPath: join(agentDir, "models.json"),
     }));
 
-  const [providerId, ...rest] = crew.manifest.model.split("/");
-  const modelId = rest.join("/");
-  const model = providerId ? modelRuntime.getModel(providerId, modelId) : undefined;
+  let model = options.model;
+  if (!model) {
+    const ref = splitModelRef(crew.manifest.model);
+    model = ref ? modelRuntime.getModel(ref.provider, ref.id) : undefined;
+  }
   if (!model) throw new Error(`crew ${crew.slug}: model ${crew.manifest.model} is not configured`);
+
+  const extensionFactories: InlineExtension[] = [];
+  if (options.guard !== false) {
+    const allowShell = options.guard?.allowShell ?? crew.manifest.approval === "auto";
+    extensionFactories.push({
+      name: "shipmate-guard",
+      factory: guardExtension({ root: crew.dir, allowShell }),
+    });
+  }
+  const mcpServers = Object.entries(options.mcpServers ?? {});
+  if (mcpServers.length) {
+    extensionFactories.push({
+      name: "shipmate-mcp",
+      factory: createMcpExtension({
+        loadConfig: () => ({
+          servers: mcpServers.map(([name, config]) => ({ name, config, source: "shipmate" })),
+          autoEnableCodemode: false,
+          errors: [],
+        }),
+        logPath: join(agentDir, "mcp.log"),
+        startupWaitMs: 5000,
+      }),
+    });
+  }
 
   const resourceLoader = new DefaultResourceLoader({
     cwd: crew.dir,
     agentDir,
     additionalSkillPaths: [join(crew.dir, CREW_FILES.skillsDir)],
     additionalPromptTemplatePaths: [join(crew.dir, CREW_FILES.promptsDir)],
+    extensionFactories,
+    // Built-in MCP reads ~/.pi mcp.json; Shipmate supplies its own servers per crew member.
+    disabledBuiltinExtensions: ["mcp"],
     agentsFilesOverride: () => ({
       agentsFiles: crew.persona
         ? [{ path: join(crew.dir, CREW_FILES.persona), content: crew.persona }]
@@ -72,25 +128,45 @@ export async function createCrewSession(options: CreateCrewSessionOptions): Prom
   const sessionDir = join(crew.dir, CREW_FILES.sessionsDir);
   const sessionManager = options.inMemory
     ? SessionManager.inMemory(crew.dir)
-    : options.continueRecent
-      ? SessionManager.continueRecent(crew.dir, sessionDir)
-      : SessionManager.create(crew.dir, sessionDir);
+    : options.sessionFile
+      ? SessionManager.open(options.sessionFile, sessionDir, crew.dir)
+      : options.continueRecent
+        ? SessionManager.continueRecent(crew.dir, sessionDir)
+        : SessionManager.create(crew.dir, sessionDir);
+
+  const customTools = options.customTools ?? [];
+  // An explicit tool list is an allowlist, so Shipmate's own tools and MCP tools are added to it.
+  const tools = crew.manifest.tools.length
+    ? [
+        ...crew.manifest.tools,
+        ...customTools.map((t) => t.name),
+        ...(mcpServers.length ? ["mcp__*"] : []),
+      ]
+    : undefined;
 
   const { session } = await createAgentSession({
     cwd: crew.dir,
     agentDir,
     modelRuntime,
     model,
-    ...(crew.manifest.tools.length ? { tools: crew.manifest.tools } : {}),
+    ...(tools ? { tools } : {}),
+    customTools,
     resourceLoader,
     sessionManager,
+    settingsManager: SettingsManager.inMemory({}),
   });
+  if (mcpServers.length) await session.bindExtensions({});
 
   return {
     session,
     crew,
+    model,
     subscribe: (listener) => session.subscribe(listener),
     prompt: (text) => session.prompt(text),
+    abort: () => session.abort(),
+    get sessionFile() {
+      return sessionManager.getSessionFile();
+    },
     dispose: () => session.dispose(),
   };
 }

@@ -7,9 +7,10 @@
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests --dir src"
   },
   "dependencies": {
+    "@shipmate/core": "workspace:*",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

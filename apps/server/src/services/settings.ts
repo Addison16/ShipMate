@@ -1,0 +1,41 @@
+import type { Db } from "@shipmate/db";
+import { settings } from "@shipmate/db";
+
+export interface InstanceSettings {
+  captainName: string;
+  defaultModel: string;
+}
+
+export const DEFAULT_SETTINGS: InstanceSettings = {
+  captainName: "Captain",
+  defaultModel: "anthropic/claude-sonnet-5-5",
+};
+
+/** Instance settings stored one key per row; unknown keys fall back to defaults. */
+export class SettingsService {
+  constructor(private readonly db: Db) {}
+
+  async get(): Promise<InstanceSettings> {
+    const rows = await this.db.select().from(settings);
+    const out = { ...DEFAULT_SETTINGS };
+    for (const row of rows) {
+      if (row.key in out && typeof row.value === "string") {
+        out[row.key as keyof InstanceSettings] = row.value;
+      }
+    }
+    return out;
+  }
+
+  async set(
+    patch: { [K in keyof InstanceSettings]?: InstanceSettings[K] | undefined },
+  ): Promise<InstanceSettings> {
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === undefined) continue;
+      await this.db
+        .insert(settings)
+        .values({ key, value })
+        .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: new Date() } });
+    }
+    return this.get();
+  }
+}

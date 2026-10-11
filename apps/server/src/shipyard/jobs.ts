@@ -207,6 +207,15 @@ export class ShipyardJobs {
       throw new HttpError(409, "only a job that stopped can be tried again");
     }
     if (this.#busy.has(id)) throw new HttpError(409, "this job is busy");
+    if (!job.prNumber) {
+      // Without a PR, trying again is a crew turn in the job's conversation.
+      if (!job.conversationId) {
+        throw new HttpError(409, "the job's conversation was deleted; assign the issue again");
+      }
+      if (this.d.bridge.isBusy(job.conversationId)) {
+        throw new HttpError(409, "the crew is still answering in the job's conversation");
+      }
+    }
     let updated: JobRow;
     try {
       updated = job.prNumber

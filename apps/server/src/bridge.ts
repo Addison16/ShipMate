@@ -512,10 +512,13 @@ export class Bridge {
     prompt: string,
     options: RunTurnOptions,
   ): Promise<{ text: string; sessionFile: string | undefined }> {
-    const conv = await this.conversation(user, conversationId);
+    // Claim the run before any await, like send(): two turns in one conversation would share
+    // (and the first to finish would dispose) the other's sessions.
     const run = this.#run(conversationId);
+    if (run.busy) throw new HttpError(409, "the crew is still answering the last message");
     run.busy = true;
     try {
+      const conv = await this.conversation(user, conversationId);
       await this.#checkCap(user, slug, options.watchId);
       await this.#assertActive(slug, user);
       const text = await this.#turn(user, conv, run, slug, prompt, options);

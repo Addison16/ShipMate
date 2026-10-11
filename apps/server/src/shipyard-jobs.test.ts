@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import type { ProjectDto, ShipyardJobDto } from "@shipmate/core";
-import { conversations, projectEvents, watchRuns } from "@shipmate/db";
+import { conversations, projectEvents, users, watchRuns } from "@shipmate/db";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { testApp } from "./testing.js";
@@ -633,4 +633,32 @@ describe.skipIf(!db)("Shipyard issue-to-PR jobs, webhooks and the reviewer", () 
     expect(conv?.projectId).toBe(project.id);
     expect(conv?.surface).toBe("watch");
   });
+  it("never runs a second turn while the person is answering in the job's conversation", async () => {
+    const job = (await jobOf(14)) as ShipyardJobDto;
+    expect(job.status).toBe("needs_input");
+    const [me] = await t.app.db.select().from(users).where(eq(users.email, "owner@example.com"));
+    let release = () => {};
+    const held = new Promise<void>((r) => {
+      release = r;
+    });
+    t.faux.setResponses([
+      async () => {
+        await held;
+        return fauxAssistantMessage("It happens in Firefox.");
+      },
+    ]);
+    const bridge = t.app.services.bridge;
+    const conv = job.conversationId as string;
+    const reply = bridge.send(me as never, conv, "It is Firefox only.");
+    await until(() => bridge.isBusy(conv));
+    expect((await api("POST", `/api/shipyard/jobs/${job.id}/retry`)).statusCode).toBe(409);
+    await expect(bridge.runTurn(me as never, conv, "shipwright", "Carry on.", {})).rejects.toThrow(
+      "still answering",
+    );
+    expect(bridge.isBusy(conv)).toBe(true);
+    release();
+    await reply;
+    expect(t.faux.getPendingResponseCount()).toBe(0);
+  });
+
 });

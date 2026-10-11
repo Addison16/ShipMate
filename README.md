@@ -10,7 +10,8 @@ Version 1.0. See [CHANGELOG.md](CHANGELOG.md) for what is in it and
 ## Features
 
 - **Bridge**: chat with the Captain, who pulls in the right crew member or recruits a new one.
-  Replies stream in; hand-offs and tool calls are visible.
+  Replies stream in; hand-offs and tool calls are visible. Search every conversation and pin the
+  ones you come back to.
 - **Crew**: every bot is a folder (`crew.yaml` + `CREW.md`) you can edit in the UI or on disk,
   with its own memory, tools, MCP servers and cost ceiling. Start from ready-made crew (Galley,
   Purser, Navigator, Tutor, Health Log) at first run or any time later.

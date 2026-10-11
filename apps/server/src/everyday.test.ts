@@ -362,4 +362,43 @@ describe.skipIf(!db)("Everyday life", () => {
     expect(seen[2]).toContain("List items the crew added");
     expect(seen[2]).toMatch(/on \\"Groceries\\" by Captain/);
   });
+
+  it("searches and pins the person's own conversations", async () => {
+    const a = (await api("POST", "/api/conversations", {})).json().conversation;
+    const b = (await api("POST", "/api/conversations", {})).json().conversation;
+    t.faux.setResponses([fauxAssistantMessage("The lasagna recipe needs ricotta and basil.")]);
+    await turn(a.id, "Find me a vegetarian lasagna");
+    t.faux.setResponses([fauxAssistantMessage("Your flight to Lisbon leaves at 9.")]);
+    await turn(b.id, "When does my flight leave?");
+    await api("PATCH", `/api/conversations/${b.id}`, { title: "Trip planning" });
+    // Someone else's conversation never shows up.
+    const theirs = (await api("POST", "/api/conversations", {}, memberCookie)).json().conversation;
+    t.faux.setResponses([fauxAssistantMessage("Lasagna for the kid too.")]);
+    await turn(theirs.id, "lasagna please", memberCookie);
+
+    const search = async (q: string) =>
+      (await api("GET", `/api/conversations/search?q=${encodeURIComponent(q)}`)).json().results;
+    const lasagna = await search("lasagnas");
+    expect(lasagna.map((r: { conversation: { id: string } }) => r.conversation.id)).toEqual([a.id]);
+    expect(lasagna[0].matches[0].snippet).toContain("\uE000lasagna\uE001");
+    expect(lasagna[0].matches.map((m: { author: string }) => m.author)).toContain("Captain");
+    expect((await search("ricotta -basil")).length).toBe(0);
+    const trip = await search("trip");
+    expect(trip[0]).toMatchObject({ conversation: { id: b.id }, titleMatch: true });
+    expect(await search("100%_")).toEqual([]);
+    expect(await search("   ")).toEqual([]);
+
+    // Pinned first, newest first after that.
+    expect((await api("PATCH", `/api/conversations/${a.id}`, {})).statusCode).toBe(400);
+    const pinned = (await api("PATCH", `/api/conversations/${a.id}`, { pinned: true })).json();
+    expect(pinned.conversation.pinned).toBe(true);
+    const order = (await api("GET", "/api/conversations")).json().conversations;
+    expect(order[0].id).toBe(a.id);
+    expect(order[1].id).toBe(b.id);
+    expect(
+      (await api("PATCH", `/api/conversations/${a.id}`, { pinned: true }, memberCookie)).statusCode,
+    ).toBe(404);
+    await api("PATCH", `/api/conversations/${a.id}`, { pinned: false });
+    expect((await api("GET", "/api/conversations")).json().conversations[0].id).not.toBe(a.id);
+  });
 });

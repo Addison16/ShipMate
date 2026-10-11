@@ -37,6 +37,9 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   bills and to-dos due soon, and what the crew did overnight. Every crew member now has
   `get_weather` (Open-Meteo, no key needed; defaults to the household's home location),
   `due_soon` and `recent_activity`.
+- **Conversation search and pinning**: a search box on the Bridge finds words and phrases across
+  all of your own conversations (web, chat bridges and watch runs) with highlighted excerpts,
+  using Postgres full-text search. Pin conversations to keep them at the top.
 
 ## 1.0.0 — 2026-10-11
 

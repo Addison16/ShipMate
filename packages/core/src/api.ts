@@ -205,6 +205,8 @@ export interface ConversationDto {
   surface: string;
   /** Shipyard project this conversation works in (phase 3); tools run in its workspace. */
   projectId: string | null;
+  /** Pinned conversations come first in the list. */
+  pinned: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -225,9 +227,27 @@ export interface MessageDto {
   createdAt: string;
 }
 
-/** GET /api/conversations → { conversations: ConversationDto[] } newest first */
+/** GET /api/conversations → { conversations: ConversationDto[] } pinned first, then newest first */
 /** POST /api/conversations { kind?, crewSlug? } → { conversation } */
-/** PATCH /api/conversations/:id { title } → { conversation } */
+/** PATCH /api/conversations/:id { title?, pinned? } → { conversation } */
+/**
+ * GET /api/conversations/search?q=<words>&limit=<n> → { results: ConversationSearchResultDto[] }
+ * Full-text search over the caller's own conversations (every surface), best match first.
+ * `q` takes web-search syntax: words, "exact phrases", -excluded, or.
+ */
+export interface ConversationSearchResultDto {
+  conversation: ConversationDto;
+  /** The title contains the search text. */
+  titleMatch: boolean;
+  /** Up to three matching messages, best first. */
+  matches: Array<{
+    messageId: string;
+    /** A short excerpt; matched words are wrapped in SEARCH_MARK (search.ts). */
+    snippet: string;
+    author: string;
+    createdAt: string;
+  }>;
+}
 /** DELETE /api/conversations/:id → { ok: true } */
 /** GET /api/conversations/:id/messages → { messages: MessageDto[] } oldest first */
 

@@ -4,6 +4,7 @@ import type {
   AuditEventDto,
   BridgeLinkCode,
   ConversationDto,
+  ConversationSearchResultDto,
   CreateCrewRequest,
   CreateCustomMcpRequest,
   CreateListRequest,
@@ -165,6 +166,15 @@ export const api = {
       title,
     }),
   deleteConversation: (id: string) => request<Ok>("DELETE", `/api/conversations/${enc(id)}`),
+  pinConversation: (id: string, pinned: boolean) =>
+    request<{ conversation: ConversationDto }>("PATCH", `/api/conversations/${enc(id)}`, {
+      pinned,
+    }),
+  searchConversations: (q: string) =>
+    request<{ results: ConversationSearchResultDto[] }>(
+      "GET",
+      `/api/conversations/search?q=${enc(q)}`,
+    ),
   listMessages: (id: string) =>
     request<{ messages: MessageDto[] }>("GET", `/api/conversations/${enc(id)}/messages`),
 

@@ -69,6 +69,8 @@ export async function buildApp(
     /** Stand-ins for the Telegram Bot API and Slack (tests). */
     telegramPort?: import("./telegram/port.js").TelegramPort;
     slackPort?: import("./slack/port.js").SlackPort;
+    /** Stand-in for Open-Meteo (tests). */
+    weather?: import("./services/weather.js").WeatherService;
   } = {},
 ) {
   const app = Fastify({

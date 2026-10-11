@@ -1,15 +1,20 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ListDetailDto, ListDto, ListKind } from "@shipmate/core";
 import {
+  briefingTools,
   type CrewFolder,
   type ListHost,
   type ListSummary,
   listTools,
   profileTools,
+  weatherTools,
 } from "@shipmate/crew";
+import type { Db } from "@shipmate/db";
 import type { UserRow } from "./auth.js";
+import { dateIn, recentActivity } from "./services/activity.js";
 import type { ListService } from "./services/lists.js";
 import { hasAny, householdLines, type ProfileService, profileLines } from "./services/profiles.js";
+import { formatForecast, type WeatherService } from "./services/weather.js";
 
 /** Keeps the profile part of every crew member's system prompt short. */
 const CONTEXT_FIELD_CHARS = 300;
@@ -19,13 +24,50 @@ const CONTEXT_FIELD_CHARS = 300;
  * member is working for. The Bridge asks for them when it opens a session.
  */
 export class EverydayTools {
-  constructor(private readonly deps: { lists: ListService; profiles: ProfileService }) {}
+  constructor(
+    private readonly deps: {
+      db: Db;
+      lists: ListService;
+      profiles: ProfileService;
+      weather: WeatherService;
+    },
+  ) {}
 
   tools(user: UserRow, crew: CrewFolder): ToolDefinition[] {
     return [
       ...listTools(this.#listHost(user, crew)),
       ...profileTools({ read: () => this.#profilesText(user) }),
+      ...weatherTools({
+        forecast: async (place, days) => {
+          const where = place?.trim() || (await this.deps.profiles.household()).location.trim();
+          if (!where) {
+            return "No place given and no home location set. Ask for the town, or an admin can set the home location under Settings, Household.";
+          }
+          return formatForecast(await this.deps.weather.forecast(where, days));
+        },
+      }),
+      ...briefingTools({
+        recentActivity: (hours) => recentActivity(this.deps.db, user, hours),
+        dueSoon: (days) => this.#dueSoon(user, days),
+      }),
     ];
+  }
+
+  async #dueSoon(user: UserRow, days: number): Promise<string> {
+    const { household, me } = await this.deps.profiles.forCrew(user);
+    const tz = me.timezone || household.timezone;
+    const today = dateIn(tz);
+    const until = dateIn(tz, days);
+    const due = await this.deps.lists.dueBy(user, until);
+    if (!due.length) return `Nothing open is due by ${until}.`;
+    return [
+      `Open items due by ${until} (today is ${today}):`,
+      ...due.map(({ list, item }) => {
+        const when =
+          item.dueOn && item.dueOn < today ? `OVERDUE since ${item.dueOn}` : `due ${item.dueOn}`;
+        return `- ${item.text} (${list}, ${when})${item.note ? ` — ${item.note}` : ""}`;
+      }),
+    ].join("\n");
   }
 
   /**

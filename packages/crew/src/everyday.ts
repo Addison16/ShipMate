@@ -198,3 +198,69 @@ export function profileTools(host: ProfileHost): ToolDefinition[] {
     }),
   ];
 }
+
+// ---------- weather and the daily briefing ----------
+
+/** Forecasts by place name; the server knows the household's home location. */
+export interface WeatherHost {
+  /** Formatted forecast; `place` defaults to the household's home location. */
+  forecast(place: string | undefined, days: number): Promise<string>;
+}
+
+export function weatherTools(host: WeatherHost): ToolDefinition[] {
+  return [
+    defineTool({
+      name: "get_weather",
+      label: "Weather",
+      description:
+        "Current weather and the daily forecast (Open-Meteo) for a place. Leave out the place for the household's home location.",
+      promptSnippet: "get_weather: forecast for a place (default: home)",
+      parameters: Type.Object({
+        place: Type.Optional(
+          Type.String({ description: 'town and region or country, e.g. "Austin, TX"' }),
+        ),
+        days: Type.Optional(Type.Number({ description: "1 to 7, default 3" })),
+      }),
+      async execute(_id, p) {
+        return text(await host.forecast(p.place, p.days ?? 3));
+      },
+    }),
+  ];
+}
+
+/** What happened lately and what is coming up, for the person the crew member works for. */
+export interface BriefingHost {
+  /** Watch runs, crew replies, crew actions and list changes in the last `hours`. */
+  recentActivity(hours: number): Promise<string>;
+  /** Unchecked list items (bills, to-dos) due within `days` days, overdue ones included. */
+  dueSoon(days: number): Promise<string>;
+}
+
+export function briefingTools(host: BriefingHost): ToolDefinition[] {
+  return [
+    defineTool({
+      name: "recent_activity",
+      label: "Recent activity",
+      description:
+        "What the crew did lately for the person you are helping: watch runs and their results, conversations the crew answered, actions taken or refused, and list changes. Use it for briefings and catch-ups.",
+      parameters: Type.Object({
+        hours: Type.Optional(Type.Number({ description: "how far back, default 12" })),
+      }),
+      async execute(_id, p) {
+        return text(await host.recentActivity(Math.min(24 * 14, Math.max(1, p.hours ?? 12))));
+      },
+    }),
+    defineTool({
+      name: "due_soon",
+      label: "Due soon",
+      description:
+        "Bills, to-dos and other list items that are not done and are due soon or overdue, across every list you can see.",
+      parameters: Type.Object({
+        days: Type.Optional(Type.Number({ description: "look this many days ahead, default 7" })),
+      }),
+      async execute(_id, p) {
+        return text(await host.dueSoon(Math.min(90, Math.max(0, p.days ?? 7))));
+      },
+    }),
+  ];
+}

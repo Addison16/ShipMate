@@ -4,6 +4,7 @@ import type {
   MessageDto,
   WatchDto,
   WatchRunDto,
+  WatchTemplateDto,
   WatchTrigger,
 } from "@shipmate/core";
 import { type FormEvent, useState } from "react";
@@ -29,11 +30,13 @@ import {
   TextField,
 } from "../components/ui.js";
 import { dollarsToCents, formatCents, formatCost } from "../lib/format.js";
+import { browserTimeZone } from "../lib/starters.js";
 import type { TimelineItem } from "../lib/timeline.js";
 import { useResource } from "../lib/useResource.js";
 import {
   afterCandidates,
   CRON_PRESETS,
+  dailyCron,
   describeTrigger,
   formatDuration,
   RUN_STATUS_LABEL,
@@ -207,6 +210,7 @@ function WatchList() {
         }
       />
       <RoutineApprovals />
+      <WatchTemplates crew={crew} existing={all} />
       <ErrorText>{watches.error}</ErrorText>
       {watches.loading && !watches.data && <Muted>Loading…</Muted>}
       {watches.data?.length === 0 && (
@@ -271,6 +275,109 @@ function WatchList() {
         })}
       </ul>
     </Page>
+  );
+}
+
+/** One-click watches such as the daily briefing. */
+function WatchTemplates({ crew, existing }: { crew: CrewDto[]; existing: WatchDto[] }) {
+  const templates = useResource(() => api.watchTemplates().then((r) => r.templates));
+  if (!templates.data?.length) return null;
+  return (
+    <div className="mb-6 space-y-3">
+      {templates.data.map((t) => (
+        <WatchTemplateCard
+          key={t.id}
+          template={t}
+          crew={crew}
+          exists={existing.some((w) => w.name === t.name)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function WatchTemplateCard({
+  template,
+  crew,
+  exists,
+}: {
+  template: WatchTemplateDto;
+  crew: CrewDto[];
+  exists: boolean;
+}) {
+  const [time, setTime] = useState("07:00");
+  const [crewSlug, setCrewSlug] = useState(template.crewSlug);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const active = crew.filter((c) => c.status === "active");
+  const tz = browserTimeZone();
+
+  async function add(e: FormEvent) {
+    e.preventDefault();
+    const expression = dailyCron(time);
+    if (!expression) {
+      setError("Pick a time like 07:00.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const { watch } = await api.createWatch({
+        name: template.name,
+        crewSlug,
+        trigger: { kind: "cron", expression, ...(tz ? { timezone: tz } : {}) },
+        prompt: template.prompt,
+      });
+      navigate(`/watches/${watch.id}`);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="border-accent-200 bg-accent-50/50 dark:border-accent-900 dark:bg-accent-950/20">
+      <form onSubmit={add} className="flex flex-wrap items-end gap-3">
+        <div className="min-w-56 flex-1">
+          <h2 className="font-semibold">{template.name}</h2>
+          <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
+            {template.description}
+            {exists && " You already have one; add another for a different time or person."}
+          </p>
+        </div>
+        <TextField
+          label="Every day at"
+          type="time"
+          required
+          className="w-32"
+          value={time}
+          onChange={(e) => setTime(e.target.value)}
+        />
+        {active.length > 1 && (
+          <SelectField
+            label="Crew member"
+            value={crewSlug}
+            onChange={(e) => setCrewSlug(e.target.value)}
+          >
+            {active.map((c) => (
+              <option key={c.slug} value={c.slug}>
+                {c.name}
+              </option>
+            ))}
+          </SelectField>
+        )}
+        <Button type="submit" variant="primary" disabled={busy}>
+          {busy ? "Adding…" : `Add ${template.name.toLowerCase()}`}
+        </Button>
+      </form>
+      {tz && (
+        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+          Runs in your timezone ({tz}). Results appear on the watch's page.
+        </p>
+      )}
+      <ErrorText>{error}</ErrorText>
+    </Card>
   );
 }
 

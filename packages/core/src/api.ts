@@ -417,6 +417,18 @@ export interface CreateWatchRequest {
   monthlyCapCents?: number | null;
 }
 export type UpdateWatchRequest = Partial<CreateWatchRequest>;
+/** A ready-made watch the Watches page offers with one click, e.g. the daily briefing. */
+export interface WatchTemplateDto {
+  id: string;
+  name: string;
+  description: string;
+  /** Suggested crew member: the best fit aboard and visible to the caller. */
+  crewSlug: string;
+  /** Suggested schedule; the page lets the person change the time. */
+  cron: string;
+  prompt: string;
+}
+/** GET /api/watches/templates → { templates: WatchTemplateDto[] } */
 
 // ---------- MCP servers (phase 2) ----------
 

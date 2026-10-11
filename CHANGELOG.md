@@ -32,6 +32,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   schedules). Every crew member gets them in a compact context section with the person's local
   time, plus `read_profiles` for the full text. A profile can be shared with the household so
   crew planning for everyone (meals, say) can read it; it is private by default.
+- **Daily briefing**: a one-click watch on the Watches page that sends a morning summary: the
+  weather, today's calendar (when the Navigator's calendar is connected; skipped otherwise),
+  bills and to-dos due soon, and what the crew did overnight. Every crew member now has
+  `get_weather` (Open-Meteo, no key needed; defaults to the household's home location),
+  `due_soon` and `recent_activity`.
 
 ## 1.0.0 — 2026-10-11
 

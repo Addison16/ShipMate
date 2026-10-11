@@ -12,13 +12,15 @@ Version 1.0. See [CHANGELOG.md](CHANGELOG.md) for what is in it and
 - **Bridge**: chat with the Captain, who pulls in the right crew member or recruits a new one.
   Replies stream in; hand-offs and tool calls are visible.
 - **Crew**: every bot is a folder (`crew.yaml` + `CREW.md`) you can edit in the UI or on disk,
-  with its own memory, tools, MCP servers and cost ceiling.
+  with its own memory, tools, MCP servers and cost ceiling. Start from ready-made crew (Galley,
+  Purser, Navigator, Tutor, Health Log) at first run or any time later.
 - **Lists**: groceries, to-dos, packing and bills with checkboxes, shared with the household or
   private, kept up to date by you and the crew alike.
 - **Household profiles**: diets, budgets, timezones and schedules every crew member knows, so
   nobody repeats themselves to each bot.
 - **Skills and Watches**: reusable skills made by you or by the crew (with approval), and
-  watches that run on a schedule, a webhook or after another watch.
+  watches that run on a schedule, a webhook or after another watch. A one-click **daily
+  briefing** brings the weather, today's calendar, bills due and what the crew did overnight.
 - **Shipyard**: GitHub or local projects worked in sandboxed containers, with PR flows and
   CI and review events routed back to the conversation.
 - **Approvals and audit**: consequential actions wait for the person who asked; every tool call

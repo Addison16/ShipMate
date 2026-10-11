@@ -1,6 +1,7 @@
 import type { CreateWatchRequest } from "@shipmate/core";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { watchTemplates } from "../services/watch-templates.js";
 import { WatchTriggerSchema } from "../services/watches.js";
 import type { Services } from "../services.js";
 
@@ -17,6 +18,10 @@ const Watch = z.object({
 
 export async function watchRoutes(app: FastifyInstance, s: Services) {
   app.get("/api/watches", async (req) => ({ watches: await s.watches.list(req.user) }));
+
+  app.get("/api/watches/templates", async (req) => ({
+    templates: await watchTemplates(s.crew, req.user),
+  }));
 
   app.get<{ Params: { id: string } }>("/api/watches/:id", async (req) => ({
     watch: await s.watches.get(req.params.id, req.user),

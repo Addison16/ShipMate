@@ -23,6 +23,7 @@ import { SkillService } from "./services/skills.js";
 import { StarterService } from "./services/starters.js";
 import { UsageService } from "./services/usage.js";
 import { WatchService } from "./services/watches.js";
+import { WeatherService } from "./services/weather.js";
 import { ShipyardService } from "./shipyard/service.js";
 import type { SlackPort } from "./slack/port.js";
 import { SlackService } from "./slack/service.js";
@@ -72,6 +73,8 @@ export async function createServices(
     slackPort?: SlackPort;
     /** Stand-in for OIDC discovery (tests). */
     oidcDiscover?: OidcDiscover;
+    /** Stand-in for Open-Meteo (tests). */
+    weather?: WeatherService;
   } = {},
 ): Promise<Services> {
   const vault = new SecretVault(config.SHIPMATE_SECRET);
@@ -111,7 +114,9 @@ export async function createServices(
   const watches = new WatchService(db, db.$client, crew, bridge, audit, emit, config.SHIPMATE_URL);
   bridge.attachWatches(watches);
   const profiles = new ProfileService(db, settings);
-  bridge.attachEveryday(new EverydayTools({ lists, profiles }));
+  bridge.attachEveryday(
+    new EverydayTools({ db, lists, profiles, weather: options.weather ?? new WeatherService() }),
+  );
   const shipyard = new ShipyardService({
     db,
     vault,

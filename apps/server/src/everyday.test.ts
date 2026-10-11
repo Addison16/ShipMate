@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import type { ServerEvent } from "@shipmate/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { WeatherService } from "./services/weather.js";
 import { TEST_DATABASE_URL, testApp } from "./testing.js";
 
 const db = TEST_DATABASE_URL;
@@ -47,7 +48,36 @@ describe.skipIf(!db)("Everyday life", () => {
   };
 
   beforeAll(async () => {
-    t = await testApp(db as string);
+    // Open-Meteo stand-in: every place is sunny Austin.
+    const weather = new WeatherService(async (url) => ({
+      ok: true,
+      status: 200,
+      json: async () =>
+        url.includes("geocoding")
+          ? {
+              results: [
+                {
+                  name: "Austin",
+                  admin1: "Texas",
+                  country: "United States",
+                  country_code: "US",
+                  latitude: 30.27,
+                  longitude: -97.74,
+                  timezone: "America/Chicago",
+                },
+              ],
+            }
+          : {
+              daily: {
+                time: ["2026-10-11"],
+                weather_code: [0],
+                temperature_2m_max: [84],
+                temperature_2m_min: [62],
+                precipitation_probability_max: [0],
+              },
+            },
+    }));
+    t = await testApp(db as string, { weather });
     ownerCookie = cookieOf(
       await api(
         "POST",
@@ -269,5 +299,67 @@ describe.skipIf(!db)("Everyday life", () => {
     const conv2 = (await api("POST", "/api/conversations", {})).json().conversation;
     await turn(conv2.id, "hi");
     expect(system).not.toContain("Kid");
+  });
+
+  it("offers a daily briefing watch that reads weather, due items and activity", async () => {
+    const bills = (await api("POST", "/api/lists", { name: "Bills", kind: "bills" })).json().list;
+    const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+    await api("POST", `/api/lists/${bills.id}/items`, {
+      text: "Electricity",
+      dueOn: tomorrow,
+      note: "$84, autopay",
+    });
+    await api("POST", `/api/lists/${bills.id}/items`, { text: "Water", dueOn: "2099-01-01" });
+
+    const { templates } = (await api("GET", "/api/watches/templates")).json();
+    const briefing = templates.find((x: { id: string }) => x.id === "daily-briefing");
+    // The Navigator (added from the starter pack) has the calendar, so it runs the briefing.
+    expect(briefing).toMatchObject({ crewSlug: "navigator", cron: "0 7 * * *" });
+    const watch = (
+      await api("POST", "/api/watches", {
+        name: briefing.name,
+        crewSlug: briefing.crewSlug,
+        trigger: { kind: "cron", expression: briefing.cron, timezone: "America/Chicago" },
+        prompt: briefing.prompt,
+      })
+    ).json().watch;
+
+    const seen: string[] = [];
+    const capture = (context: { messages: unknown[] }) => {
+      seen.push(JSON.stringify(context.messages.at(-1)));
+    };
+    t.faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("get_weather", {})]),
+      (context) => {
+        capture(context);
+        return fauxAssistantMessage([fauxToolCall("due_soon", { days: 3 })]);
+      },
+      (context) => {
+        capture(context);
+        return fauxAssistantMessage([fauxToolCall("recent_activity", { hours: 12 })]);
+      },
+      (context) => {
+        capture(context);
+        return fauxAssistantMessage("Good morning! Sunny, 84°F. Electricity is due tomorrow.");
+      },
+    ]);
+    const run = (await api("POST", `/api/watches/${watch.id}/run`)).json().run;
+    let done: { status: string; output: string | null } | undefined;
+    await until(async () => {
+      const runs = (await api("GET", `/api/watches/${watch.id}/runs`)).json().runs;
+      done = runs.find(
+        (r: { id: string; status: string }) => r.id === run.id && r.status !== "running",
+      );
+      return !!done;
+    });
+    expect(done).toMatchObject({ status: "succeeded" });
+    expect(done?.output).toContain("Electricity is due tomorrow");
+    expect(seen[0]).toContain("Weather for Austin, Texas");
+    expect(seen[1]).toContain("Electricity (Bills, due");
+    expect(seen[1]).toContain("$84, autopay");
+    expect(seen[1]).not.toContain("Water");
+    // The list tools the crew used earlier show up as overnight activity.
+    expect(seen[2]).toContain("List items the crew added");
+    expect(seen[2]).toMatch(/on \\"Groceries\\" by Captain/);
   });
 });

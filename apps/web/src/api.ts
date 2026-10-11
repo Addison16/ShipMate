@@ -57,6 +57,7 @@ import type {
   UserDto,
   WatchDto,
   WatchRunDto,
+  WatchTemplateDto,
 } from "@shipmate/core";
 
 /** An HTTP error from the server; `message` is the server's `{ error }` text when present. */
@@ -228,6 +229,7 @@ export const api = {
 
   // watches
   listWatches: () => request<{ watches: WatchDto[] }>("GET", "/api/watches"),
+  watchTemplates: () => request<{ templates: WatchTemplateDto[] }>("GET", "/api/watches/templates"),
   createWatch: (body: CreateWatchRequest) =>
     request<{ watch: WatchDto }>("POST", "/api/watches", body),
   updateWatch: (id: string, body: UpdateWatchRequest) =>

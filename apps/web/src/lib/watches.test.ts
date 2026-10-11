@@ -1,6 +1,12 @@
 import type { WatchDto, WatchTrigger } from "@shipmate/core";
 import { describe, expect, it } from "vitest";
-import { afterCandidates, describeInterval, describeTrigger, formatDuration } from "./watches.js";
+import {
+  afterCandidates,
+  dailyCron,
+  describeInterval,
+  describeTrigger,
+  formatDuration,
+} from "./watches.js";
 
 function watch(id: string, trigger: WatchTrigger): WatchDto {
   return {
@@ -71,5 +77,14 @@ describe("afterCandidates", () => {
     expect(afterCandidates(all, "a").map((w) => w.id)).toEqual(["d"]);
     expect(afterCandidates(all, "c").map((w) => w.id)).toEqual(["a", "b", "d"]);
     expect(afterCandidates(all, null)).toHaveLength(4);
+  });
+});
+
+describe("dailyCron", () => {
+  it("turns a time of day into a daily schedule", () => {
+    expect(dailyCron("07:00")).toBe("0 7 * * *");
+    expect(dailyCron("6:45")).toBe("45 6 * * *");
+    expect(dailyCron("24:00")).toBeNull();
+    expect(dailyCron("7am")).toBeNull();
   });
 });

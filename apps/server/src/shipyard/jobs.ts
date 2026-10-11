@@ -488,8 +488,10 @@ export class ShipyardJobs {
           await this.#set(id, { status: "ci_running", detail: "CI running" });
         return;
       }
-      if (ci.state === "failure") await this.#fixCi(job, row, client, ci.failing);
-      else await this.#green(job, row, client, ci.state === null);
+      // The next steps compare against the head this check saw, not the one stored before it.
+      const seen = { ...job, headSha: pr.headSha };
+      if (ci.state === "failure") await this.#fixCi(seen, row, client, ci.failing);
+      else await this.#green(seen, row, client, ci.state === null);
     }).catch(async (err: Error) => {
       // GitHub was unreachable or refused: say so on the card and try again on the next poll.
       await this.#set(id, { detail: `Could not check GitHub: ${err.message}`.slice(0, 300) }).catch(

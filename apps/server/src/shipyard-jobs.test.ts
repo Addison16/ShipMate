@@ -50,7 +50,7 @@ function fakeGitHub() {
     updated_at: "2026-10-11T00:00:00Z",
   });
   const issues = new Map(
-    [12, 13, 14, 15, 16, 18, 19].map((n) => [
+    [12, 13, 14, 15, 16, 18, 19, 20, 21, 22, 23, 24].map((n) => [
       n,
       issue(n, n >= 14 && n <= 16 ? ["shipwright"] : []),
     ]),
@@ -716,5 +716,25 @@ describe.skipIf(!db)("Shipyard issue-to-PR jobs, webhooks and the reviewer", () 
       .project;
     await t.app.services.shipyard.jobs.poll({ leaderOnly: false });
     await until(async () => (await statusOf(18)) === "closed");
+  });
+
+  it("asks for input when CI is red on first sight and the fix turn pushes nothing", async () => {
+    // The job has no head SHA yet when the first CI result it sees is already failing.
+    t.faux.setResponses([
+      fauxAssistantMessage([
+        fauxToolCall("open_pull_request", { title: "Fix 23", body: "Fixes #23", head: "fix/23-x" }),
+      ]),
+      fauxAssistantMessage("Opened."),
+      fauxAssistantMessage("The failure is a flaky runner; not pushing."),
+    ]);
+    gh.checks.set("fix_23-x-1", [{ name: "lint", status: "completed", conclusion: "failure" }]);
+    await api("POST", `/api/shipyard/projects/${project.id}/jobs`, { issue: 23 });
+    await until(async () => {
+      const job = await jobOf(23);
+      return job?.status === "needs_input" || job?.detail === "Fix pushed; CI running";
+    });
+    expect(await jobOf(23)).toMatchObject({ status: "needs_input", attempts: 1 });
+    expect((await jobOf(23))?.detail).toContain("did not push a fix");
+    expect(t.faux.getPendingResponseCount()).toBe(0);
   });
 });

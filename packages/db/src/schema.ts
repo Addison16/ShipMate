@@ -175,3 +175,55 @@ export const conversationsRelations = relations(conversations, ({ one, many }) =
   user: one(users, { fields: [conversations.userId], references: [users.id] }),
   messages: many(messages),
 }));
+
+/** Watches (routines): a crew member runs a prompt on a schedule, webhook or after another. */
+export const watches = pgTable("watches", {
+  id: id(),
+  name: text("name").notNull(),
+  crewSlug: text("crew_slug").notNull(),
+  /** WatchTrigger from @shipmate/core. */
+  trigger: jsonb("trigger").notNull(),
+  prompt: text("prompt").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  /** fresh | continue */
+  session: text("session").notNull().default("fresh"),
+  ownerId: uuid("owner_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  /** Secret part of the webhook URL. */
+  webhookToken: text("webhook_token").notNull(),
+  /** pi session file reused when session = continue. */
+  sessionFile: text("session_file"),
+  createdAt: createdAt(),
+});
+
+export const watchRuns = pgTable(
+  "watch_runs",
+  {
+    id: id(),
+    watchId: uuid("watch_id")
+      .notNull()
+      .references(() => watches.id, { onDelete: "cascade" }),
+    /** running | succeeded | failed | waiting_approval */
+    status: text("status").notNull().default("running"),
+    /** schedule | manual | webhook | after */
+    cause: text("cause").notNull(),
+    conversationId: uuid("conversation_id").references(() => conversations.id, {
+      onDelete: "set null",
+    }),
+    output: text("output"),
+    error: text("error"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [index("watch_runs_watch_idx").on(t.watchId, t.startedAt)],
+);
+
+/** Installed catalog servers and custom servers. Core servers need no row. */
+export const mcpServers = pgTable("mcp_servers", {
+  id: text("id").primaryKey(),
+  /** For custom servers: the CatalogEntry-shaped spec. Null for catalog entries. */
+  spec: jsonb("spec"),
+  custom: boolean("custom").notNull().default(false),
+  installedAt: timestamp("installed_at", { withTimezone: true }).notNull().defaultNow(),
+});

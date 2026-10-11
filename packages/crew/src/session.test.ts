@@ -44,6 +44,8 @@ describe("createCrewSession", () => {
         delegated.push(`${slug}:${task}`);
         return "Tuesday: pasta.";
       },
+      createWatch: async () => ({ id: "w", name: "w" }),
+      installMcp: async () => "ok",
     };
     faux.setResponses([
       fauxAssistantMessage([
@@ -76,7 +78,7 @@ describe("createCrewSession", () => {
     expect(memory.list("user", "u1")[0]?.name).toBe("diet");
   });
 
-  it("blocks the shell and files outside the crew folder", async () => {
+  it("asks before the shell, audits calls and keeps files inside the crew folder", async () => {
     const { root, runtime, faux, captain } = await setup();
     faux.setResponses([
       fauxAssistantMessage([
@@ -86,11 +88,21 @@ describe("createCrewSession", () => {
       ]),
       fauxAssistantMessage("ok"),
     ]);
+    const asked: string[] = [];
+    const audit: string[] = [];
     const s = await createCrewSession({
       crew: captain,
       agentDir: root,
       modelRuntime: runtime,
       inMemory: true,
+      approvals: () => ({
+        request: async (call) => {
+          asked.push(call.toolName);
+          return "deny";
+        },
+        audit: (call) => audit.push(`${call.toolName}:${call.decision}`),
+        remember: async () => {},
+      }),
     });
     const results: string[] = [];
     s.subscribe((e) => {
@@ -100,6 +112,9 @@ describe("createCrewSession", () => {
     await s.prompt("try things");
     s.dispose();
     expect(results).toEqual(["bash:err", "read:err", "read:ok"]);
+    expect(asked).toEqual(["bash"]);
+    // The guard blocks the outside read before the approval gate sees it.
+    expect(audit).toEqual(["bash:denied", "read:auto"]);
   });
 
   it("persists to a session file and reopens it", async () => {

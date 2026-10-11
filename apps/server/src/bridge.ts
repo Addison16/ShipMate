@@ -4,6 +4,7 @@ import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { ConversationDto, MessageDto, ServerEvent } from "@shipmate/core";
 import {
   type ActingUser,
+  type ApprovalHost,
   CAPTAIN_SLUG,
   type CaptainHost,
   type CrewFolder,
@@ -13,16 +14,22 @@ import {
   createCrewSession,
   MemoryStore,
   memoryTools,
+  skillTools,
   splitModelRef,
 } from "@shipmate/crew";
 import { conversations, crewMembers, type Db, messages, users } from "@shipmate/db";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { HttpError, type UserRow } from "./auth.js";
+import type { ApprovalService } from "./services/approvals.js";
+import type { AuditService } from "./services/audit.js";
 import type { CrewService } from "./services/crew.js";
 import type { McpService } from "./services/mcp.js";
 import type { ProviderService } from "./services/providers.js";
 import type { SettingsService } from "./services/settings.js";
+import type { SkillService } from "./services/skills.js";
 import type { UsageService } from "./services/usage.js";
+import type { WatchService } from "./services/watches.js";
+import { summarize } from "./summarize.js";
 
 type ConversationRow = typeof conversations.$inferSelect;
 type Send = (event: ServerEvent) => void;
@@ -36,14 +43,30 @@ export interface BridgeDeps {
   mcp: McpService;
   settings: SettingsService;
   usage: UsageService;
+  approvals: ApprovalService;
+  audit: AuditService;
+  skills: SkillService;
   agentDir: string;
+}
+
+/** Everything a cached session's tools need from the turn in progress. */
+interface TurnContext {
+  captain: CaptainHost;
+  approvals: ApprovalHost;
+}
+
+export interface RunTurnOptions {
+  /** Set for watch runs: usage is attributed to the watch and approvals mention it. */
+  watchId?: string;
+  /** Called when the run starts or stops waiting for a person's approval. */
+  onWaiting?: (waiting: boolean) => void;
 }
 
 /** Live state of one conversation: a pi session per crew member taking part. */
 interface Run {
   sessions: Map<string, CrewSession>;
-  /** Per crew slug, the CaptainHost of the turn in progress. */
-  hosts: Map<string, CaptainHost>;
+  /** Per crew slug, the context of the turn in progress. */
+  hosts: Map<string, TurnContext>;
   busy: boolean;
   aborted: boolean;
   idleTimer?: NodeJS.Timeout;
@@ -58,9 +81,16 @@ interface Run {
 export class Bridge {
   #sockets = new Map<string, Set<Send>>();
   #runs = new Map<string, Run>();
+  #watches: WatchService | undefined;
 
   constructor(private readonly deps: BridgeDeps) {
     deps.crew.onChange(() => this.broadcast({ type: "crew_changed" }));
+    deps.skills.onChange(() => this.broadcast({ type: "skills_changed" }));
+  }
+
+  /** Watches depend on the Bridge to run, so they are attached after both exist. */
+  attachWatches(watches: WatchService) {
+    this.#watches = watches;
   }
 
   // ---------- sockets ----------
@@ -208,7 +238,7 @@ export class Bridge {
       const slug = conv.kind === "direct" ? await this.#slugOf(conv.crewMemberId) : CAPTAIN_SLUG;
       if (!slug) throw new HttpError(410, "this crew member is no longer aboard");
       await this.#assertActive(slug);
-      await this.#turn(user, conv, run, slug, content);
+      await this.#turn(user, conv, run, slug, content, {});
     } catch (err) {
       if (!run.aborted) {
         this.emit(user.id, {
@@ -230,7 +260,32 @@ export class Bridge {
     const run = this.#runs.get(conversationId);
     if (!run?.busy) return;
     run.aborted = true;
+    this.deps.approvals.cancelConversation(conversationId);
     await Promise.all([...run.sessions.values()].map((s) => s.abort()));
+  }
+
+  /**
+   * Run one prompt with a crew member in an existing conversation, without a person's message
+   * (watch runs). Returns the final reply and the pi session file.
+   */
+  async runTurn(
+    user: UserRow,
+    conversationId: string,
+    slug: string,
+    prompt: string,
+    options: RunTurnOptions,
+  ): Promise<{ text: string; sessionFile: string | undefined }> {
+    const conv = await this.conversation(user, conversationId);
+    const run = this.#run(conversationId);
+    run.busy = true;
+    try {
+      await this.#assertActive(slug);
+      const text = await this.#turn(user, conv, run, slug, prompt, options);
+      return { text, sessionFile: run.sessions.get(slug)?.sessionFile };
+    } finally {
+      run.busy = false;
+      this.#dispose(conversationId);
+    }
   }
 
   async close(): Promise<void> {
@@ -248,6 +303,7 @@ export class Bridge {
     run: Run,
     slug: string,
     prompt: string,
+    options: RunTurnOptions,
   ): Promise<string> {
     const folder = this.deps.crew.folder(slug);
     const crewRow = await this.deps.crew.row(slug);
@@ -269,6 +325,34 @@ export class Bridge {
       retire: async (target) => {
         await this.deps.crew.setStatus(target, "retired");
       },
+      createWatch: async (spec) => {
+        if (!this.#watches) throw new Error("watches are not available");
+        const trigger = spec.cron
+          ? {
+              kind: "cron" as const,
+              expression: spec.cron,
+              ...(spec.timezone ? { timezone: spec.timezone } : {}),
+            }
+          : {
+              kind: "interval" as const,
+              everyMinutes: Math.max(1, Math.round(spec.everyMinutes ?? 60)),
+            };
+        const w = await this.#watches.create(user, {
+          name: spec.name,
+          crewSlug: spec.crew,
+          prompt: spec.prompt,
+          trigger,
+        });
+        return { id: w.id, name: w.name };
+      },
+      installMcp: async (id, crews) => {
+        const server = await this.deps.mcp.install(id);
+        if (crews.length) await this.deps.mcp.assign(id, [...new Set([...server.crews, ...crews])]);
+        const missing = server.secrets.filter((x) => x.required && !x.set).map((x) => x.label);
+        return missing.length
+          ? `Installed ${server.name}. It needs ${missing.join(", ")} entered by an owner on the MCP servers page before it starts.`
+          : `Installed ${server.name} for ${crews.join(", ") || "nobody yet"}. It starts in new conversations.`;
+      },
       delegate: async (target, task) => {
         if (target === slug) throw new Error("you cannot delegate to yourself");
         const to = this.deps.crew.folder(target);
@@ -282,16 +366,55 @@ export class Bridge {
           task,
         });
         try {
-          return await this.#turn(user, conv, run, target, task);
+          return await this.#turn(user, conv, run, target, task, options);
         } finally {
           stream = this.#openStream(user.id, conv.id, crew);
         }
       },
     };
 
-    const session = await this.#session(user, conv, run, folder, host);
+    const approvals: ApprovalHost = {
+      request: async (call) => {
+        options.onWaiting?.(true);
+        try {
+          return await this.deps.approvals.request({
+            userId: user.id,
+            conversationId: conv.id,
+            watchId: options.watchId ?? null,
+            crew,
+            toolName: call.toolName,
+            args: call.input,
+          });
+        } finally {
+          options.onWaiting?.(false);
+        }
+      },
+      audit: (call) =>
+        void this.deps.audit
+          .record({
+            userId: user.id,
+            crewMemberId: crewRow.id,
+            action: call.toolName,
+            summary: summarize(call.input),
+            decision: call.decision,
+            detail: {
+              conversationId: conv.id,
+              watchId: options.watchId ?? null,
+              input: call.input,
+            },
+          })
+          .catch(() => {}),
+      remember: async (tool) => {
+        const latest = this.deps.crew.folder(slug).manifest;
+        if (!latest.allow.includes(tool)) {
+          await this.deps.crew.patch(slug, { allow: [...latest.allow, tool] });
+        }
+      },
+    };
+
+    const session = await this.#session(user, conv, run, folder, { captain: host, approvals });
     const unsubscribe = session.subscribe((event) => {
-      this.#onEvent(user, conv, crewRow.id, session.model, stream, event);
+      this.#onEvent(user, conv, crewRow.id, session.model, stream, event, options.watchId ?? null);
       if (event.type === "message_end" && event.message.role === "assistant") {
         const t = textOf(event.message);
         if (t) final = t;
@@ -323,6 +446,7 @@ export class Bridge {
     model: Model<Api>,
     stream: Stream,
     event: AgentSessionEvent,
+    watchId: string | null,
   ) {
     switch (event.type) {
       case "message_update":
@@ -341,7 +465,7 @@ export class Bridge {
           if (stream.text && !stream.text.endsWith("\n\n")) stream.text += "\n\n";
           void this.deps.usage
             .record(
-              { userId: user.id, crewMemberId, conversationId: conv.id },
+              { userId: user.id, crewMemberId, conversationId: conv.id, routineId: watchId },
               model,
               event.message.usage,
             )
@@ -405,9 +529,9 @@ export class Bridge {
     conv: ConversationRow,
     run: Run,
     folder: CrewFolder,
-    host: CaptainHost,
+    context: TurnContext,
   ): Promise<CrewSession> {
-    run.hosts.set(folder.slug, host);
+    run.hosts.set(folder.slug, context);
     const existing = run.sessions.get(folder.slug);
     if (existing) return existing;
     const acting: ActingUser = { id: user.id, displayName: user.displayName, role: user.role };
@@ -415,18 +539,21 @@ export class Bridge {
     const isCaptain = folder.manifest.captain && conv.kind === "bridge";
     // A cached session's tools outlive the turn that created them, so they look up the host of
     // the turn in progress.
-    const current = (): CaptainHost => {
+    const current = (): TurnContext => {
       const h = run.hosts.get(folder.slug);
       if (!h) throw new Error("no turn in progress");
       return h;
     };
     const proxy: CaptainHost = {
-      listCrew: () => current().listCrew(),
-      recruit: (s) => current().recruit(s),
-      edit: (slug, s) => current().edit(slug, s),
-      retire: (slug) => current().retire(slug),
-      delegate: (slug, task, signal) => current().delegate(slug, task, signal),
+      listCrew: () => current().captain.listCrew(),
+      recruit: (s) => current().captain.recruit(s),
+      edit: (slug, s) => current().captain.edit(slug, s),
+      retire: (slug) => current().captain.retire(slug),
+      delegate: (slug, task, signal) => current().captain.delegate(slug, task, signal),
+      createWatch: (spec) => current().captain.createWatch(spec),
+      installMcp: (id, crews) => current().captain.installMcp(id, crews),
     };
+    const skills = this.deps.skills;
     const { servers, skipped } = await this.deps.mcp.serversFor(folder);
     const model = await this.#model(folder);
     const created = await createCrewSession({
@@ -436,9 +563,21 @@ export class Bridge {
       model,
       customTools: [
         ...memoryTools(memory, acting),
+        ...skillTools({
+          createSkill: async ({ scope, content }) =>
+            skills.createByCrew(
+              folder.slug,
+              user.id,
+              scope,
+              content,
+              this.deps.crew.folder(folder.slug).manifest.autoApproveSkills,
+            ),
+        }),
         ...(isCaptain ? captainTools(proxy, acting) : []),
       ],
       mcpServers: servers,
+      skillPaths: this.deps.skills.pathsFor(user.id),
+      approvals: () => current().approvals,
       appendSystemPrompt: [await this.#context(user, folder, memory, isCaptain, skipped)],
       ...(conv.sessionFiles[folder.slug] ? { sessionFile: conv.sessionFiles[folder.slug] } : {}),
     });
@@ -623,28 +762,6 @@ function lastError(session: CrewSession): string | undefined {
   }
   return undefined;
 }
-
-/** A short one-line summary of tool arguments or results for the UI. */
-export function summarize(value: unknown): string {
-  if (value === undefined || value === null) return "";
-  if (typeof value === "object" && value !== null && "content" in value) {
-    const content = (value as { content?: Array<{ type: string; text?: string }> }).content;
-    const t = content?.find((c) => c.type === "text")?.text ?? "";
-    return oneLine(t);
-  }
-  if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([, v]) => typeof v === "string" || typeof v === "number" || typeof v === "boolean")
-      .map(([k, v]) => `${k}: ${String(v)}`);
-    return oneLine(entries.join(", "));
-  }
-  return oneLine(String(value));
-}
-
-const oneLine = (s: string) => {
-  const flat = s.replace(/\s+/g, " ").trim();
-  return flat.length > 140 ? `${flat.slice(0, 139)}…` : flat;
-};
 
 function toConversationDto(c: ConversationRow, slug: string | null): ConversationDto {
   return {

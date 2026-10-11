@@ -48,6 +48,27 @@ export interface CaptainHost {
   retire(slug: string): Promise<void>;
   /** Run `task` with crew member `slug` and return its final reply. */
   delegate(slug: string, task: string, signal: AbortSignal | undefined): Promise<string>;
+  /** Schedule a watch (routine) owned by the person in this conversation. */
+  createWatch(spec: WatchSpec): Promise<{ id: string; name: string }>;
+  /** Install a server from the MCP catalog and give it to crew members. */
+  installMcp(id: string, crews: string[]): Promise<string>;
+}
+
+export interface WatchSpec {
+  name: string;
+  crew: string;
+  prompt: string;
+  cron?: string | undefined;
+  timezone?: string | undefined;
+  everyMinutes?: number | undefined;
+}
+
+/** What the create_skill tool needs: where the skill goes and whether it waits for review. */
+export interface SkillHost {
+  createSkill(input: {
+    scope: "crew" | "user";
+    content: string;
+  }): Promise<{ id: string; name: string; status: "active" | "pending" }>;
 }
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], details: undefined });
@@ -123,6 +144,40 @@ export function memoryTools(memory: MemoryStore, user: ActingUser): ToolDefiniti
         }
         const ok = memory.remove(scope, user.id, p.name);
         return text(ok ? `Forgot "${p.name}".` : `No ${scope} memory called "${p.name}".`);
+      },
+    }),
+  ];
+}
+
+/** Every crew member can write down a repeatable procedure as a skill. */
+export function skillTools(host: SkillHost): ToolDefinition[] {
+  return [
+    defineTool({
+      name: "create_skill",
+      label: "Create skill",
+      description:
+        "After finishing a task you expect to repeat, save how to do it as a skill (Agent Skills format). New skills usually wait for a person to approve them before they load. Reusing a name replaces that skill.",
+      promptSnippet: "create_skill: save a repeatable procedure as a skill",
+      parameters: Type.Object({
+        name: Type.String({ description: "kebab-case, e.g. weekly-meal-plan" }),
+        description: Type.String({
+          description: "what it does and when to use it; this is how it gets picked later",
+        }),
+        instructions: Type.String({ description: "the steps, as markdown instructions" }),
+        scope: Type.Optional(
+          Type.Union([Type.Literal("crew"), Type.Literal("user")], {
+            description: '"crew" (default): yours; "user": only for the person you are helping',
+          }),
+        ),
+      }),
+      async execute(_id, p) {
+        const content = `---\nname: ${p.name}\ndescription: ${JSON.stringify(p.description)}\n---\n\n${p.instructions.trim()}\n`;
+        const s = await host.createSkill({ scope: p.scope ?? "crew", content });
+        return text(
+          s.status === "pending"
+            ? `Saved skill "${s.name}"; it loads once a person approves it on the Skills page.`
+            : `Saved skill "${s.name}"; it loads in new conversations.`,
+        );
       },
     }),
   ];
@@ -214,6 +269,41 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
         requireManager();
         await host.retire(p.slug);
         return text(`Retired ${p.slug}.`);
+      },
+    }),
+    defineTool({
+      name: "create_watch",
+      label: "Create watch",
+      description:
+        "Schedule a watch: a crew member runs a prompt on a cron schedule or every N minutes, for the person you are talking with. The person approves this before it is created.",
+      parameters: Type.Object({
+        name: Type.String(),
+        crew: Type.String({ description: "slug of the crew member who runs it" }),
+        prompt: Type.String({ description: "what to do each run, with all needed context" }),
+        cron: Type.Optional(Type.String({ description: 'cron expression, e.g. "0 7 * * 1-5"' })),
+        timezone: Type.Optional(
+          Type.String({ description: "IANA timezone, e.g. America/Chicago" }),
+        ),
+        everyMinutes: Type.Optional(Type.Number({ description: "instead of cron" })),
+      }),
+      async execute(_id, p) {
+        if (!p.cron && !p.everyMinutes) throw new Error("give either cron or everyMinutes");
+        const w = await host.createWatch(p);
+        return text(`Created watch "${w.name}". It shows on the Watches page.`);
+      },
+    }),
+    defineTool({
+      name: "install_mcp_server",
+      label: "Install MCP server",
+      description:
+        "Install a server from the MCP catalog and grant it to crew members. The person approves this first; servers that need keys still need an owner to enter them on the MCP page.",
+      parameters: Type.Object({
+        id: Type.String({ description: "catalog id, e.g. todoist, weather" }),
+        crews: Type.Array(Type.String(), { description: "slugs of crew members to grant it to" }),
+      }),
+      async execute(_id, p) {
+        requireManager();
+        return text(await host.installMcp(p.id, p.crews));
       },
     }),
     defineTool({

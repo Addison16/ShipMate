@@ -11,12 +11,16 @@ import Fastify from "fastify";
 import { ZodError, z } from "zod";
 import { HttpError, type UserRow } from "./auth.js";
 import type { Config } from "./config.js";
+import { approvalRoutes, DecisionSchema } from "./routes/approvals.js";
 import { authRoutes } from "./routes/auth.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { crewRoutes } from "./routes/crew.js";
+import { mcpRoutes } from "./routes/mcp.js";
 import { providerRoutes } from "./routes/providers.js";
+import { skillRoutes } from "./routes/skills.js";
 import { settingsRoutes, usageRoutes } from "./routes/usage.js";
 import { userRoutes } from "./routes/users.js";
+import { watchRoutes } from "./routes/watches.js";
 import { createServices } from "./services.js";
 
 /** Routes reachable without signing in. */
@@ -27,6 +31,8 @@ const PUBLIC = new Set([
   "/api/setup",
   "/api/meta",
 ]);
+/** Prefixes reachable without signing in; each route checks its own credential (a token). */
+const PUBLIC_PREFIXES = ["/api/hooks/"];
 
 const ClientEventSchema = z.discriminatedUnion("type", [
   z.object({
@@ -35,11 +41,18 @@ const ClientEventSchema = z.discriminatedUnion("type", [
     text: z.string().max(100_000),
   }),
   z.object({ type: z.literal("abort"), conversationId: z.string().uuid() }),
+  z.object({ type: z.literal("approve"), approvalId: z.string(), decision: DecisionSchema }),
 ]);
 
 export async function buildApp(
   config: Config,
-  options: { modelRuntime?: ModelRuntime; extraProviders?: string[]; logger?: boolean } = {},
+  options: {
+    modelRuntime?: ModelRuntime;
+    extraProviders?: string[];
+    logger?: boolean;
+    /** Schedule watches (default on); tests run them by hand. */
+    watches?: boolean;
+  } = {},
 ) {
   const app = Fastify({
     logger: options.logger === false ? false : { level: process.env.LOG_LEVEL ?? "info" },
@@ -49,7 +62,12 @@ export async function buildApp(
   app.decorate("db", db);
   app.decorate("services", services);
   app.decorateRequest("user", null as unknown as UserRow);
+  app.addHook("onReady", async () => {
+    if (options.watches !== false) await services.watches.start();
+  });
   app.addHook("onClose", async () => {
+    await services.watches.stop();
+    services.approvals.close();
     await services.bridge.close();
     await close();
   });
@@ -73,6 +91,7 @@ export async function buildApp(
   app.addHook("onRequest", async (req) => {
     const path = req.url.split("?")[0] ?? "";
     if (!path.startsWith("/api/") || PUBLIC.has(path)) return;
+    if (PUBLIC_PREFIXES.some((p) => path.startsWith(p))) return;
     const user = await services.sessions.user(req);
     if (!user) throw new HttpError(401, "sign in first");
     req.user = user;
@@ -96,6 +115,10 @@ export async function buildApp(
   await conversationRoutes(app, services);
   await usageRoutes(app, services);
   await settingsRoutes(app, services);
+  await skillRoutes(app, services);
+  await approvalRoutes(app, services);
+  await watchRoutes(app, services);
+  await mcpRoutes(app, services);
 
   // The Bridge's live channel: streams crew replies and takes messages from the person.
   app.get("/api/ws", { websocket: true }, (socket, req) => {
@@ -112,6 +135,14 @@ export async function buildApp(
         event = ClientEventSchema.parse(JSON.parse(raw.toString()));
       } catch {
         send({ type: "error", message: "unrecognized message" });
+        return;
+      }
+      if (event.type === "approve") {
+        try {
+          services.approvals.decide(user.id, event.approvalId, event.decision);
+        } catch (err) {
+          send({ type: "error", message: (err as Error).message });
+        }
         return;
       }
       const run =

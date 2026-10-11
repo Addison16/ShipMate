@@ -28,7 +28,7 @@ export async function resetDatabase(url: string) {
 }
 
 /** A full app on a fresh database and data dir, with a scripted "faux/m" model. */
-export async function testApp(url: string) {
+export async function testApp(url: string, options: { watches?: boolean } = {}) {
   await resetDatabase(url);
   const dataDir = mkdtempSync(join(tmpdir(), "shipmate-test-"));
   const config = loadConfig({
@@ -47,6 +47,7 @@ export async function testApp(url: string) {
     modelRuntime,
     extraProviders: ["faux"],
     logger: false,
+    watches: options.watches ?? false,
   });
   await app.ready();
   return { app, faux, config };

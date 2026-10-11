@@ -14,6 +14,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { CREW_FILES } from "@shipmate/core";
+import { type ApprovalHost, approvalExtension } from "./approval.js";
 import type { CrewFolder } from "./folder.js";
 import { guardExtension } from "./guard.js";
 
@@ -40,8 +41,12 @@ export interface CreateCrewSessionOptions {
   customTools?: ToolDefinition[];
   /** MCP servers this crew member may use, already resolved from the catalog and the vault. */
   mcpServers?: Record<string, McpServerConfig>;
-  /** Phase 1 safety net; see guard.ts. Defaults to on with the shell allowed only for `auto`. */
-  guard?: false | { allowShell: boolean };
+  /** Keep file tools inside the crew folder (default on); see guard.ts. */
+  guard?: boolean;
+  /** Approval gates and audit (§13); without a host every tool call runs unasked. */
+  approvals?: () => ApprovalHost;
+  /** Instance- and user-wide skill folders to load besides the crew's own (readable, not writable). */
+  skillPaths?: string[];
 }
 
 export interface CrewSession {
@@ -85,11 +90,17 @@ export async function createCrewSession(options: CreateCrewSessionOptions): Prom
   if (!model) throw new Error(`crew ${crew.slug}: model ${crew.manifest.model} is not configured`);
 
   const extensionFactories: InlineExtension[] = [];
+  const skillPaths = options.skillPaths ?? [];
   if (options.guard !== false) {
-    const allowShell = options.guard?.allowShell ?? crew.manifest.approval === "auto";
     extensionFactories.push({
       name: "shipmate-guard",
-      factory: guardExtension({ root: crew.dir, allowShell }),
+      factory: guardExtension({ root: crew.dir, readable: skillPaths }),
+    });
+  }
+  if (options.approvals) {
+    extensionFactories.push({
+      name: "shipmate-approvals",
+      factory: approvalExtension({ manifest: crew.manifest, host: options.approvals }),
     });
   }
   const mcpServers = Object.entries(options.mcpServers ?? {});
@@ -111,7 +122,7 @@ export async function createCrewSession(options: CreateCrewSessionOptions): Prom
   const resourceLoader = new DefaultResourceLoader({
     cwd: crew.dir,
     agentDir,
-    additionalSkillPaths: [join(crew.dir, CREW_FILES.skillsDir)],
+    additionalSkillPaths: [join(crew.dir, CREW_FILES.skillsDir), ...skillPaths],
     additionalPromptTemplatePaths: [join(crew.dir, CREW_FILES.promptsDir)],
     extensionFactories,
     // Built-in MCP reads ~/.pi mcp.json; Shipmate supplies its own servers per crew member.

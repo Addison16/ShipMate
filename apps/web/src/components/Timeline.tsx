@@ -2,6 +2,7 @@ import type { MessageDto } from "@shipmate/core";
 import type { ReactNode } from "react";
 import { formatTime } from "../lib/format.js";
 import { type Handoff, messageHandoff, type TimelineItem, type ToolChip } from "../lib/timeline.js";
+import { ApprovalCard } from "./ApprovalCard.js";
 import { Markdown } from "./Markdown.js";
 import { cx } from "./ui.js";
 
@@ -148,6 +149,7 @@ export function TimelineView({ items, selfId }: { items: TimelineItem[]; selfId:
           return <MessageView key={it.key} message={it.message} selfId={selfId} />;
         }
         if (it.kind === "handoff") return <HandoffLine key={it.key} handoff={it} />;
+        if (it.kind === "approval") return <ApprovalCard key={it.key} approval={it.approval} />;
         return (
           <Bubble key={it.key} name={it.crew.name} mine={false} tools={it.tools} live={!it.done}>
             {it.text ? (

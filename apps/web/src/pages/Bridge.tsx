@@ -10,7 +10,9 @@ import {
   useState,
 } from "react";
 import { api, errorMessage } from "../api.js";
+import { useApprovals } from "../approvals.js";
 import { useUser } from "../auth.js";
+import { ApprovalCard } from "../components/ApprovalCard.js";
 import { TimelineView } from "../components/Timeline.js";
 import { Button, cx, ErrorText, focusRing } from "../components/ui.js";
 import { formatTime } from "../lib/format.js";
@@ -228,6 +230,13 @@ function Thread({
   const [renaming, setRenaming] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
+  const approvals = useApprovals();
+  // Pending approvals restored from the server (not seen arriving live) go at the end.
+  const restoredApprovals = approvals.pending.filter(
+    (a) =>
+      a.conversationId === conversationId &&
+      !state.items.some((it) => it.kind === "approval" && it.approval.id === a.id),
+  );
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useServerEvents((event) => dispatch({ type: "event", event }));
@@ -264,7 +273,7 @@ function Thread({
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [state.items]);
+  }, [state.items, restoredApprovals.length]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -383,12 +392,19 @@ function Thread({
       >
         <div className="mx-auto max-w-3xl">
           {loadError && <ErrorText>{loadError}</ErrorText>}
-          {state.items.length === 0 && !loadError && (
+          {state.items.length === 0 && restoredApprovals.length === 0 && !loadError && (
             <p className="py-10 text-center text-sm text-slate-500 dark:text-slate-400">
               No messages yet. Say hello.
             </p>
           )}
           <TimelineView items={state.items} selfId={user.id} />
+          {restoredApprovals.length > 0 && (
+            <div className="mt-4 space-y-4">
+              {restoredApprovals.map((a) => (
+                <ApprovalCard key={a.id} approval={a} />
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

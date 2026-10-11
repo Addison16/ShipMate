@@ -1,11 +1,18 @@
 import type {
+  ApprovalDecision,
+  ApprovalDto,
+  AuditEventDto,
   ConversationDto,
   CreateCrewRequest,
+  CreateCustomMcpRequest,
   CreateProviderRequest,
+  CreateSkillRequest,
   CreateUserRequest,
+  CreateWatchRequest,
   CrewDetailDto,
   CrewDto,
   LoginRequest,
+  McpServerDto,
   MemoryEntryDto,
   MeResponse,
   MessageDto,
@@ -14,11 +21,16 @@ import type {
   ProvidersResponse,
   SettingsDto,
   SetupRequest,
+  SkillDetailDto,
+  SkillDto,
   UpdateCrewRequest,
   UpdateProviderRequest,
   UpdateUserRequest,
+  UpdateWatchRequest,
   UsageResponse,
   UserDto,
+  WatchDto,
+  WatchRunDto,
 } from "@shipmate/core";
 
 /** An HTTP error from the server; `message` is the server's `{ error }` text when present. */
@@ -132,6 +144,54 @@ export const api = {
   getSettings: () => request<SettingsDto>("GET", "/api/settings"),
   updateSettings: (body: Partial<Pick<SettingsDto, "captainName" | "defaultModel">>) =>
     request<SettingsDto>("PUT", "/api/settings", body),
+
+  // skills
+  listSkills: () => request<{ skills: SkillDto[] }>("GET", "/api/skills"),
+  getSkill: (id: string) => request<{ skill: SkillDetailDto }>("GET", `/api/skills/${enc(id)}`),
+  createSkill: (body: CreateSkillRequest) =>
+    request<{ skill: SkillDetailDto }>("POST", "/api/skills", body),
+  updateSkill: (id: string, content: string) =>
+    request<{ skill: SkillDetailDto }>("PUT", `/api/skills/${enc(id)}`, { content }),
+  approveSkill: (id: string) =>
+    request<{ skill: SkillDetailDto }>("POST", `/api/skills/${enc(id)}/approve`),
+  deleteSkill: (id: string) => request<Ok>("DELETE", `/api/skills/${enc(id)}`),
+
+  // approvals and audit
+  listApprovals: () => request<{ approvals: ApprovalDto[] }>("GET", "/api/approvals"),
+  decideApproval: (id: string, decision: ApprovalDecision) =>
+    request<Ok>("POST", `/api/approvals/${enc(id)}`, { decision }),
+  audit: (q: { crew?: string; user?: string; before?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (q.crew) params.set("crew", q.crew);
+    if (q.user) params.set("user", q.user);
+    if (q.before) params.set("before", q.before);
+    if (q.limit) params.set("limit", String(q.limit));
+    const qs = params.toString();
+    return request<{ events: AuditEventDto[] }>("GET", `/api/audit${qs ? `?${qs}` : ""}`);
+  },
+
+  // watches
+  listWatches: () => request<{ watches: WatchDto[] }>("GET", "/api/watches"),
+  createWatch: (body: CreateWatchRequest) =>
+    request<{ watch: WatchDto }>("POST", "/api/watches", body),
+  updateWatch: (id: string, body: UpdateWatchRequest) =>
+    request<{ watch: WatchDto }>("PATCH", `/api/watches/${enc(id)}`, body),
+  deleteWatch: (id: string) => request<Ok>("DELETE", `/api/watches/${enc(id)}`),
+  runWatch: (id: string) => request<{ run: WatchRunDto }>("POST", `/api/watches/${enc(id)}/run`),
+  watchRuns: (id: string, limit = 20) =>
+    request<{ runs: WatchRunDto[] }>("GET", `/api/watches/${enc(id)}/runs?limit=${limit}`),
+
+  // MCP servers
+  listMcp: () => request<{ servers: McpServerDto[] }>("GET", "/api/mcp"),
+  installMcp: (id: string) =>
+    request<{ server: McpServerDto }>("POST", `/api/mcp/${enc(id)}/install`),
+  uninstallMcp: (id: string) => request<Ok>("DELETE", `/api/mcp/${enc(id)}`),
+  setMcpSecrets: (id: string, values: Record<string, string>) =>
+    request<{ server: McpServerDto }>("PUT", `/api/mcp/${enc(id)}/secrets`, { values }),
+  setMcpCrews: (id: string, crews: string[]) =>
+    request<{ server: McpServerDto }>("PUT", `/api/mcp/${enc(id)}/crews`, { crews }),
+  createCustomMcp: (body: CreateCustomMcpRequest) =>
+    request<{ server: McpServerDto }>("POST", "/api/mcp/custom", body),
 };
 
 export function errorMessage(err: unknown): string {

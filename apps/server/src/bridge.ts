@@ -69,6 +69,8 @@ interface Run {
   hosts: Map<string, TurnContext>;
   busy: boolean;
   aborted: boolean;
+  /** Usage rows being written; a turn is not over until they are stored. */
+  writes: Set<Promise<void>>;
   idleTimer?: NodeJS.Timeout;
 }
 
@@ -134,7 +136,7 @@ export class Bridge {
     let slug: string | null = null;
     if (kind === "direct") {
       if (!input.crewSlug) throw new HttpError(400, "a direct conversation needs crewSlug");
-      const row = await this.deps.crew.row(input.crewSlug);
+      const row = await this.deps.crew.assertVisible(input.crewSlug, user);
       crewMemberId = row.id;
       slug = row.slug;
     }
@@ -205,18 +207,24 @@ export class Bridge {
     const conv = await this.conversation(user, conversationId);
     const run = this.#run(conversationId);
     if (run.busy) throw new HttpError(409, "the crew is still answering the last message");
+    // Claim the run before any await, so two quick sends cannot both start a turn.
+    run.busy = true;
 
     if (user.monthlyCapCents !== null) {
-      const spent = await this.deps.usage.monthSpend(user.id);
-      if (spent >= user.monthlyCapCents * 10_000) {
-        throw new HttpError(
-          402,
-          "You have reached your monthly usage cap. An owner can raise it on the Users page.",
-        );
+      try {
+        const spent = await this.deps.usage.monthSpend(user.id);
+        if (spent >= user.monthlyCapCents * 10_000) {
+          throw new HttpError(
+            402,
+            "You have reached your monthly usage cap. An owner can raise it on the Users page.",
+          );
+        }
+      } catch (err) {
+        run.busy = false;
+        throw err;
       }
     }
 
-    run.busy = true;
     run.aborted = false;
     clearTimeout(run.idleTimer);
     this.emit(user.id, { type: "status", conversationId, busy: true });
@@ -237,7 +245,7 @@ export class Bridge {
 
       const slug = conv.kind === "direct" ? await this.#slugOf(conv.crewMemberId) : CAPTAIN_SLUG;
       if (!slug) throw new HttpError(410, "this crew member is no longer aboard");
-      await this.#assertActive(slug);
+      await this.#assertActive(slug, user);
       await this.#turn(user, conv, run, slug, content, {});
     } catch (err) {
       if (!run.aborted) {
@@ -279,7 +287,7 @@ export class Bridge {
     const run = this.#run(conversationId);
     run.busy = true;
     try {
-      await this.#assertActive(slug);
+      await this.#assertActive(slug, user);
       const text = await this.#turn(user, conv, run, slug, prompt, options);
       return { text, sessionFile: run.sessions.get(slug)?.sessionFile };
     } finally {
@@ -312,7 +320,7 @@ export class Bridge {
     let final = "";
 
     const host: CaptainHost = {
-      listCrew: () => this.#roster(),
+      listCrew: () => this.#roster(user),
       recruit: (spec) => this.#recruit(user, spec),
       edit: async (target, spec) => {
         const { persona, ...changes } = spec;
@@ -356,7 +364,7 @@ export class Bridge {
       delegate: async (target, task) => {
         if (target === slug) throw new Error("you cannot delegate to yourself");
         const to = this.deps.crew.folder(target);
-        await this.#assertActive(target);
+        await this.#assertActive(target, user);
         await this.#closeStream(conv, crewRow.id, stream);
         this.emit(user.id, {
           type: "handoff",
@@ -414,7 +422,16 @@ export class Bridge {
 
     const session = await this.#session(user, conv, run, folder, { captain: host, approvals });
     const unsubscribe = session.subscribe((event) => {
-      this.#onEvent(user, conv, crewRow.id, session.model, stream, event, options.watchId ?? null);
+      this.#onEvent(
+        user,
+        conv,
+        run,
+        crewRow.id,
+        session.model,
+        stream,
+        event,
+        options.watchId ?? null,
+      );
       if (event.type === "message_end" && event.message.role === "assistant") {
         const t = textOf(event.message);
         if (t) final = t;
@@ -427,6 +444,8 @@ export class Bridge {
     } finally {
       unsubscribe();
       await this.#closeStream(conv, crewRow.id, stream);
+      // Spend must be stored before the turn ends, or the next message could slip past a cap.
+      await Promise.all(run.writes);
       const file = session.sessionFile;
       if (file && conv.sessionFiles[slug] !== file) {
         conv.sessionFiles = { ...conv.sessionFiles, [slug]: file };
@@ -439,9 +458,22 @@ export class Bridge {
     return final;
   }
 
+  /** Store one model call's usage, retrying once; the turn waits for it (see #turn). */
+  #recordUsage(run: Run, ...args: Parameters<UsageService["record"]>) {
+    const write = this.deps.usage
+      .record(...args)
+      .catch(() => this.deps.usage.record(...args))
+      .catch((err: unknown) => {
+        console.error("shipmate: could not record usage", err);
+      })
+      .finally(() => run.writes.delete(write));
+    run.writes.add(write);
+  }
+
   #onEvent(
     user: UserRow,
     conv: ConversationRow,
+    run: Run,
     crewMemberId: string,
     model: Model<Api>,
     stream: Stream,
@@ -463,13 +495,12 @@ export class Bridge {
       case "message_end":
         if (event.message.role === "assistant") {
           if (stream.text && !stream.text.endsWith("\n\n")) stream.text += "\n\n";
-          void this.deps.usage
-            .record(
-              { userId: user.id, crewMemberId, conversationId: conv.id, routineId: watchId },
-              model,
-              event.message.usage,
-            )
-            .catch(() => {});
+          this.#recordUsage(
+            run,
+            { userId: user.id, crewMemberId, conversationId: conv.id, routineId: watchId },
+            model,
+            event.message.usage,
+          );
         }
         break;
       case "tool_execution_start":
@@ -622,7 +653,7 @@ export class Bridge {
       memory.contextFor(user.id),
     ];
     if (isCaptain) {
-      const roster = (await this.#roster())
+      const roster = (await this.#roster(user))
         .filter((c) => !c.captain && c.status !== "retired")
         .map(
           (c) =>
@@ -636,8 +667,8 @@ export class Bridge {
     return parts.join("\n");
   }
 
-  async #roster(): Promise<CrewSummary[]> {
-    return (await this.deps.crew.list()).map((c) => ({
+  async #roster(user: UserRow): Promise<CrewSummary[]> {
+    return (await this.deps.crew.list(false, user)).map((c) => ({
       slug: c.slug,
       name: c.name,
       role: c.role,
@@ -665,8 +696,8 @@ export class Bridge {
     return { ...d };
   }
 
-  async #assertActive(slug: string) {
-    const crew = (await this.deps.crew.list(true)).find((c) => c.slug === slug);
+  async #assertActive(slug: string, user: UserRow) {
+    const crew = (await this.deps.crew.list(true, user)).find((c) => c.slug === slug);
     if (!crew) throw new HttpError(404, `no crew member "${slug}"`);
     if (crew.status === "pending_review") {
       throw new HttpError(409, `${crew.name} is awaiting review on the Crew page before first use`);
@@ -724,6 +755,7 @@ export class Bridge {
       hosts: new Map(),
       busy: false,
       aborted: false,
+      writes: new Set(),
     };
     this.#runs.set(conversationId, run);
     return run;

@@ -10,7 +10,7 @@ import {
 } from "@shipmate/crew";
 import { crewMembers, type Db } from "@shipmate/db";
 import { eq } from "drizzle-orm";
-import { HttpError } from "../auth.js";
+import { atLeast, HttpError, type UserRow } from "../auth.js";
 
 type CrewRow = typeof crewMembers.$inferSelect;
 
@@ -70,11 +70,30 @@ export class CrewService {
     }
   }
 
-  async list(includeRetired = false): Promise<CrewDto[]> {
+  /**
+   * Shared crew are for everyone. A private crew member is for the person who created it;
+   * owners and admins still see it because they manage the crew.
+   */
+  canSee(viewer: UserRow, row: Pick<CrewRow, "visibility" | "ownerId">): boolean {
+    return (
+      row.visibility !== "private" || atLeast(viewer.role, "admin") || row.ownerId === viewer.id
+    );
+  }
+
+  /** 404 (not 403) for a private crew member, so its slug does not leak. */
+  async assertVisible(slug: string, viewer: UserRow): Promise<CrewRow> {
+    const row = await this.row(slug);
+    if (!this.canSee(viewer, row)) throw new HttpError(404, `no crew member "${slug}"`);
+    return row;
+  }
+
+  /** Every crew member, or only those `viewer` may see. */
+  async list(includeRetired = false, viewer?: UserRow): Promise<CrewDto[]> {
     const rows = new Map((await this.db.select().from(crewMembers)).map((r) => [r.slug, r]));
     const out: CrewDto[] = [];
     for (const folder of this.registry.list()) {
       const row = rows.get(folder.slug) ?? (await this.#mirror(folder));
+      if (viewer && !this.canSee(viewer, row)) continue;
       const dto = toDto(folder, row);
       if (includeRetired || dto.status !== "retired") out.push(dto);
     }
@@ -179,6 +198,7 @@ export class CrewService {
         status: status === "retired" ? "active" : (status ?? "active"),
         retiredAt: status === "retired" ? new Date() : null,
         createdById: extra.createdById ?? null,
+        ownerId: extra.createdById ?? null,
       })
       .onConflictDoUpdate({
         target: crewMembers.slug,

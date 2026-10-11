@@ -268,4 +268,49 @@ describe.skipIf(!db)("Shipmate phase 2: approvals, skills, watches, MCP, audit",
       expect.arrayContaining(["mcp.install", "mcp.custom", "mcp.uninstall"]),
     );
   });
+
+  it("hides private crew members from people who do not own them", async () => {
+    const created = await api("POST", "/api/crew", {
+      slug: "diary",
+      manifestYaml: "name: Diary\nrole: private journal\nmodel: faux/m\nvisibility: private",
+      persona: "# Diary",
+    });
+    expect(created.statusCode).toBe(200);
+    const theirs = (await api("GET", "/api/crew", undefined, memberCookie)).json().crew;
+    expect(theirs.map((c: { slug: string }) => c.slug)).not.toContain("diary");
+    expect((await api("GET", "/api/crew/diary", undefined, memberCookie)).statusCode).toBe(404);
+    expect((await api("GET", "/api/crew/diary/memory", undefined, memberCookie)).statusCode).toBe(
+      404,
+    );
+    expect(
+      (await api("POST", "/api/conversations", { kind: "direct", crewSlug: "diary" }, memberCookie))
+        .statusCode,
+    ).toBe(404);
+    expect((await api("GET", "/api/crew/diary")).statusCode).toBe(200);
+  });
+
+  it("applies account changes to open sockets and stores usage before a turn ends", async () => {
+    const users = (await api("GET", "/api/users")).json().users;
+    const kid = users.find((u: { role: string }) => u.role === "member");
+    const conv = (await api("POST", "/api/conversations", {}, memberCookie)).json().conversation;
+    const ws = await t.app.injectWS("/api/ws", { headers: { cookie: memberCookie } });
+    const events: ServerEvent[] = [];
+    ws.on("message", (raw: Buffer) => events.push(JSON.parse(raw.toString())));
+
+    t.faux.setResponses([fauxAssistantMessage("Hi.")]);
+    ws.send(JSON.stringify({ type: "send", conversationId: conv.id, text: "hello" }));
+    await until(() => events.some((e) => e.type === "status" && !e.busy));
+    const usage = (await api("GET", "/api/usage", undefined, memberCookie)).json();
+    expect(usage.totals.calls).toBe(1);
+
+    // A cap set after the socket opened still applies to it.
+    await api("PATCH", `/api/users/${kid.id}`, { monthlyCapCents: 0 });
+    events.length = 0;
+    ws.send(JSON.stringify({ type: "send", conversationId: conv.id, text: "again" }));
+    await until(() => events.some((e) => e.type === "error"));
+    expect(events.find((e) => e.type === "error")).toMatchObject({
+      message: expect.stringMatching(/monthly usage cap/),
+    });
+    ws.terminate();
+  });
 });

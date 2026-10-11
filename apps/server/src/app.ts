@@ -137,22 +137,32 @@ export async function buildApp(
         send({ type: "error", message: "unrecognized message" });
         return;
       }
-      if (event.type === "approve") {
-        try {
-          services.approvals.decide(user.id, event.approvalId, event.decision);
-        } catch (err) {
-          send({ type: "error", message: (err as Error).message });
-        }
-        return;
-      }
-      const run =
-        event.type === "send"
-          ? services.bridge.send(user, event.conversationId, event.text)
-          : services.bridge.abort(user, event.conversationId);
-      run.catch((err: Error) =>
-        send({ type: "error", conversationId: event.conversationId, message: err.message }),
+      void handle(event).catch((err: Error) =>
+        send({
+          type: "error",
+          ...("conversationId" in event ? { conversationId: event.conversationId } : {}),
+          message: err.message,
+        }),
       );
     });
+
+    // Reload the account for every message, so a changed role or cap (or a signed-out
+    // session) applies to sockets that are already open.
+    const handle = async (event: ClientEvent) => {
+      const current = await services.sessions.user(req);
+      if (!current || current.id !== user.id) {
+        send({ type: "error", message: "sign in again" });
+        socket.close();
+        return;
+      }
+      if (event.type === "approve") {
+        services.approvals.decide(current.id, event.approvalId, event.decision);
+      } else if (event.type === "send") {
+        await services.bridge.send(current, event.conversationId, event.text);
+      } else {
+        await services.bridge.abort(current, event.conversationId);
+      }
+    };
   });
 
   if (config.WEB_DIST && existsSync(config.WEB_DIST)) {

@@ -158,7 +158,7 @@ export class WatchService {
   }
 
   async create(user: UserRow, req: CreateWatchRequest): Promise<WatchDto> {
-    await this.#validate(req.crewSlug, req.trigger);
+    await this.#validate(user, req.crewSlug, req.trigger);
     const [w] = await this.db
       .insert(watches)
       .values({
@@ -195,7 +195,8 @@ export class WatchService {
       enabled: patch.enabled ?? w.enabled,
       session: patch.session ?? (w.session as "fresh" | "continue"),
     };
-    if (patch.crewSlug || patch.trigger) await this.#validate(next.crewSlug, next.trigger, id);
+    if (patch.crewSlug || patch.trigger)
+      await this.#validate(user, next.crewSlug, next.trigger, id);
     const [row] = await this.db
       .update(watches)
       .set({
@@ -330,8 +331,8 @@ export class WatchService {
 
   // ---------- helpers ----------
 
-  async #validate(crewSlug: string, trigger: WatchTrigger, selfId?: string) {
-    const crew = (await this.crew.list()).find((c) => c.slug === crewSlug);
+  async #validate(user: UserRow, crewSlug: string, trigger: WatchTrigger, selfId?: string) {
+    const crew = (await this.crew.list(false, user)).find((c) => c.slug === crewSlug);
     if (!crew) throw new HttpError(400, `no crew member "${crewSlug}"`);
     if (crew.status !== "active") throw new HttpError(400, `${crew.name} is not active`);
     if (trigger.kind === "cron") {

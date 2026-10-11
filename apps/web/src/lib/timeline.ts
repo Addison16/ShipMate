@@ -1,4 +1,4 @@
-import type { MessageDto, ServerEvent } from "@shipmate/core";
+import type { ApprovalDto, MessageDto, ServerEvent } from "@shipmate/core";
 
 /**
  * Pure state for one open conversation: persisted messages interleaved with live streams and
@@ -31,7 +31,9 @@ export type TimelineItem =
       tools: ToolChip[];
       done: boolean;
     }
-  | ({ kind: "handoff"; key: string } & Handoff);
+  | ({ kind: "handoff"; key: string } & Handoff)
+  /** An approval request, placed where it arrived; its live state lives in lib/approvals. */
+  | { kind: "approval"; key: string; approval: ApprovalDto };
 
 export interface TimelineState {
   conversationId: string | null;
@@ -111,6 +113,15 @@ export function timelineReducer(state: TimelineState, action: TimelineAction): T
 }
 
 function applyEvent(state: TimelineState, ev: ServerEvent): TimelineState {
+  if (ev.type === "approval_request") {
+    const a = ev.approval;
+    if (!a.conversationId || a.conversationId !== state.conversationId) return state;
+    if (state.items.some((it) => it.kind === "approval" && it.approval.id === a.id)) return state;
+    return {
+      ...state,
+      items: [...state.items, { kind: "approval", key: `a:${a.id}`, approval: a }],
+    };
+  }
   if (ev.type === "error") {
     if (ev.conversationId && ev.conversationId !== state.conversationId) return state;
     return { ...state, error: ev.message };

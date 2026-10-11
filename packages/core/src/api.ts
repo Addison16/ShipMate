@@ -251,11 +251,201 @@ export interface SettingsDto {
 }
 /** GET /api/settings → SettingsDto. PUT /api/settings (owner) Partial<captainName, defaultModel> → SettingsDto */
 
+// ---------- skills (phase 2) ----------
+
+export type SkillScope = "crew" | "user" | "instance";
+
+export interface SkillDto {
+  /** `<scope>:<owner>:<name>`, e.g. `crew:galley:weekly-meal-plan`, `instance:-:pdf-tools`. */
+  id: string;
+  name: string;
+  description: string;
+  scope: SkillScope;
+  /** Set for crew scope. */
+  crewSlug: string | null;
+  /** Set for user scope (only that person's sessions load it). */
+  ownerUserId: string | null;
+  /** Bot-made skills start pending and are not loaded until approved. */
+  status: "active" | "pending";
+  /** "user" when written by a person, else the slug of the crew member that wrote it. */
+  author: string;
+  updatedAt: string;
+}
+export interface SkillDetailDto extends SkillDto {
+  /** Full SKILL.md text, frontmatter included. */
+  content: string;
+}
+/**
+ * GET /api/skills → { skills: SkillDto[] } (user-scope skills: only the caller's own)
+ * GET /api/skills/:id → { skill: SkillDetailDto }
+ * POST /api/skills → { skill: SkillDetailDto } (crew and instance scope need admin)
+ * PUT /api/skills/:id { content } → { skill } (same permission as create)
+ * POST /api/skills/:id/approve → { skill } (admin, or the owner for user scope)
+ * DELETE /api/skills/:id → { ok: true }
+ */
+export interface CreateSkillRequest {
+  scope: SkillScope;
+  crewSlug?: string;
+  /** Full SKILL.md text; `name` and `description` frontmatter are required. */
+  content: string;
+}
+
+// ---------- approvals and audit (phase 2) ----------
+
+export type ApprovalDecision = "allow" | "deny" | "always";
+
+export interface ApprovalDto {
+  id: string;
+  /** Null for routine runs. */
+  conversationId: string | null;
+  routineId: string | null;
+  crew: { slug: string; name: string };
+  toolName: string;
+  /** One line for the card. */
+  summary: string;
+  /** The tool arguments, pretty-printed JSON, for "show details". */
+  detail: string;
+  createdAt: string;
+}
+/**
+ * Consequential tool calls (shell, sending, publishing, deleting, pushing, installing) pause
+ * until the person who started the turn decides. "always" adds the tool to the crew member's
+ * `allow` list in crew.yaml so it is not asked again.
+ *
+ * GET /api/approvals → { approvals: ApprovalDto[] } (the caller's pending ones)
+ * POST /api/approvals/:id { decision: ApprovalDecision } → { ok: true }
+ */
+
+export interface AuditEventDto {
+  id: string;
+  user: { id: string; name: string } | null;
+  crew: { slug: string; name: string } | null;
+  /** Tool name, or a Shipmate action like `crew.recruit`, `skill.approve`, `mcp.install`. */
+  action: string;
+  summary: string;
+  /** auto | approved | denied | blocked | always */
+  decision: string | null;
+  createdAt: string;
+}
+/**
+ * GET /api/audit?crew=<slug>&user=<id>&before=<iso>&limit=<n> → { events: AuditEventDto[] }
+ * newest first. Members see only their own events; owner and admin see everyone's.
+ */
+
+// ---------- watches (routines, phase 2) ----------
+
+export type WatchTrigger =
+  | { kind: "cron"; expression: string; timezone?: string }
+  | { kind: "interval"; everyMinutes: number }
+  | { kind: "webhook" }
+  | { kind: "after"; routineId: string };
+
+export interface WatchDto {
+  id: string;
+  name: string;
+  crewSlug: string;
+  trigger: WatchTrigger;
+  prompt: string;
+  enabled: boolean;
+  /** Continue the crew member's previous session for this watch, or start fresh each run. */
+  session: "fresh" | "continue";
+  owner: { id: string; name: string };
+  /** For webhook triggers: POST here to run it (contains a secret token). Owner only. */
+  webhookUrl: string | null;
+  lastRun: WatchRunDto | null;
+  nextRunAt: string | null;
+  createdAt: string;
+}
+export interface WatchRunDto {
+  id: string;
+  watchId: string;
+  status: "running" | "succeeded" | "failed" | "waiting_approval";
+  /** What started it: schedule, manual, webhook, after. */
+  cause: string;
+  startedAt: string;
+  finishedAt: string | null;
+  /** The crew member's final reply. */
+  output: string | null;
+  error: string | null;
+  costMicroUsd: number;
+  /** Full transcript: GET /api/conversations/:id/messages. */
+  conversationId: string | null;
+}
+/**
+ * GET /api/watches → { watches: WatchDto[] } (everyone's; shared crew)
+ * POST /api/watches → { watch } ; PATCH /api/watches/:id → { watch } (owner of the watch or admin)
+ * DELETE /api/watches/:id → { ok: true }
+ * POST /api/watches/:id/run → { run: WatchRunDto } (starts now, returns the running run)
+ * GET /api/watches/:id/runs?limit=n → { runs: WatchRunDto[] } newest first
+ * POST /api/hooks/watches/:id/:token → { run } (public webhook trigger; body text is appended
+ *   to the prompt)
+ */
+export interface CreateWatchRequest {
+  name: string;
+  crewSlug: string;
+  trigger: WatchTrigger;
+  prompt: string;
+  enabled?: boolean;
+  session?: "fresh" | "continue";
+}
+export type UpdateWatchRequest = Partial<CreateWatchRequest>;
+
+// ---------- MCP servers (phase 2) ----------
+
+export interface McpSecretDto {
+  env: string;
+  label: string;
+  required: boolean;
+  /** Whether a value is stored; values are never returned. */
+  set: boolean;
+}
+export interface McpServerDto {
+  id: string;
+  name: string;
+  description: string;
+  /** core = bundled; catalog = one-click install; custom = added by an owner. */
+  tier: "core" | "catalog" | "custom";
+  transport: "stdio" | "http";
+  command: string | null;
+  args: string[];
+  url: string | null;
+  /** Core servers are always installed. */
+  installed: boolean;
+  secrets: McpSecretDto[];
+  /** Ready to start: installed and every required secret set. */
+  ready: boolean;
+  /** Slugs of crew members whose crew.yaml lists it. */
+  crews: string[];
+  tags: string[];
+  homepage: string | null;
+}
+/**
+ * GET /api/mcp → { servers: McpServerDto[] } (any signed-in user)
+ * POST /api/mcp/:id/install (owner) → { server }   DELETE /api/mcp/:id (owner) → uninstall
+ *   (custom servers are removed; catalog ones are marked not installed)
+ * PUT /api/mcp/:id/secrets (owner) { values: Record<env, string> } → { server } ("" clears one)
+ * PUT /api/mcp/:id/crews (admin) { crews: string[] } → { server } (edits each crew.yaml mcp list)
+ * POST /api/mcp/custom (owner) CreateCustomMcpRequest → { server }
+ */
+export interface CreateCustomMcpRequest {
+  id: string;
+  name: string;
+  description?: string;
+  transport: "stdio" | "http";
+  command?: string;
+  args?: string[];
+  url?: string;
+  /** Env var names the server needs; values are set afterwards via /secrets. */
+  secrets?: Array<{ env: string; label?: string; required?: boolean }>;
+}
+
 // ---------- WebSocket: /api/ws ----------
 
 export type ClientEvent =
   | { type: "send"; conversationId: string; text: string }
-  | { type: "abort"; conversationId: string };
+  | { type: "abort"; conversationId: string }
+  /** Answer an approval_request (phase 2). */
+  | { type: "approve"; approvalId: string; decision: ApprovalDecision };
 
 export type ServerEvent =
   | { type: "hello"; version: string; userId: string }
@@ -292,4 +482,12 @@ export type ServerEvent =
   | { type: "status"; conversationId: string; busy: boolean }
   /** Crew roster changed (recruit, edit, retire); refetch /api/crew. */
   | { type: "crew_changed" }
-  | { type: "error"; conversationId?: string; message: string };
+  | { type: "error"; conversationId?: string; message: string }
+  /** A crew member wants to run a consequential tool; show a card with allow/deny/always. */
+  | { type: "approval_request"; approval: ApprovalDto }
+  /** Decided (here or on another tab); remove the card. */
+  | { type: "approval_resolved"; approvalId: string; decision: ApprovalDecision | "expired" }
+  /** Skill list changed (created, approved, deleted); refetch /api/skills. */
+  | { type: "skills_changed" }
+  /** A watch run started or finished; failures should surface as a notice. */
+  | { type: "watch_run"; watchName: string; run: WatchRunDto };

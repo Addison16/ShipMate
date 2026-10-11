@@ -16,12 +16,13 @@ const toMemoryDto = (e: MemoryEntry): MemoryEntryDto => ({
 
 export async function crewRoutes(app: FastifyInstance, s: Services) {
   app.get<{ Querystring: { all?: string } }>("/api/crew", async (req) => ({
-    crew: await s.crew.list(req.query.all === "1"),
+    crew: await s.crew.list(req.query.all === "1", req.user),
   }));
 
-  app.get<{ Params: { slug: string } }>("/api/crew/:slug", async (req) => ({
-    crew: await s.crew.detail(req.params.slug),
-  }));
+  app.get<{ Params: { slug: string } }>("/api/crew/:slug", async (req) => {
+    await s.crew.assertVisible(req.params.slug, req.user);
+    return { crew: await s.crew.detail(req.params.slug) };
+  });
 
   app.post("/api/crew", async (req) => {
     requireRole(req.user, "admin");
@@ -86,6 +87,7 @@ export async function crewRoutes(app: FastifyInstance, s: Services) {
   });
 
   app.get<{ Params: { slug: string } }>("/api/crew/:slug/memory", async (req) => {
+    await s.crew.assertVisible(req.params.slug, req.user);
     const memory = s.crew.memory(req.params.slug);
     return {
       shared: memory.list("shared").map(toMemoryDto),
@@ -98,6 +100,7 @@ export async function crewRoutes(app: FastifyInstance, s: Services) {
     async (req) => {
       const scope = z.enum(["shared", "user"]).parse(req.params.scope);
       if (scope === "shared") requireRole(req.user, "admin");
+      await s.crew.assertVisible(req.params.slug, req.user);
       const ok = s.crew.memory(req.params.slug).remove(scope, req.user.id, req.params.name);
       if (!ok) throw new HttpError(404, "memory not found");
       return { ok: true };

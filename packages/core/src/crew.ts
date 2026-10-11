@@ -25,6 +25,10 @@ export const CrewManifest = z.object({
   /** Skill slugs, resolved against crew, user and instance scopes in that order. */
   skills: z.array(z.string().min(1)).default([]),
   approval: ApprovalPolicy.default("ask"),
+  /** Tools this crew member may run without asking, added by "always allow" on an approval. */
+  allow: z.array(z.string().min(1)).default([]),
+  /** Load skills this crew member writes without waiting for a person to approve them. */
+  autoApproveSkills: z.boolean().default(false),
   visibility: z.enum(["shared", "private"]).default("shared"),
   /** Only the coordinator (the Captain by default) has this set. */
   captain: z.boolean().default(false),
@@ -38,6 +42,8 @@ export const CREW_FILES = {
   manifest: "crew.yaml",
   persona: "CREW.md",
   skillsDir: "skills",
+  /** Bot-made skills awaiting approval; pi does not load these. */
+  pendingSkillsDir: "skills-pending",
   memoryDir: "memory",
   promptsDir: "prompts",
   sessionsDir: "sessions",

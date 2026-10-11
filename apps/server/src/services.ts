@@ -1,14 +1,19 @@
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import type { ServerEvent } from "@shipmate/core";
 import type { Db } from "@shipmate/db";
 import { SecretVault } from "@shipmate/providers";
 import { SessionStore } from "./auth.js";
 import { Bridge } from "./bridge.js";
 import type { Config } from "./config.js";
+import { ApprovalService } from "./services/approvals.js";
+import { AuditService } from "./services/audit.js";
 import { CrewService } from "./services/crew.js";
 import { McpService } from "./services/mcp.js";
 import { ProviderService } from "./services/providers.js";
 import { SettingsService } from "./services/settings.js";
+import { SkillService } from "./services/skills.js";
 import { UsageService } from "./services/usage.js";
+import { WatchService } from "./services/watches.js";
 
 export interface Services {
   db: Db;
@@ -18,6 +23,10 @@ export interface Services {
   crew: CrewService;
   mcp: McpService;
   usage: UsageService;
+  approvals: ApprovalService;
+  audit: AuditService;
+  skills: SkillService;
+  watches: WatchService;
   bridge: Bridge;
 }
 
@@ -40,17 +49,28 @@ export async function createServices(
   const settings = new SettingsService(db);
   const providers = new ProviderService(db, vault, runtime, options.extraProviders);
   const crew = new CrewService(db, config.dirs.crew, config.TEMPLATES_DIR);
-  const mcp = new McpService(db, vault, config.SHIPMATE_MCP === "on");
+  const mcp = new McpService(db, vault, crew, config.SHIPMATE_MCP === "on");
   const usage = new UsageService(db);
-  const bridge = new Bridge({
+  const audit = new AuditService(db);
+  const skills = new SkillService(config.dirs.root, crew);
+  // Approvals reach people through the Bridge's sockets, which exist once the Bridge does.
+  let bridge: Bridge | undefined;
+  const emit = (userId: string, event: ServerEvent) => bridge?.emit(userId, event);
+  const approvals = new ApprovalService(emit);
+  bridge = new Bridge({
     db,
     crew,
     providers,
     mcp,
     settings,
     usage,
+    approvals,
+    audit,
+    skills,
     agentDir: config.dirs.pi,
   });
+  const watches = new WatchService(db, db.$client, crew, bridge, audit, emit, config.SHIPMATE_URL);
+  bridge.attachWatches(watches);
 
   const current = await settings.get();
   await crew.boot({ name: current.captainName });
@@ -64,6 +84,10 @@ export async function createServices(
     crew,
     mcp,
     usage,
+    approvals,
+    audit,
+    skills,
+    watches,
     bridge,
   };
 }

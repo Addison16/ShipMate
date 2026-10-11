@@ -334,6 +334,19 @@ function CrewDetail({ slug }: { slug: string }) {
               />
             )}
             {tab === "manifest" && (
+              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                Tool approvals are set here: <code className="font-mono">approval</code> (ask, auto,
+                or <code className="font-mono">never-for</code> a list of tools) and{" "}
+                <code className="font-mono">allow</code>, the tools this crew member may run without
+                asking. "Always allow" on an approval card adds to that list.
+              </p>
+            )}
+            {tab === "persona" && (
+              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                The approval policy and allow list are edited in the Manifest tab.
+              </p>
+            )}
+            {tab === "manifest" && (
               <FileEditor
                 key="manifest"
                 label="crew.yaml"

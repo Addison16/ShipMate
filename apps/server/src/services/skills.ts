@@ -1,6 +1,13 @@
 import type { SkillDetailDto, SkillDto } from "@shipmate/core";
-import { SkillError, type SkillRecord, type SkillScope, SkillStore } from "@shipmate/crew";
+import {
+  parseSkill,
+  SkillError,
+  type SkillRecord,
+  type SkillScope,
+  SkillStore,
+} from "@shipmate/crew";
 import { atLeast, HttpError, type UserRow } from "../auth.js";
+import type { CrewService } from "./crew.js";
 
 /**
  * Skills in three scopes. People write skills directly; crew members write them through
@@ -10,8 +17,11 @@ export class SkillService {
   readonly store: SkillStore;
   #listeners = new Set<() => void>();
 
-  constructor(dataDir: string, crewDir: string) {
-    this.store = new SkillStore(dataDir, crewDir);
+  constructor(
+    dataDir: string,
+    private readonly crew: CrewService,
+  ) {
+    this.store = new SkillStore(dataDir, crew.registry.root);
   }
 
   onChange(listener: () => void) {
@@ -27,17 +37,19 @@ export class SkillService {
     return [this.store.dirs("instance", null).active, this.store.dirs("user", userId).active];
   }
 
-  list(user: UserRow): SkillDto[] {
+  /** Skills `user` may see: instance skills, their own, and those of crew they can see. */
+  async list(user: UserRow): Promise<SkillDto[]> {
+    const crew = new Set((await this.crew.list(true, user)).map((c) => c.slug));
     return this.store
       .list()
-      .filter((s) => s.scope !== "user" || s.ownerUserId === user.id)
+      .filter((s) => visible(s, user, crew))
       .map(toDto);
   }
 
-  get(user: UserRow, id: string): SkillDetailDto {
+  async get(user: UserRow, id: string): Promise<SkillDetailDto> {
     const s = this.#wrap(() => this.store.get(id));
-    if (s.scope === "user" && s.ownerUserId !== user.id)
-      throw new HttpError(404, "skill not found");
+    const crew = new Set((await this.crew.list(true, user)).map((c) => c.slug));
+    if (!visible(s, user, crew)) throw new HttpError(404, "skill not found");
     return { ...toDto(s), content: s.content };
   }
 
@@ -56,11 +68,11 @@ export class SkillService {
     return { ...toDto(s), content: s.content };
   }
 
-  update(user: UserRow, id: string, content: string): SkillDetailDto {
-    const current = this.get(user, id);
+  async update(user: UserRow, id: string, content: string): Promise<SkillDetailDto> {
+    const current = await this.get(user, id);
     this.#owner(user, current.scope, current.crewSlug ?? undefined);
     const { name } = SkillStore.parseId(id);
-    if (!content.includes(`name: ${name}`)) {
+    if (this.#wrap(() => parseSkill(content)).name !== name) {
       throw new HttpError(400, `the frontmatter name must stay "${name}"`);
     }
     return this.write(user, current.scope, current.crewSlug ?? undefined, content);
@@ -82,16 +94,16 @@ export class SkillService {
     return s;
   }
 
-  approve(user: UserRow, id: string): SkillDetailDto {
-    const current = this.get(user, id);
+  async approve(user: UserRow, id: string): Promise<SkillDetailDto> {
+    const current = await this.get(user, id);
     this.#owner(user, current.scope, current.crewSlug ?? undefined);
     const s = this.#wrap(() => this.store.approve(id));
     this.#changed();
     return { ...toDto(s), content: s.content };
   }
 
-  remove(user: UserRow, id: string): void {
-    const current = this.get(user, id);
+  async remove(user: UserRow, id: string): Promise<void> {
+    const current = await this.get(user, id);
     this.#owner(user, current.scope, current.crewSlug ?? undefined);
     this.#wrap(() => this.store.remove(id));
     this.#changed();
@@ -103,6 +115,7 @@ export class SkillService {
     if (!atLeast(user.role, "admin")) throw new HttpError(403, "needs the admin role");
     if (scope === "crew") {
       if (!crewSlug) throw new HttpError(400, "crew skills need crewSlug");
+      this.crew.folder(crewSlug);
       return crewSlug;
     }
     return null;
@@ -116,6 +129,12 @@ export class SkillService {
       throw err;
     }
   }
+}
+
+function visible(s: SkillRecord, user: UserRow, crew: Set<string>): boolean {
+  if (s.scope === "user") return s.ownerUserId === user.id;
+  if (s.scope === "crew") return s.crewSlug !== null && crew.has(s.crewSlug);
+  return true;
 }
 
 function toDto(s: SkillRecord): SkillDto {

@@ -5,10 +5,10 @@ import type { Services } from "../services.js";
 const Content = z.string().min(1).max(200_000);
 
 export async function skillRoutes(app: FastifyInstance, s: Services) {
-  app.get("/api/skills", async (req) => ({ skills: s.skills.list(req.user) }));
+  app.get("/api/skills", async (req) => ({ skills: await s.skills.list(req.user) }));
 
   app.get<{ Params: { id: string } }>("/api/skills/:id", async (req) => ({
-    skill: s.skills.get(req.user, req.params.id),
+    skill: await s.skills.get(req.user, req.params.id),
   }));
 
   app.post("/api/skills", async (req) => {
@@ -24,11 +24,11 @@ export async function skillRoutes(app: FastifyInstance, s: Services) {
 
   app.put<{ Params: { id: string } }>("/api/skills/:id", async (req) => {
     const { content } = z.object({ content: Content }).parse(req.body);
-    return { skill: s.skills.update(req.user, req.params.id, content) };
+    return { skill: await s.skills.update(req.user, req.params.id, content) };
   });
 
   app.post<{ Params: { id: string } }>("/api/skills/:id/approve", async (req) => {
-    const skill = s.skills.approve(req.user, req.params.id);
+    const skill = await s.skills.approve(req.user, req.params.id);
     await s.audit.record({
       userId: req.user.id,
       crewMemberId: null,
@@ -40,7 +40,7 @@ export async function skillRoutes(app: FastifyInstance, s: Services) {
   });
 
   app.delete<{ Params: { id: string } }>("/api/skills/:id", async (req) => {
-    s.skills.remove(req.user, req.params.id);
+    await s.skills.remove(req.user, req.params.id);
     return { ok: true };
   });
 }

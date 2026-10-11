@@ -34,4 +34,5 @@ CREATE TABLE "watches" (
 ALTER TABLE "watch_runs" ADD CONSTRAINT "watch_runs_watch_id_watches_id_fk" FOREIGN KEY ("watch_id") REFERENCES "public"."watches"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "watch_runs" ADD CONSTRAINT "watch_runs_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "watches" ADD CONSTRAINT "watches_owner_id_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "watch_runs_watch_idx" ON "watch_runs" USING btree ("watch_id","started_at");
+CREATE INDEX "watch_runs_watch_idx" ON "watch_runs" USING btree ("watch_id","started_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "watch_runs_active_idx" ON "watch_runs" USING btree ("watch_id") WHERE "watch_runs"."status" in ('running', 'waiting_approval');

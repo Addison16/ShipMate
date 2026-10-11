@@ -47,7 +47,6 @@ const LEADER_LOCK = 0x5348_4950;
  */
 export class WatchService {
   #jobs = new Map<string, { stop: () => void; next: () => Date | null }>();
-  #running = new Set<string>();
   #leader: postgres.ReservedSql | null = null;
   #leaderTimer: NodeJS.Timeout | undefined;
   #stopped = false;
@@ -136,25 +135,25 @@ export class WatchService {
 
   // ---------- CRUD ----------
 
-  async list(): Promise<WatchDto[]> {
+  async list(viewer: UserRow): Promise<WatchDto[]> {
     const rows = await this.db
       .select({ w: watches, ownerName: users.displayName })
       .from(watches)
       .innerJoin(users, eq(users.id, watches.ownerId))
       .orderBy(watches.createdAt);
     const out: WatchDto[] = [];
-    for (const r of rows) out.push(await this.#dto(r.w, r.ownerName));
+    for (const r of rows) out.push(await this.#dto(r.w, r.ownerName, viewer));
     return out;
   }
 
-  async get(id: string): Promise<WatchDto> {
+  async get(id: string, viewer: UserRow): Promise<WatchDto> {
     const [r] = await this.db
       .select({ w: watches, ownerName: users.displayName })
       .from(watches)
       .innerJoin(users, eq(users.id, watches.ownerId))
       .where(eq(watches.id, id));
     if (!r) throw new HttpError(404, "watch not found");
-    return this.#dto(r.w, r.ownerName);
+    return this.#dto(r.w, r.ownerName, viewer);
   }
 
   async create(user: UserRow, req: CreateWatchRequest): Promise<WatchDto> {
@@ -182,7 +181,7 @@ export class WatchService {
       decision: null,
       detail: req,
     });
-    return this.get(w.id);
+    return this.get(w.id, user);
   }
 
   async update(user: UserRow, id: string, patch: Partial<CreateWatchRequest>): Promise<WatchDto> {
@@ -206,7 +205,7 @@ export class WatchService {
       .where(eq(watches.id, id))
       .returning();
     if (row) this.#schedule(row);
-    return this.get(id);
+    return this.get(id, user);
   }
 
   async remove(user: UserRow, id: string): Promise<void> {
@@ -247,37 +246,57 @@ export class WatchService {
   async run(id: string, cause: string, extra?: string): Promise<WatchRunDto> {
     const [w] = await this.db.select().from(watches).where(eq(watches.id, id));
     if (!w) throw new HttpError(404, "watch not found");
-    if (this.#running.has(id)) throw new HttpError(409, "this watch is already running");
     const [owner] = await this.db.select().from(users).where(eq(users.id, w.ownerId));
     if (!owner) throw new HttpError(410, "the owner of this watch is gone");
     const crewRow = await this.crew.row(w.crewSlug);
 
-    this.#running.add(id);
-    const [conv] = await this.db
-      .insert(conversations)
-      .values({
-        userId: owner.id,
-        kind: "direct",
-        surface: "watch",
-        crewMemberId: crewRow.id,
-        title: `${w.name} (${new Date().toISOString().slice(0, 16).replace("T", " ")})`,
-        sessionFiles:
-          w.session === "continue" && w.sessionFile ? { [w.crewSlug]: w.sessionFile } : {},
-      })
-      .returning();
-    if (!conv) throw new Error("insert failed");
-    const [run] = await this.db
-      .insert(watchRuns)
-      .values({ watchId: id, cause, conversationId: conv.id })
-      .returning();
+    // Claim the watch first: the partial unique index on active runs lets only one start,
+    // across every Shipmate process.
+    let run: RunRow | undefined;
+    try {
+      [run] = await this.db.insert(watchRuns).values({ watchId: id, cause }).returning();
+    } catch (err) {
+      if (isUniqueViolation(err)) throw new HttpError(409, "this watch is already running");
+      throw err;
+    }
     if (!run) throw new Error("insert failed");
+    const runId = run.id;
+    let conversationId: string;
+    try {
+      const [conv] = await this.db
+        .insert(conversations)
+        .values({
+          userId: owner.id,
+          kind: "direct",
+          surface: "watch",
+          crewMemberId: crewRow.id,
+          title: `${w.name} (${new Date().toISOString().slice(0, 16).replace("T", " ")})`,
+          sessionFiles:
+            w.session === "continue" && w.sessionFile ? { [w.crewSlug]: w.sessionFile } : {},
+        })
+        .returning();
+      if (!conv) throw new Error("insert failed");
+      conversationId = conv.id;
+      [run] = await this.db
+        .update(watchRuns)
+        .set({ conversationId })
+        .where(eq(watchRuns.id, runId))
+        .returning();
+      if (!run) throw new Error("update failed");
+    } catch (err) {
+      await this.db
+        .update(watchRuns)
+        .set({ status: "failed", error: (err as Error).message, finishedAt: new Date() })
+        .where(eq(watchRuns.id, runId));
+      throw err;
+    }
     const started = await this.#runDto(run);
     this.emit(owner.id, { type: "watch_run", watchName: w.name, run: started });
 
     const prompt = extra?.trim()
       ? `${w.prompt}\n\n---\nWebhook payload:\n${extra.slice(0, 20_000)}`
       : w.prompt;
-    void this.#execute(w, owner, conv.id, run.id, prompt);
+    void this.#execute(w, owner, conversationId, runId, prompt);
     return started;
   }
 
@@ -310,8 +329,6 @@ export class WatchService {
     } catch (err) {
       status = "failed";
       error = err instanceof Error ? err.message : String(err);
-    } finally {
-      this.#running.delete(w.id);
     }
     const [run] = await this.db
       .update(watchRuns)
@@ -347,8 +364,20 @@ export class WatchService {
     }
     if (trigger.kind === "after") {
       if (trigger.routineId === selfId) throw new HttpError(400, "a watch cannot follow itself");
-      const [other] = await this.db.select().from(watches).where(eq(watches.id, trigger.routineId));
-      if (!other) throw new HttpError(400, "the watch to follow does not exist");
+      const all = new Map((await this.db.select().from(watches)).map((x) => [x.id, x]));
+      if (!all.has(trigger.routineId)) {
+        throw new HttpError(400, "the watch to follow does not exist");
+      }
+      // Each watch follows at most one other, so walking the chain finds any loop.
+      if (selfId) {
+        let cursor: string | undefined = trigger.routineId;
+        for (let i = 0; cursor && i <= all.size; i++) {
+          if (cursor === selfId)
+            throw new HttpError(400, "these watches would follow each other in a loop");
+          const t = all.get(cursor)?.trigger as WatchTrigger | undefined;
+          cursor = t?.kind === "after" ? t.routineId : undefined;
+        }
+      }
     }
   }
 
@@ -361,7 +390,7 @@ export class WatchService {
     return w;
   }
 
-  async #dto(w: WatchRow, ownerName: string): Promise<WatchDto> {
+  async #dto(w: WatchRow, ownerName: string, viewer: UserRow): Promise<WatchDto> {
     const [last] = await this.db
       .select()
       .from(watchRuns)
@@ -379,8 +408,9 @@ export class WatchService {
       enabled: w.enabled,
       session: w.session === "continue" ? "continue" : "fresh",
       owner: { id: w.ownerId, name: ownerName },
+      // The URL is the webhook's credential, so only the owner sees it.
       webhookUrl:
-        trigger.kind === "webhook"
+        trigger.kind === "webhook" && viewer.id === w.ownerId
           ? `${this.baseUrl.replace(/\/+$/, "")}/api/hooks/watches/${w.id}/${w.webhookToken}`
           : null,
       lastRun: last ? await this.#runDto(last) : null,
@@ -418,4 +448,10 @@ function safeEqual(a: string, b: string) {
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return diff === 0;
+}
+
+/** Postgres unique_violation, possibly wrapped by drizzle. */
+function isUniqueViolation(err: unknown): boolean {
+  const e = err as { code?: string; cause?: { code?: string } };
+  return e?.code === "23505" || e?.cause?.code === "23505";
 }

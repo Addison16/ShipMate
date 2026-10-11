@@ -14,10 +14,10 @@ const Watch = z.object({
 });
 
 export async function watchRoutes(app: FastifyInstance, s: Services) {
-  app.get("/api/watches", async () => ({ watches: await s.watches.list() }));
+  app.get("/api/watches", async (req) => ({ watches: await s.watches.list(req.user) }));
 
   app.get<{ Params: { id: string } }>("/api/watches/:id", async (req) => ({
-    watch: await s.watches.get(req.params.id),
+    watch: await s.watches.get(req.params.id, req.user),
   }));
 
   app.post("/api/watches", async (req) => ({

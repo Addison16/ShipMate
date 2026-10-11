@@ -210,19 +210,11 @@ export class Bridge {
     // Claim the run before any await, so two quick sends cannot both start a turn.
     run.busy = true;
 
-    if (user.monthlyCapCents !== null) {
-      try {
-        const spent = await this.deps.usage.monthSpend(user.id);
-        if (spent >= user.monthlyCapCents * 10_000) {
-          throw new HttpError(
-            402,
-            "You have reached your monthly usage cap. An owner can raise it on the Users page.",
-          );
-        }
-      } catch (err) {
-        run.busy = false;
-        throw err;
-      }
+    try {
+      await this.#checkCap(user);
+    } catch (err) {
+      run.busy = false;
+      throw err;
     }
 
     run.aborted = false;
@@ -287,6 +279,7 @@ export class Bridge {
     const run = this.#run(conversationId);
     run.busy = true;
     try {
+      await this.#checkCap(user);
       await this.#assertActive(slug, user);
       const text = await this.#turn(user, conv, run, slug, prompt, options);
       return { text, sessionFile: run.sessions.get(slug)?.sessionFile };
@@ -456,6 +449,18 @@ export class Bridge {
       }
     }
     return final;
+  }
+
+  /** Refuse a turn once the person has spent their monthly cap (watch runs count too). */
+  async #checkCap(user: UserRow) {
+    if (user.monthlyCapCents === null) return;
+    const spent = await this.deps.usage.monthSpend(user.id);
+    if (spent >= user.monthlyCapCents * 10_000) {
+      throw new HttpError(
+        402,
+        "You have reached your monthly usage cap. An owner can raise it on the Users page.",
+      );
+    }
   }
 
   /** Store one model call's usage, retrying once; the turn waits for it (see #turn). */

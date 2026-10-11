@@ -1,4 +1,4 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
@@ -9,6 +9,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -216,7 +217,13 @@ export const watchRuns = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
   },
-  (t) => [index("watch_runs_watch_idx").on(t.watchId, t.startedAt)],
+  (t) => [
+    index("watch_runs_watch_idx").on(t.watchId, t.startedAt),
+    // At most one active run per watch, enforced by Postgres so it holds across processes.
+    uniqueIndex("watch_runs_active_idx")
+      .on(t.watchId)
+      .where(sql`${t.status} in ('running', 'waiting_approval')`),
+  ],
 );
 
 /** Installed catalog servers and custom servers. Core servers need no row. */

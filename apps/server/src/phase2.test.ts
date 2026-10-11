@@ -313,4 +313,88 @@ describe.skipIf(!db)("Shipmate phase 2: approvals, skills, watches, MCP, audit",
     });
     ws.terminate();
   });
+
+  it("keeps webhook URLs, private crew skills and watch loops in check", async () => {
+    const watches = (await api("GET", "/api/watches", undefined, memberCookie)).json().watches;
+    const hook = watches.find((w: { name: string }) => w.name === "On deploy");
+    expect(hook.webhookUrl).toBeNull();
+    const own = (await api("GET", "/api/watches")).json().watches;
+    expect(own.find((w: { name: string }) => w.name === "On deploy").webhookUrl).toMatch(/hooks/);
+
+    const brief = own.find((w: { name: string }) => w.name === "Morning brief");
+    const follower = (
+      await api("POST", "/api/watches", {
+        name: "Follow-up",
+        crewSlug: "captain",
+        prompt: "Follow up.",
+        trigger: { kind: "after", routineId: brief.id },
+      })
+    ).json().watch;
+    const loop = await api("PATCH", `/api/watches/${brief.id}`, {
+      trigger: { kind: "after", routineId: follower.id },
+    });
+    expect(loop.statusCode).toBe(400);
+    expect(loop.json().error).toMatch(/loop/);
+
+    const skill = await api("POST", "/api/skills", {
+      scope: "crew",
+      crewSlug: "diary",
+      content: "---\nname: entries\ndescription: how to write entries\n---\nDate first.",
+    });
+    expect(skill.statusCode).toBe(200);
+    const id = skill.json().skill.id;
+    const theirs = (await api("GET", "/api/skills", undefined, memberCookie)).json().skills;
+    expect(theirs.map((x: { id: string }) => x.id)).not.toContain(id);
+    expect((await api("GET", `/api/skills/${id}`, undefined, memberCookie)).statusCode).toBe(404);
+
+    const renamed = await api("PUT", `/api/skills/${id}`, {
+      content: "---\nname: other\ndescription: d\n---\nname: entries",
+    });
+    expect(renamed.statusCode).toBe(400);
+    const quoted = await api("PUT", `/api/skills/${id}`, {
+      content: '---\nname: "entries"\ndescription: d\n---\nUpdated.',
+    });
+    expect(quoted.statusCode).toBe(200);
+  });
+
+  it("starts a watch once when two runs race, and applies the owner's cap", async () => {
+    const watch = (
+      await api("POST", "/api/watches", {
+        name: "Race",
+        crewSlug: "captain",
+        prompt: "Go.",
+        trigger: { kind: "webhook" },
+      })
+    ).json().watch;
+    t.faux.setResponses([fauxAssistantMessage("Once.")]);
+    const [a, b] = await Promise.all([
+      api("POST", `/api/watches/${watch.id}/run`),
+      api("POST", `/api/watches/${watch.id}/run`),
+    ]);
+    expect([a.statusCode, b.statusCode].sort()).toEqual([200, 409]);
+    await until(async () => {
+      const r = (await api("GET", `/api/watches/${watch.id}/runs`)).json().runs[0];
+      return r.status !== "running";
+    });
+
+    // The member's cap is 0 (set in an earlier test), so their watch runs fail.
+    const capped = (
+      await api(
+        "POST",
+        "/api/watches",
+        { name: "Capped", crewSlug: "captain", prompt: "Go.", trigger: { kind: "webhook" } },
+        memberCookie,
+      )
+    ).json().watch;
+    await api("POST", `/api/watches/${capped.id}/run`, undefined, memberCookie);
+    let run = { status: "running", error: null as string | null };
+    await until(async () => {
+      run = (await api("GET", `/api/watches/${capped.id}/runs`)).json().runs[0];
+      return run.status !== "running";
+    });
+    expect(run).toMatchObject({
+      status: "failed",
+      error: expect.stringMatching(/monthly usage cap/),
+    });
+  });
 });

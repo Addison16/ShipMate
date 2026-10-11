@@ -1,5 +1,5 @@
 {
-  "id": "d55d44f5-847a-4c97-ad4e-67f296d6fd80",
+  "id": "dfb1919d-1115-4c29-9470-aa8b54c485d0",
   "prevId": "aaa9766a-28dc-4df9-ae93-1e61f7b7b33a",
   "version": "7",
   "dialect": "postgresql",
@@ -1038,6 +1038,22 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "watch_runs_active_idx": {
+          "name": "watch_runs_active_idx",
+          "columns": [
+            {
+              "expression": "watch_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"watch_runs\".\"status\" in ('running', 'waiting_approval')",
           "concurrently": false,
           "method": "btree",
           "with": {}

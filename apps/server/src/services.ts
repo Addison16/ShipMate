@@ -52,7 +52,7 @@ export async function createServices(
   const mcp = new McpService(db, vault, crew, config.SHIPMATE_MCP === "on");
   const usage = new UsageService(db);
   const audit = new AuditService(db);
-  const skills = new SkillService(config.dirs.root, config.dirs.crew);
+  const skills = new SkillService(config.dirs.root, crew);
   // Approvals reach people through the Bridge's sockets, which exist once the Bridge does.
   let bridge: Bridge | undefined;
   const emit = (userId: string, event: ServerEvent) => bridge?.emit(userId, event);

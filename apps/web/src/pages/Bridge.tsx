@@ -585,9 +585,14 @@ function Thread({
                 disabled={state.busy && handsFree}
                 onError={setSendError}
                 onText={(heard) => {
-                  if (handsFree) send(undefined, heard);
-                  else setText((t) => (t.trim() ? `${t.trimEnd()} ${heard}` : heard));
-                  if (!handsFree) inputRef.current?.focus();
+                  // Hands-free sends right away, unless it cannot yet (a file still uploading,
+                  // the crew still answering): then the words wait in the composer, not lost.
+                  if (handsFree && !state.busy && !files.uploading) {
+                    send(undefined, heard);
+                    return;
+                  }
+                  setText((t) => (t.trim() ? `${t.trimEnd()} ${heard}` : heard));
+                  inputRef.current?.focus();
                 }}
               />
             )}

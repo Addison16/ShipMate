@@ -237,6 +237,12 @@ export function MicButton({
 }) {
   const [state, setState] = useState<MicState>("idle");
   const stopRef = useRef<(() => void) | null>(null);
+  // A recording outlives the render that started it: hand the text to the current callbacks,
+  // which see the composer as it is now (files attached or finished uploading meanwhile).
+  const onTextRef = useRef(onText);
+  const onErrorRef = useRef(onError);
+  onTextRef.current = onText;
+  onErrorRef.current = onError;
 
   useEffect(() => () => stopRef.current?.(), []);
 
@@ -253,7 +259,9 @@ export function MicButton({
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      onError("Shipmate needs microphone access. Allow it in the browser's site settings.");
+      onErrorRef.current(
+        "Shipmate needs microphone access. Allow it in the browser's site settings.",
+      );
       return;
     }
     const type = recorderType((t) => MediaRecorder.isTypeSupported(t));
@@ -278,10 +286,10 @@ export function MicButton({
       setState("transcribing");
       try {
         const text = await voiceApi.transcribe(audio);
-        if (text) onText(text);
-        else onError("Didn't catch that. Try again a little closer to the mic.");
+        if (text) onTextRef.current(text);
+        else onErrorRef.current("Didn't catch that. Try again a little closer to the mic.");
       } catch (err) {
-        onError(errorMessage(err));
+        onErrorRef.current(errorMessage(err));
       } finally {
         setState("idle");
       }
@@ -307,7 +315,7 @@ export function MicButton({
     };
     r.onerror = (e) => {
       if (e.error !== "no-speech" && e.error !== "aborted") {
-        onError(
+        onErrorRef.current(
           e.error === "not-allowed"
             ? "Shipmate needs microphone access. Allow it in the browser's site settings."
             : `Speech recognition failed (${e.error}).`,
@@ -317,7 +325,7 @@ export function MicButton({
     r.onend = () => {
       stopRef.current = null;
       setState("idle");
-      if (heard) onText(heard);
+      if (heard) onTextRef.current(heard);
     };
     stopRef.current = () => r.stop();
     r.start();

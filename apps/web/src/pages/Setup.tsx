@@ -1,10 +1,13 @@
 import type { InstallStartersResponse, UserDto } from "@shipmate/core";
+import type { UserDto } from "@shipmate/core";
 import { type FormEvent, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { useAuth } from "../auth.js";
 import { AuthLayout } from "../components/AuthLayout.js";
 import { StarterCrewPicker } from "../components/StarterCrewPicker.js";
 import { Button, ErrorText, Notice, TextField } from "../components/ui.js";
+import { LocalAiCard } from "../components/LocalAiCard.js";
+import { Button, ErrorText, TextField } from "../components/ui.js";
 import { navigate } from "../router.js";
 
 export function SetupPage() {
@@ -66,6 +69,15 @@ export function SetupPage() {
       </AuthLayout>
     );
   }
+  // Step 2: the owner exists and is signed in; offer a local model before entering the app.
+  const [owner, setOwner] = useState<UserDto | null>(null);
+  const [modelRef, setModelRef] = useState<string | null>(null);
+
+  const enter = () => {
+    if (!owner) return;
+    navigate("/bridge");
+    setUser(owner);
+  };
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -89,6 +101,22 @@ export function SetupPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (owner) {
+    return (
+      <AuthLayout
+        title="Pick a model"
+        subtitle="The crew needs a model to think with. Run one locally with Ollama, no API key needed, or skip this and add a provider (an API key or a subscription sign-in) on the Providers page."
+      >
+        <div className="space-y-4">
+          <LocalAiCard heading={false} onUsed={setModelRef} />
+          <Button variant={modelRef ? "primary" : "secondary"} className="w-full" onClick={enter}>
+            {modelRef ? "Go to the Bridge" : "Skip for now"}
+          </Button>
+        </div>
+      </AuthLayout>
+    );
   }
 
   return (

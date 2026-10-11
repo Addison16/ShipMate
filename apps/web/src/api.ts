@@ -26,6 +26,8 @@ import type {
   ListDetailDto,
   ListDto,
   ListKind,
+  LocalAiStatusDto,
+  LocalModelPullDto,
   LoginRequest,
   McpServerDto,
   MemoryEntryDto,
@@ -136,6 +138,17 @@ export const api = {
   probeProvider: (id: string) =>
     request<{ models: string[] }>("POST", `/api/providers/${enc(id)}/probe`),
   listModels: () => request<{ models: ModelOption[] }>("GET", "/api/models"),
+
+  // local models (Ollama)
+  localAi: (url?: string) =>
+    request<{ localAi: LocalAiStatusDto }>("GET", `/api/local-ai${url ? `?url=${enc(url)}` : ""}`),
+  pullLocalModel: (model: string, url?: string) =>
+    request<{ pull: LocalModelPullDto }>("POST", "/api/local-ai/pull", {
+      model,
+      ...(url ? { url } : {}),
+    }),
+  setUpLocalModel: (body: { model: string; url?: string; makeDefault?: boolean }) =>
+    request<{ provider: ProviderDto; settings: SettingsDto }>("POST", "/api/local-ai/use", body),
 
   // crew
   listCrew: (all = false) => request<{ crew: CrewDto[] }>("GET", `/api/crew${all ? "?all=1" : ""}`),

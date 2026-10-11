@@ -83,6 +83,13 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   `DOCKER_CERT_PATH`. **Test connection** says which engine answered or why it did not. The
   "Code cannot run right now" notice explains the options; see
   [docs/shipyard.md](docs/shipyard.md).
+- **Bundled local models**: an optional Ollama service in `docker-compose.yml`, off by default.
+  `docker compose --profile local-ai up -d` starts it and downloads a small starter model, so
+  Shipmate runs with no API key at all. First-run setup and **Providers → Local model** find
+  the Ollama server (address configurable, `SHIPMATE_OLLAMA_URL`), suggest a few small models
+  that handle tools, download one with live progress, and set it up as the Ollama provider and
+  the default model in one click. NAS templates and [docs/local-models.md](docs/local-models.md)
+  cover running it on Unraid and TrueNAS and with a GPU.
 - **Cost page for local models**: every model call now records how long the model took to
   answer. The Cost page shows average and p95 response time per person, crew member, watch and
   model, and the daily chart switches between cost, tokens and response time. When a month ran

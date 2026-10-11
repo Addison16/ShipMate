@@ -4,6 +4,7 @@ import { api, errorMessage } from "../api.js";
 import { useUser } from "../auth.js";
 import { ChatGptCard } from "../components/ChatGptCard.js";
 import { ClaudeCliCard } from "../components/ClaudeCliCard.js";
+import { LocalAiCard } from "../components/LocalAiCard.js";
 import {
   Badge,
   Button,
@@ -79,6 +80,11 @@ export function ProvidersPage() {
       </div>
 
       <div className="mt-4">
+        {owner && (
+          <div className="mb-4">
+            <LocalAiCard onUsed={() => void reloadAll()} />
+          </div>
+        )}
         <div className="mb-4">
           <ChatGptCard onChanged={reloadAll} />
         </div>

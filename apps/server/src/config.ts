@@ -16,6 +16,11 @@ const Env = z.object({
   TEMPLATES_DIR: z.string().optional(),
   /** "off" skips starting MCP servers for crew sessions (tests, air-gapped installs). */
   SHIPMATE_MCP: z.enum(["on", "off"]).default("on"),
+  /** Ollama server to look for first (docker-compose's optional `ollama` service). */
+  SHIPMATE_OLLAMA_URL: z.preprocess(
+    (v) => (v === "" ? undefined : v),
+    z.string().url().default("http://ollama:11434"),
+  ),
 });
 
 export type Config = ReturnType<typeof loadConfig>;

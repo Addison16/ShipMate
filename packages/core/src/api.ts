@@ -125,6 +125,58 @@ export interface UpdateProviderRequest {
  * `<baseUrl>/models` and saves the result on the provider.
  */
 
+// ---------- local models (Ollama) ----------
+
+export interface LocalModelDto {
+  /** Ollama model name with its tag, e.g. "qwen3:4b". */
+  name: string;
+  sizeBytes: number | null;
+}
+export interface RecommendedModelDto {
+  name: string;
+  /** Approximate download size, e.g. "2.5 GB". */
+  size: string;
+  /** One line on what it is good for and what it needs. */
+  note: string;
+}
+export interface LocalModelPullDto {
+  model: string;
+  status: "pulling" | "done" | "failed";
+  /** Ollama's latest status line ("pulling manifest", "verifying sha256 digest", ...). */
+  detail: string;
+  completedBytes: number;
+  /** 0 until Ollama reports the layer sizes. */
+  totalBytes: number;
+  error: string | null;
+  startedAt: string;
+}
+export interface LocalAiStatusDto {
+  /** The Ollama server checked (its root URL, without /v1). */
+  url: string;
+  reachable: boolean;
+  /** Ollama's version when reachable. */
+  version: string | null;
+  /** Why it is not reachable, in plain words. */
+  error: string | null;
+  installed: LocalModelDto[];
+  recommended: RecommendedModelDto[];
+  /** The Ollama provider row, once Ollama is set up as a provider. */
+  providerId: string | null;
+  defaultModel: string;
+  /** Pulls running now or finished in the last few minutes. */
+  pulls: LocalModelPullDto[];
+}
+/**
+ * The bundled Ollama service (docker compose --profile local-ai) or any Ollama server.
+ * GET /api/local-ai?url= (owner) → { localAi: LocalAiStatusDto } (url defaults to the Ollama
+ *   provider's server, else SHIPMATE_OLLAMA_URL, else http://ollama:11434)
+ * POST /api/local-ai/pull (owner) { url?, model } → { pull: LocalModelPullDto } (runs in the
+ *   background; poll GET /api/local-ai for progress)
+ * POST /api/local-ai/use (owner) { url?, model, makeDefault? } → { provider: ProviderDto,
+ *   settings: SettingsDto } (adds or updates the Ollama provider with that model; makeDefault
+ *   sets it as the instance default model, which crew without a working model fall back to)
+ */
+
 export interface ModelOption {
   /** `provider/model-id`, the form crew.yaml uses. */
   ref: string;

@@ -18,6 +18,7 @@ import { BackupService } from "./services/backups.js";
 import { CrewService } from "./services/crew.js";
 import { CrewBundleService } from "./services/crew-bundles.js";
 import { ListService } from "./services/lists.js";
+import { LocalAiService } from "./services/local-ai.js";
 import { McpService } from "./services/mcp.js";
 import { type OidcDiscover, OidcService } from "./services/oidc.js";
 import { ProfileService } from "./services/profiles.js";
@@ -64,6 +65,7 @@ export interface Services {
   push: PushService;
   files: AttachmentService;
   voice: VoiceService;
+  localAi: LocalAiService;
 }
 
 /**
@@ -225,6 +227,7 @@ export async function createServices(
       config.dirs.root,
       process.env.SHIPMATE_BACKUP_DIR || `${config.dirs.root}/backups`,
     ),
+    localAi: new LocalAiService(providers, settings, config.SHIPMATE_OLLAMA_URL),
     oidc: new OidcService({
       db,
       settings,

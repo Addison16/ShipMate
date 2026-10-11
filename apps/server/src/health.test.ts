@@ -401,7 +401,11 @@ describe.skipIf(!db)("the Health page", () => {
         url: "https://github.com/Addison16/ShipMate/releases/tag/v1.2.0",
       },
     });
-    expect(byId(h, "database")).toMatchObject({ status: "ok", hint: null });
+    expect(byId(h, "database")).toMatchObject({
+      status: "ok",
+      hint: null,
+      detail: expect.stringMatching(/^Postgres \d+(\.\d+)*, answered in \d+ ms$/),
+    });
     expect(byId(h, "migrations")?.status).toBe("ok");
     expect(byId(h, "providers")).toMatchObject({
       status: "fail",

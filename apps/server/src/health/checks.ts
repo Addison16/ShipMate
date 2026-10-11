@@ -156,7 +156,7 @@ export async function runChecks(d: HealthDeps): Promise<Check[]> {
 async function database(d: HealthDeps): Promise<Check[]> {
   const sql = d.db.$client;
   const started = Date.now();
-  const [v] = await sql<Array<{ v: string }>>`show server_version`;
+  const [v] = await sql<Array<{ v: string }>>`select current_setting('server_version') as v`;
   const ms = Date.now() - started;
   const version = (v?.v ?? "").split(" ")[0];
   const out = [
@@ -342,7 +342,7 @@ async function sandbox(d: HealthDeps): Promise<Check[]> {
       s.available
         ? `Sandboxes can run (default image ${s.sandboxImage})`
         : (s.reason ?? "Unavailable"),
-      "Only the Shipyard and one-click updates need it. Mount /var/run/docker.sock to use them.",
+      "Only the Shipyard and one-click updates need it.",
     ),
   ];
 }

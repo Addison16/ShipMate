@@ -208,8 +208,8 @@ export function LocalAiCard({
         <ErrorText>{error}</ErrorText>
         {used && (
           <Notice>
-            {used} is set up as a provider
-            {makeDefault ? " and is now the default model" : ""}. Crew can use it right away.
+            Ollama is set up with {used}
+            {makeDefault ? ", now the default model" : ""}. Crew can use it right away.
           </Notice>
         )}
       </div>

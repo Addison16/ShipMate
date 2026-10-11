@@ -1,7 +1,9 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { isIP } from "node:net";
+import { get as httpsGet } from "node:https";
+import { isIP, type LookupFunction } from "node:net";
 import { join } from "node:path";
+import { Readable } from "node:stream";
 import type { CrewBundle, CrewDetailDto, CrewImportPreviewDto, CrewManifest } from "@shipmate/core";
 import { CREW_FILES, CrewSlug } from "@shipmate/core";
 import { CrewValidationError, parseManifestYaml, parseSkill, SkillError } from "@shipmate/crew";
@@ -302,7 +304,13 @@ export class CrewBundleService {
 type Lookup = (host: string) => Promise<Array<{ address: string }>>;
 type FetchLike = (
   url: string,
-  init: { redirect: "manual"; signal: AbortSignal; headers: Record<string, string> },
+  init: {
+    redirect: "manual";
+    signal: AbortSignal;
+    headers: Record<string, string>;
+    /** The checked addresses of the URL's host; the request must connect to one of these. */
+    addresses: Array<{ address: string }>;
+  },
 ) => Promise<Response>;
 
 /** Loopback, private, link-local, CGNAT and other addresses a server should not be sent to. */
@@ -321,9 +329,11 @@ export function isPublicAddress(address: string): boolean {
     return true;
   }
   if (isIP(ip) === 6) {
-    if (ip === "::" || ip === "::1") return false;
+    // Unspecified, loopback, IPv4-compatible and other IPv4-embedding forms (::a.b.c.d,
+    // ::ffff:7f00:1), and NAT64, which reaches IPv4 addresses through a gateway.
+    if (ip.startsWith("::") || ip.startsWith("64:ff9b:")) return false;
     if (/^f[cd]/.test(ip)) return false; // unique local
-    if (/^fe[89ab]/.test(ip)) return false; // link-local
+    if (/^fe[89a-f]/.test(ip)) return false; // link-local and (deprecated) site-local
     if (ip.startsWith("ff")) return false; // multicast
     return true;
   }
@@ -338,7 +348,7 @@ export async function fetchBundleText(
   url: string,
   options: { fetch?: FetchLike; lookup?: Lookup } = {},
 ): Promise<string> {
-  const doFetch = options.fetch ?? (fetch as unknown as FetchLike);
+  const doFetch = options.fetch ?? pinnedFetch;
   const lookup =
     options.lookup ?? ((host: string) => dnsLookup(host, { all: true, verbatim: true }));
   const signal = AbortSignal.timeout(10_000);
@@ -367,11 +377,13 @@ export async function fetchBundleText(
         redirect: "manual",
         signal,
         headers: { accept: "application/json, text/plain" },
+        addresses,
       });
     } catch (err) {
       throw new HttpError(400, `could not download it (${(err as Error).message})`);
     }
     if (res.status >= 300 && res.status < 400) {
+      await res.body?.cancel().catch(() => {});
       const next = res.headers.get("location");
       if (!next) throw new HttpError(400, "the link redirects nowhere");
       current = new URL(next, u).toString();
@@ -384,6 +396,54 @@ export async function fetchBundleText(
     return readLimited(res, MAX_BUNDLE_BYTES);
   }
   throw new HttpError(400, "too many redirects");
+}
+
+/**
+ * A lookup that answers with the addresses already checked, instead of asking DNS again. Node's
+ * own fetch resolves the name a second time when it connects, so a name that answers a public
+ * address for the check and a private one for the connection (DNS rebinding) would get through.
+ */
+export function pinnedLookup(addresses: Array<{ address: string }>): LookupFunction {
+  const all = addresses.map((a) => ({ address: a.address, family: isIP(a.address) || 4 }));
+  return (_host, options, callback) => {
+    const first = all[0];
+    if (!first) callback(new Error("no checked address"), "", 4);
+    else if (options.all) callback(null, all);
+    else callback(null, first.address, first.family);
+  };
+}
+
+/** GET over https that connects only to the checked addresses, with TLS for the real host name. */
+function pinnedFetch(url: string, init: Parameters<FetchLike>[1]): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const req = httpsGet(
+      url,
+      { headers: init.headers, signal: init.signal, lookup: pinnedLookup(init.addresses) },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        if (status < 200 || status > 599) {
+          res.destroy();
+          reject(new Error(`unexpected status ${status}`));
+          return;
+        }
+        const headers = new Headers();
+        for (const [name, value] of Object.entries(res.headers)) {
+          for (const v of Array.isArray(value) ? value : value === undefined ? [] : [value]) {
+            headers.append(name, v);
+          }
+        }
+        const noBody = status === 204 || status === 205 || status === 304;
+        if (noBody) res.resume();
+        resolve(
+          new Response(noBody ? null : (Readable.toWeb(res) as ReadableStream<Uint8Array>), {
+            status,
+            headers,
+          }),
+        );
+      },
+    );
+    req.on("error", reject);
+  });
 }
 
 async function readLimited(res: Response, max: number): Promise<string> {

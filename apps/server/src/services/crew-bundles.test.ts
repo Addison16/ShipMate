@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fetchBundleText, isPublicAddress, redactSecrets } from "./crew-bundles.js";
+import { fetchBundleText, isPublicAddress, pinnedLookup, redactSecrets } from "./crew-bundles.js";
 
 const publicDns = async () => [{ address: "93.184.216.34" }];
 
@@ -22,6 +22,10 @@ describe("crew bundles", () => {
       expect(isPublicAddress(ip)).toBe(false);
     }
     for (const ip of ["::1", "fd00::1", "fe80::1", "::ffff:127.0.0.1", "100.64.0.1", "0.0.0.0"]) {
+      expect(isPublicAddress(ip)).toBe(false);
+    }
+    // IPv4 hidden in IPv6: IPv4-compatible, hex IPv4-mapped, NAT64; and site-local.
+    for (const ip of ["::7f00:1", "::ffff:7f00:1", "64:ff9b::a9fe:a9fe", "fec0::1"]) {
       expect(isPublicAddress(ip)).toBe(false);
     }
     expect(isPublicAddress("93.184.216.34")).toBe(true);
@@ -54,11 +58,36 @@ describe("crew bundles", () => {
             : response("{}"),
       }),
     ).rejects.toThrow(/private or local/);
+    // The download connects to the addresses that were checked, not a fresh DNS answer.
+    let pinned: unknown;
+    await fetchBundleText("https://example.com/galley.json", {
+      lookup: publicDns,
+      fetch: async (_url, init) => {
+        pinned = init.addresses;
+        return response("{}");
+      },
+    });
+    expect(pinned).toEqual([{ address: "93.184.216.34" }]);
     await expect(
       fetchBundleText("https://example.com/big.json", {
         lookup: publicDns,
         fetch: async () => response("x".repeat(600 * 1024)),
       }),
     ).rejects.toThrow(/too large/);
+  });
+
+  it("answers name lookups with the checked addresses only (no DNS rebinding)", async () => {
+    const lookup = pinnedLookup([{ address: "93.184.216.34" }, { address: "2606:4700::1111" }]);
+    const one = await new Promise((resolve) =>
+      lookup("rebind.example", {}, (_err, address, family) => resolve([address, family])),
+    );
+    expect(one).toEqual(["93.184.216.34", 4]);
+    const all = await new Promise((resolve) =>
+      lookup("rebind.example", { all: true }, (_err, address) => resolve(address)),
+    );
+    expect(all).toEqual([
+      { address: "93.184.216.34", family: 4 },
+      { address: "2606:4700::1111", family: 6 },
+    ]);
   });
 });

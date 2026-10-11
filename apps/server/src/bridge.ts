@@ -12,10 +12,12 @@ import {
   CAPTAIN_SLUG,
   type CaptainHost,
   type CrewFolder,
+  type CrewHost,
   type CrewSession,
   type CrewSummary,
   captainTools,
   createCrewSession,
+  crewTools,
   MemoryStore,
   memoryTools,
   skillTools,
@@ -76,6 +78,7 @@ export interface WorkspaceProvider {
 /** Everything a cached session's tools need from the turn in progress. */
 interface TurnContext {
   captain: CaptainHost;
+  crew: CrewHost;
   approvals: ApprovalHost;
 }
 
@@ -84,6 +87,15 @@ export interface RunTurnOptions {
   watchId?: string;
   /** Called when the run starts or stops waiting for a person's approval. */
   onWaiting?: (waiting: boolean) => void;
+}
+
+/** Options of a single turn inside a run. */
+interface TurnOptions extends RunTurnOptions {
+  /**
+   * Set when a crew member asks the Captain with `ask_captain`: the Captain answers in a
+   * separate session (its main one may be busy delegating), without crew-management tools.
+   */
+  consultFor?: { slug: string; name: string };
 }
 
 /** Live state of one conversation: a pi session per crew member taking part. */
@@ -361,7 +373,7 @@ export class Bridge {
     run: Run,
     slug: string,
     prompt: string,
-    options: RunTurnOptions,
+    options: TurnOptions,
   ): Promise<string> {
     const folder = this.deps.crew.folder(slug);
     const crewRow = await this.deps.crew.row(slug);
@@ -369,6 +381,10 @@ export class Bridge {
     let stream = this.#openStream(user.id, conv.id, crew);
     let final = "";
 
+    if (folder.manifest.backend === "claude-code-cli" && options.consultFor) {
+      await this.#closeStream(conv, crewRow.id, stream);
+      return `${folder.manifest.name} runs on the Claude Code CLI and cannot answer crew questions mid-task. Use your best judgment, say what you assumed, and check with the person if it matters.`;
+    }
     if (folder.manifest.backend === "claude-code-cli") {
       try {
         return await this.#cli.turn({
@@ -448,7 +464,40 @@ export class Bridge {
           task,
         });
         try {
+          // Only the Captain's main session can delegate, so options carry no consult here.
           return await this.#turn(user, conv, run, target, task, options);
+        } finally {
+          stream = this.#openStream(user.id, conv.id, crew);
+        }
+      },
+    };
+
+    const crewHost: CrewHost = {
+      askCaptain: async (question) => {
+        const captain = this.deps.crew.captain();
+        if (captain.slug === slug) throw new Error("you are the Captain; decide yourself");
+        await this.#checkCrewCap(captain.slug);
+        await this.#closeStream(conv, crewRow.id, stream);
+        this.emit(user.id, {
+          type: "handoff",
+          conversationId: conv.id,
+          from: crew,
+          to: { slug: captain.slug, name: captain.manifest.name },
+          task: question,
+        });
+        const role = folder.manifest.role;
+        const consult = [
+          `${crew.name} (${role}) is working for ${user.displayName} and asks you:`,
+          "",
+          question,
+          "",
+          `Answer so ${crew.name} can carry on: decide, give the missing detail, or tell them to stop and report back to ${user.displayName}. Be brief and concrete.`,
+        ].join("\n");
+        try {
+          return await this.#turn(user, conv, run, captain.slug, consult, {
+            ...options,
+            consultFor: crew,
+          });
         } finally {
           stream = this.#openStream(user.id, conv.id, crew);
         }
@@ -494,7 +543,14 @@ export class Bridge {
       },
     };
 
-    const session = await this.#session(user, conv, run, folder, { captain: host, approvals });
+    const session = await this.#session(
+      user,
+      conv,
+      run,
+      folder,
+      { captain: host, crew: crewHost, approvals },
+      options.consultFor,
+    );
     const unsubscribe = session.subscribe((event) => {
       this.#onEvent(
         user,
@@ -521,7 +577,7 @@ export class Bridge {
       // Spend must be stored before the turn ends, or the next message could slip past a cap.
       await Promise.all(run.writes);
       const file = session.sessionFile;
-      if (file && conv.sessionFiles[slug] !== file) {
+      if (file && !options.consultFor && conv.sessionFiles[slug] !== file) {
         conv.sessionFiles = { ...conv.sessionFiles, [slug]: file };
         await this.deps.db
           .update(conversations)
@@ -626,7 +682,8 @@ export class Bridge {
         }
         break;
       case "tool_execution_start":
-        if (event.toolName === "delegate") break;
+        // Hand-offs show as their own line, not as a tool chip.
+        if (event.toolName === "delegate" || event.toolName === "ask_captain") break;
         stream.tools.push(event.toolName);
         this.emit(user.id, {
           type: "tool",
@@ -639,7 +696,7 @@ export class Bridge {
         });
         break;
       case "tool_execution_end":
-        if (event.toolName === "delegate") break;
+        if (event.toolName === "delegate" || event.toolName === "ask_captain") break;
         this.emit(user.id, {
           type: "tool",
           conversationId: conv.id,
@@ -683,17 +740,22 @@ export class Bridge {
     run: Run,
     folder: CrewFolder,
     context: TurnContext,
+    consultFor?: { slug: string; name: string },
   ): Promise<CrewSession> {
-    run.hosts.set(folder.slug, context);
-    const existing = run.sessions.get(folder.slug);
+    // A consult is the Captain's second session in the run, so it never collides with the main
+    // one, which may be waiting on the delegate that asked.
+    const key = consultFor ? `${folder.slug}#consult` : folder.slug;
+    run.hosts.set(key, context);
+    const existing = run.sessions.get(key);
     if (existing) return existing;
     const acting: ActingUser = { id: user.id, displayName: user.displayName, role: user.role };
     const memory = new MemoryStore(folder.dir);
-    const isCaptain = folder.manifest.captain && conv.kind === "bridge";
+    const isCaptain = folder.manifest.captain && conv.kind === "bridge" && !consultFor;
+    const captainName = this.deps.crew.captain().manifest.name;
     // A cached session's tools outlive the turn that created them, so they look up the host of
     // the turn in progress.
     const current = (): TurnContext => {
-      const h = run.hosts.get(folder.slug);
+      const h = run.hosts.get(key);
       if (!h) throw new Error("no turn in progress");
       return h;
     };
@@ -734,6 +796,12 @@ export class Bridge {
             ),
         }),
         ...(isCaptain ? captainTools(proxy, acting) : []),
+        ...(folder.manifest.captain
+          ? []
+          : crewTools(
+              { askCaptain: (q, signal) => current().crew.askCaptain(q, signal) },
+              captainName,
+            )),
         ...(workspace?.tools ?? []),
       ],
       ...(workspace ? { workspace: { dir: workspace.dir, bash: workspace.bash } } : {}),
@@ -742,11 +810,19 @@ export class Bridge {
       approvals: () => current().approvals,
       appendSystemPrompt: [
         await this.#context(user, folder, memory, isCaptain, skipped),
+        ...(consultFor
+          ? [
+              `## Answering the crew\n\nIn this session you only answer questions from crew members who are mid-task. You cannot delegate or change the crew here; if the answer needs that, say so and ${user.displayName} or you can do it on the Bridge.`,
+            ]
+          : []),
         ...(workspace ? [workspace.prompt] : []),
       ],
-      ...(conv.sessionFiles[folder.slug] ? { sessionFile: conv.sessionFiles[folder.slug] } : {}),
+      ...(consultFor ? { inMemory: true } : {}),
+      ...(!consultFor && conv.sessionFiles[folder.slug]
+        ? { sessionFile: conv.sessionFiles[folder.slug] }
+        : {}),
     });
-    run.sessions.set(folder.slug, created);
+    run.sessions.set(key, created);
     return created;
   }
 
@@ -794,6 +870,12 @@ export class Bridge {
             `- ${c.slug}: ${c.name}, ${c.role}${c.status === "pending_review" ? " (awaiting review)" : ""}`,
         );
       parts.push("", "## Crew aboard", "", roster.join("\n") || "(only you so far)");
+    } else if (!folder.manifest.captain) {
+      const captain = this.deps.crew.captain().manifest.name;
+      parts.push(
+        "",
+        `${captain} coordinates the crew. When you are unsure what ${user.displayName} wants, what to do next, or whether something is your job, ask ${captain} with \`ask_captain\` instead of guessing.`,
+      );
     }
     if (skippedMcp.length) {
       parts.push("", `MCP servers not started (missing setup): ${skippedMcp.join(", ")}.`);

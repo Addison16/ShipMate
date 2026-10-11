@@ -236,6 +236,52 @@ describe.skipIf(!db)("Shipmate server", () => {
     expect(conversations[0].title).toBe("I need meal plans; I'm vegetarian");
   });
 
+  it("lets a delegated crew member ask the Captain mid-task", async () => {
+    const conv = (await api("POST", "/api/conversations", {})).json().conversation;
+    const ws = await t.app.injectWS("/api/ws", { headers: { cookie: ownerCookie } });
+    const events: ServerEvent[] = [];
+    ws.on("message", (raw: Buffer) => events.push(JSON.parse(raw.toString())));
+    const idle = new Promise<void>((resolve) => {
+      const timer = setInterval(() => {
+        const last = events.filter((e) => e.type === "status").at(-1);
+        if (last && last.type === "status" && !last.busy) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 20);
+    });
+
+    t.faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("delegate", { crew: "galley", task: "Plan Friday" })]),
+      fauxAssistantMessage([
+        fauxToolCall("ask_captain", { question: "Friday is a party. Spicy or mild?" }),
+      ]),
+      // The Captain answers in its consult session while its main one waits on the delegate.
+      fauxAssistantMessage("Mild; there are kids coming."),
+      fauxAssistantMessage("Friday: mild bean chili."),
+      fauxAssistantMessage("Galley planned a mild chili."),
+    ]);
+    ws.send(JSON.stringify({ type: "send", conversationId: conv.id, text: "Plan Friday" }));
+    await idle;
+    ws.terminate();
+
+    const handoffs = events.flatMap((e) =>
+      e.type === "handoff" ? [`${e.from.slug}>${e.to.slug}`] : [],
+    );
+    expect(handoffs).toEqual(["captain>galley", "galley>captain"]);
+    const messages = (await api("GET", `/api/conversations/${conv.id}/messages`)).json().messages;
+    expect(
+      messages.map(
+        (m: { author: { name: string }; content: string }) => `${m.author.name}: ${m.content}`,
+      ),
+    ).toEqual([
+      "Addison: Plan Friday",
+      "Skipper: Mild; there are kids coming.",
+      "Galley: Friday: mild bean chili.",
+      "Skipper: Galley planned a mild chili.",
+    ]);
+  });
+
   it("blocks sending once a monthly cap is reached", async () => {
     const users = (await api("GET", "/api/users")).json().users;
     const owner = users.find((u: { role: string }) => u.role === "owner");

@@ -101,6 +101,24 @@ export class CrewRegistry {
     const seeded = loadCrewFolder(dir);
     return writeCrewFolder(dir, seeded.manifest, seeded.persona);
   }
+
+  /**
+   * Replace a crew member's CREW.md with a newer stock version, but only while it is still
+   * exactly an earlier stock version (with the Captain's rename applied): people's edits are
+   * never overwritten. Returns whether it changed.
+   */
+  upgradeStockPersona(slug: string, stock: { current: string; previous: string[] }): boolean {
+    if (!this.has(slug)) return false;
+    const folder = this.get(slug);
+    // Only the Captain's persona is renamed (see seedCaptain); the stock one says "Captain".
+    const render = (t: string) =>
+      (slug === CAPTAIN_SLUG ? renamePersonaText(t, "Captain", folder.manifest.name) : t).trim();
+    const mine = folder.persona.trim();
+    if (mine === render(stock.current)) return false;
+    if (!stock.previous.some((p) => render(p) === mine)) return false;
+    writeFileSync(join(this.root, slug, CREW_FILES.persona), `${render(stock.current)}\n`);
+    return true;
+  }
 }
 
 export const CAPTAIN_SLUG = "captain";
@@ -126,10 +144,13 @@ function formatIssues(issues: Array<{ path: PropertyKey[]; message: string }>): 
 /** Replace the coordinator's old name in the first heading and the "You are the X" line. */
 function renamePersona(dir: string, from: string, to: string) {
   const file = join(dir, CREW_FILES.persona);
-  const text = readFileSync(file, "utf8");
+  writeFileSync(file, renamePersonaText(readFileSync(file, "utf8"), from, to));
+}
+
+export function renamePersonaText(text: string, from: string, to: string): string {
+  if (from === to) return text;
   const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const next = text
+  return text
     .replace(new RegExp(`^# ${escaped}$`, "m"), `# ${to}`)
     .replace(new RegExp(`You are the ${escaped}\\b`), `You are ${to}, the Captain`);
-  writeFileSync(file, next);
 }

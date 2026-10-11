@@ -327,3 +327,34 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
     }),
   ];
 }
+
+/** What a crew member's `ask_captain` tool needs: a short consult with the coordinator. */
+export interface CrewHost {
+  /** Ask the Captain `question` and return their answer. */
+  askCaptain(question: string, signal: AbortSignal | undefined): Promise<string>;
+}
+
+/**
+ * Tools every crew member except the Captain gets. Crew run on smaller models; when unsure they
+ * check with the Captain, who runs on the strongest one, instead of guessing.
+ */
+export function crewTools(host: CrewHost, captainName: string): ToolDefinition[] {
+  return [
+    defineTool({
+      name: "ask_captain",
+      label: `Ask ${captainName}`,
+      description: `Ask ${captainName}, the crew's coordinator, when you are unsure what the person wants, what to do next, or whether something is in your job, instead of guessing. ${captainName} cannot see your work, so include what you are doing, what you found or tried, and the options you see. Do not ask what you can check yourself.`,
+      promptSnippet: `ask_captain: check with ${captainName} when unsure instead of guessing`,
+      parameters: Type.Object({
+        question: Type.String({
+          description: "the question, with the context and options needed to answer it",
+        }),
+      }),
+      executionMode: "sequential",
+      async execute(_id, p, signal) {
+        const answer = await host.askCaptain(p.question, signal);
+        return text(answer || `(${captainName} gave no answer; use your best judgment and say so)`);
+      },
+    }),
+  ];
+}

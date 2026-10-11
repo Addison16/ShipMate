@@ -29,6 +29,7 @@ export {
   CrewRegistry,
   CrewValidationError,
   parseManifestYaml,
+  renamePersonaText,
 } from "./registry.js";
 export {
   type CreateCrewSessionOptions,
@@ -40,8 +41,10 @@ export { parseSkill, SkillError, type SkillRecord, type SkillScope, SkillStore }
 export {
   type ActingUser,
   type CaptainHost,
+  type CrewHost,
   type CrewSummary,
   captainTools,
+  crewTools,
   type EditSpec,
   memoryTools,
   type RecruitSpec,

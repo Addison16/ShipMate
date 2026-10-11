@@ -176,3 +176,25 @@ function changeSummary(
   }
   return parts.join(" ");
 }
+
+// ---------- household profiles ----------
+
+/** The household facts and the profiles the crew may read, already formatted. */
+export interface ProfileHost {
+  read(): Promise<string>;
+}
+
+export function profileTools(host: ProfileHost): ToolDefinition[] {
+  return [
+    defineTool({
+      name: "read_profiles",
+      label: "Read profiles",
+      description:
+        "Read the household profile in full: household facts (home, kids, routines), the diet, budget, timezone and schedule of the person you are helping, and the profiles others in the household chose to share. Use it before planning for more than one person.",
+      parameters: Type.Object({}),
+      async execute() {
+        return text(await host.read());
+      },
+    }),
+  ];
+}

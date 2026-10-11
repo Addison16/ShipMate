@@ -16,6 +16,7 @@ import { CrewService } from "./services/crew.js";
 import { ListService } from "./services/lists.js";
 import { McpService } from "./services/mcp.js";
 import { type OidcDiscover, OidcService } from "./services/oidc.js";
+import { ProfileService } from "./services/profiles.js";
 import { ProviderService } from "./services/providers.js";
 import { SettingsService } from "./services/settings.js";
 import { SkillService } from "./services/skills.js";
@@ -51,6 +52,7 @@ export interface Services {
   backups: BackupService;
   starters: StarterService;
   lists: ListService;
+  profiles: ProfileService;
 }
 
 /**
@@ -108,7 +110,8 @@ export async function createServices(
   });
   const watches = new WatchService(db, db.$client, crew, bridge, audit, emit, config.SHIPMATE_URL);
   bridge.attachWatches(watches);
-  bridge.attachEveryday(new EverydayTools({ lists }));
+  const profiles = new ProfileService(db, settings);
+  bridge.attachEveryday(new EverydayTools({ lists, profiles }));
   const shipyard = new ShipyardService({
     db,
     vault,
@@ -174,6 +177,7 @@ export async function createServices(
     slack,
     shipyard,
     lists,
+    profiles,
     starters: new StarterService(config.TEMPLATES_DIR, crew, settings, mcp, watches),
     backups: new BackupService(
       db,

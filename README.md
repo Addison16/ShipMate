@@ -15,6 +15,8 @@ Version 1.0. See [CHANGELOG.md](CHANGELOG.md) for what is in it and
   with its own memory, tools, MCP servers and cost ceiling.
 - **Lists**: groceries, to-dos, packing and bills with checkboxes, shared with the household or
   private, kept up to date by you and the crew alike.
+- **Household profiles**: diets, budgets, timezones and schedules every crew member knows, so
+  nobody repeats themselves to each bot.
 - **Skills and Watches**: reusable skills made by you or by the crew (with approval), and
   watches that run on a schedule, a webhook or after another watch.
 - **Shipyard**: GitHub or local projects worked in sandboxed containers, with PR flows and

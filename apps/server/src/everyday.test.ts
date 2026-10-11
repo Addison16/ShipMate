@@ -214,4 +214,60 @@ describe.skipIf(!db)("Everyday life", () => {
       addedBy: "Captain for Addison",
     });
   });
+
+  it("shares household profiles with the crew", async () => {
+    expect((await api("PUT", "/api/profile", { timezone: "Not/AZone" })).statusCode).toBe(400);
+    expect((await api("PUT", "/api/profile", { secret: "x" })).statusCode).toBe(400);
+    const mine = (
+      await api("PUT", "/api/profile", {
+        diet: "vegetarian, no peanuts",
+        timezone: "America/Chicago",
+        schedule: "Works 9-5; kids have soccer Tuesdays at 17:00",
+      })
+    ).json().profile;
+    expect(mine).toMatchObject({ diet: "vegetarian, no peanuts", shared: false });
+    await api("PUT", "/api/profile", { diet: "loves pasta", shared: true }, memberCookie);
+    await api("PUT", "/api/profile", { budget: "secret budget" }, memberCookie);
+    // Household facts: admins write, everyone reads.
+    expect(
+      (await api("PUT", "/api/household", { location: "Nowhere" }, memberCookie)).statusCode,
+    ).toBe(403);
+    await api("PUT", "/api/household", { location: "Austin, TX", notes: "Two kids, Sam (8)" });
+    const kid = (await api("GET", "/api/profile", undefined, memberCookie)).json();
+    expect(kid.household.location).toBe("Austin, TX");
+    expect(kid.profile.diet).toBe("loves pasta");
+
+    const conv = (await api("POST", "/api/conversations", {})).json().conversation;
+    let system = "";
+    let toolResult = "";
+    t.faux.setResponses([
+      (context) => {
+        system = JSON.stringify(context.messages);
+        return fauxAssistantMessage([fauxToolCall("read_profiles", {})]);
+      },
+      (context) => {
+        toolResult = JSON.stringify(context.messages.at(-1));
+        return fauxAssistantMessage("Noted.");
+      },
+    ]);
+    await turn(conv.id, "what's for dinner?");
+    expect(system).toContain("Home: Austin, TX");
+    expect(system).toContain("Diet: vegetarian, no peanuts");
+    expect(system).toMatch(/Local time for Addison: .*\(America\/Chicago\)/);
+    expect(system).toContain("Shared profiles of Kid");
+    expect(toolResult).toContain("# Kid (shared)");
+    expect(toolResult).toContain("loves pasta");
+
+    // A profile that is not shared stays with its owner's crew.
+    await api("PUT", "/api/profile", { shared: false }, memberCookie);
+    t.faux.setResponses([
+      (context) => {
+        system = JSON.stringify(context.messages);
+        return fauxAssistantMessage("Ok.");
+      },
+    ]);
+    const conv2 = (await api("POST", "/api/conversations", {})).json().conversation;
+    await turn(conv2.id, "hi");
+    expect(system).not.toContain("Kid");
+  });
 });

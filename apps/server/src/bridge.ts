@@ -818,6 +818,7 @@ export class Bridge {
       approvals: () => current().approvals,
       appendSystemPrompt: [
         await this.#context(user, folder, memory, isCaptain, skipped),
+        ...(this.#everyday ? [await this.#everyday.context(user)] : []),
         ...(consultFor
           ? [
               `## Answering the crew\n\nIn this session you only answer questions from crew members who are mid-task. You cannot delegate or change the crew here; if the answer needs that, say so and ${user.displayName} or you can do it on the Bridge.`,

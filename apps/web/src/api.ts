@@ -16,6 +16,7 @@ import type {
   CrewDto,
   DiscordLinkCode,
   DiscordStatusDto,
+  HouseholdDto,
   InstallStartersRequest,
   InstallStartersResponse,
   IssueDto,
@@ -28,6 +29,7 @@ import type {
   MeResponse,
   MessageDto,
   ModelOption,
+  ProfileDto,
   ProjectDto,
   ProjectEventDto,
   ProviderDto,
@@ -43,8 +45,10 @@ import type {
   StartFlowRequest,
   TelegramStatusDto,
   UpdateCrewRequest,
+  UpdateHouseholdRequest,
   UpdateListItemRequest,
   UpdatePreferencesRequest,
+  UpdateProfileRequest,
   UpdateProjectRequest,
   UpdateProviderRequest,
   UpdateUserRequest,
@@ -179,6 +183,14 @@ export const api = {
     request<{ list: ListDetailDto }>("DELETE", `/api/lists/${enc(id)}/items/${enc(itemId)}`),
   clearListChecked: (id: string) =>
     request<{ list: ListDetailDto }>("POST", `/api/lists/${enc(id)}/clear`),
+
+  // household profiles
+  getProfile: () =>
+    request<{ profile: ProfileDto; household: HouseholdDto }>("GET", "/api/profile"),
+  updateProfile: (body: UpdateProfileRequest) =>
+    request<{ profile: ProfileDto }>("PUT", "/api/profile", body),
+  updateHousehold: (body: UpdateHouseholdRequest) =>
+    request<{ household: HouseholdDto }>("PUT", "/api/household", body),
 
   // usage
   usage: (month: string, scope: "me" | "all") =>

@@ -27,6 +27,8 @@ export {
   type ListItemSummary,
   type ListSummary,
   listTools,
+  type ProfileHost,
+  profileTools,
 } from "./everyday.js";
 export { type CrewFolder, loadCrewFolder, writeCrewFolder } from "./folder.js";
 export { type GuardOptions, guardExtension, isInside } from "./guard.js";

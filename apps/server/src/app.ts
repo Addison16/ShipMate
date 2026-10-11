@@ -21,6 +21,7 @@ import { discordRoutes } from "./routes/discord.js";
 import { listRoutes } from "./routes/lists.js";
 import { mcpRoutes } from "./routes/mcp.js";
 import { oidcRoutes } from "./routes/oidc.js";
+import { profileRoutes } from "./routes/profiles.js";
 import { providerRoutes } from "./routes/providers.js";
 import { shipyardRoutes } from "./routes/shipyard.js";
 import { skillRoutes } from "./routes/skills.js";
@@ -144,6 +145,7 @@ export async function buildApp(
   await watchRoutes(app, services);
   await listRoutes(app, services);
   await mcpRoutes(app, services);
+  await profileRoutes(app, services);
   await shipyardRoutes(app, services);
   await discordRoutes(app, services);
   await telegramRoutes(app, services);

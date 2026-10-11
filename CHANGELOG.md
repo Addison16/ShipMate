@@ -27,6 +27,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   checkboxes, shared with the household or private. Crew read and update them with list tools
   (`show_lists`, `read_list`, `add_to_list`, `check_list_items`, `remove_from_list`,
   `create_list`) instead of keeping them in memory, and changes show up live in every open app.
+- **Household profiles**: each person keeps their diet, budget, timezone, schedule and notes in
+  Settings, and owners and admins keep household facts (home location, who lives here, kids'
+  schedules). Every crew member gets them in a compact context section with the person's local
+  time, plus `read_profiles` for the full text. A profile can be shared with the household so
+  crew planning for everyone (meals, say) can read it; it is private by default.
 
 ## 1.0.0 — 2026-10-11
 

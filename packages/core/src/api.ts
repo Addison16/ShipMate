@@ -5,7 +5,7 @@
  * All JSON. Timestamps are ISO strings. Auth is a `shipmate_session` http-only cookie set by
  * `/api/setup` and `/api/auth/login`. Errors are `{ error: string }` with a 4xx/5xx status.
  */
-import type { UserPreferences, UserRole } from "./user.js";
+import type { HouseholdFacts, PersonProfile, UserPreferences, UserRole } from "./user.js";
 
 // ---------- users and auth ----------
 
@@ -946,6 +946,30 @@ export interface UpdateListItemRequest {
   note?: string | null;
   position?: number;
 }
+
+// ---------- household profiles (everyday life) ----------
+
+export interface ProfileDto extends PersonProfile {
+  /**
+   * Crew working for other people in the household may read it too (e.g. the Galley planning
+   * dinner for everyone). Off by default; the person's own crew always see it.
+   */
+  shared: boolean;
+  updatedAt: string | null;
+}
+export interface HouseholdDto extends HouseholdFacts {
+  updatedAt: string | null;
+}
+/**
+ * Every crew member gets the household facts and the profile of the person it is working for in
+ * its context (compactly), and `read_profiles` for the full text including shared profiles.
+ *
+ * GET /api/profile → { profile: ProfileDto, household: HouseholdDto } (the caller's own)
+ * PUT /api/profile Partial<PersonProfile & { shared }> → { profile }
+ * PUT /api/household (owner, admin) Partial<HouseholdFacts> → { household }
+ */
+export type UpdateProfileRequest = Partial<PersonProfile> & { shared?: boolean };
+export type UpdateHouseholdRequest = Partial<HouseholdFacts>;
 
 // ---------- WebSocket: /api/ws ----------
 

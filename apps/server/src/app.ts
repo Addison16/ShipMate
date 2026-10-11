@@ -89,16 +89,21 @@ export async function buildApp(
   app.decorate("db", db);
   app.decorate("services", services);
   app.decorateRequest("user", null as unknown as UserRow);
+  let fileSweep: NodeJS.Timeout | undefined;
   app.addHook("onReady", async () => {
     if (options.watches !== false) await services.watches.start();
     await services.backups.start();
-    // Files of conversations or people deleted while the server was down (or by a restore).
+    // Files of conversations or people deleted while the server was down (or by a restore), and
+    // uploads nobody sent; then hourly, so abandoned uploads don't pile up.
     void services.files.sweep().catch(() => {});
+    fileSweep = setInterval(() => void services.files.sweep().catch(() => {}), 3600_000);
+    fileSweep.unref();
     // Chat bridges connect in the background when configured; problems show on their pages.
     void services.telegram.start();
     void services.slack.start();
   });
   app.addHook("onClose", async () => {
+    clearInterval(fileSweep);
     await services.backups.stop();
     await services.watches.stop();
     services.approvals.close();

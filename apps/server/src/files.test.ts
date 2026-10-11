@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, type Model } from "@earendil-works/pi-ai";
 import type { ServerEvent } from "@shipmate/core";
+import { attachments } from "@shipmate/db";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AttachmentService, detectFile } from "./files/service.js";
 import { TEST_DATABASE_URL, testApp } from "./testing.js";
@@ -284,5 +286,31 @@ describe.skipIf(!db)("files in chat", () => {
     });
     const [row] = await files.claim(me.id, conv.id, [a.id]);
     expect(row?.text).toBe("Total due: 12");
+  });
+
+  it("sweeps anyone's upload that was never sent within a day", async () => {
+    const conv = (await api("POST", "/api/conversations", {})).json().conversation;
+    const me = (await api("GET", "/api/auth/me")).json().user;
+    const dir = mkdtempSync(join(tmpdir(), "shipmate-files-"));
+    const files = new AttachmentService(t.app.db, dir, async () => "");
+    const stale = await files.upload(me.id, conv.id, {
+      name: "old.txt",
+      type: "text/plain",
+      data: Buffer.from("old"),
+    });
+    const fresh = await files.upload(me.id, conv.id, {
+      name: "new.txt",
+      type: "text/plain",
+      data: Buffer.from("new"),
+    });
+    await t.app.db
+      .update(attachments)
+      .set({ createdAt: new Date(Date.now() - 25 * 3600_000) })
+      .where(eq(attachments.id, stale.id));
+    await files.sweep();
+    expect(existsSync(join(dir, stale.id))).toBe(false);
+    expect(existsSync(join(dir, fresh.id))).toBe(true);
+    const left = await t.app.db.select({ id: attachments.id }).from(attachments);
+    expect(left.map((r) => r.id)).not.toContain(stale.id);
   });
 });

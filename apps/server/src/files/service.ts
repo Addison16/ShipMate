@@ -282,8 +282,12 @@ export class AttachmentService {
     await Promise.all(ids.map((id) => rm(this.#path(id), { force: true })));
   }
 
-  /** Remove files whose rows are gone (deleted conversations, users). Run at boot and after deletes. */
+  /**
+   * Remove uploads never sent within a day (anyone's), and files whose rows are gone (deleted
+   * conversations, users). Run at boot and then hourly.
+   */
   async sweep(): Promise<number> {
+    await this.#sweepUnsent();
     let names: string[];
     try {
       names = await readdir(this.dir);
@@ -304,12 +308,12 @@ export class AttachmentService {
     return orphans.length;
   }
 
-  async #sweepUnsent(userId: string) {
+  async #sweepUnsent(userId?: string) {
     const old = await this.db
       .delete(attachments)
       .where(
         and(
-          eq(attachments.userId, userId),
+          userId ? eq(attachments.userId, userId) : undefined,
           isNull(attachments.messageId),
           lt(attachments.createdAt, new Date(Date.now() - UNSENT_TTL_MS)),
         ),

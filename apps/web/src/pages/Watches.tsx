@@ -11,6 +11,7 @@ import { api, errorMessage } from "../api.js";
 import { useApprovals } from "../approvals.js";
 import { isAdmin, useUser } from "../auth.js";
 import { ApprovalCard } from "../components/ApprovalCard.js";
+import { CopyField } from "../components/CopyField.js";
 import { Markdown } from "../components/Markdown.js";
 import { TimelineView } from "../components/Timeline.js";
 import {
@@ -576,38 +577,13 @@ function NewWatch() {
   );
 }
 
-function CopyField({ label, value }: { label: string; value: string }) {
-  const [copied, setCopied] = useState(false);
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false);
-    }
-  }
+function WebhookCopyField({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <p className="mb-1 text-sm font-medium">{label}</p>
-      <div className="flex gap-2">
-        <input
-          readOnly
-          aria-label={label}
-          value={value}
-          onFocus={(e) => e.target.select()}
-          className={cx(
-            "min-w-0 flex-1 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-xs dark:border-slate-600 dark:bg-slate-800",
-            focusRing,
-          )}
-        />
-        <Button onClick={() => void copy()}>{copied ? "Copied" : "Copy"}</Button>
-      </div>
-      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-        Keep it private: anyone with this URL can start the watch. POST body text is appended to the
-        prompt.
-      </p>
-    </div>
+    <CopyField
+      label={label}
+      value={value}
+      hint="Keep it private: anyone with this URL can start the watch. POST body text is appended to the prompt."
+    />
   );
 }
 
@@ -712,7 +688,7 @@ function WatchDetail({ id }: { id: string }) {
             )}
             {watch.trigger.kind === "webhook" && watch.webhookUrl && (
               <Card>
-                <CopyField label="Webhook URL" value={watch.webhookUrl} />
+                <WebhookCopyField label="Webhook URL" value={watch.webhookUrl} />
               </Card>
             )}
             <RunHistory watchId={id} runs={runs.data} error={runs.error} loading={runs.loading} />

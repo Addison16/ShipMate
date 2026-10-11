@@ -5,25 +5,35 @@ import type {
   ConversationDto,
   CreateCrewRequest,
   CreateCustomMcpRequest,
+  CreateProjectRequest,
   CreateProviderRequest,
   CreateSkillRequest,
   CreateUserRequest,
   CreateWatchRequest,
   CrewDetailDto,
   CrewDto,
+  DiscordLinkCode,
+  DiscordStatusDto,
+  IssueDto,
   LoginRequest,
   McpServerDto,
   MemoryEntryDto,
   MeResponse,
   MessageDto,
   ModelOption,
+  ProjectDto,
+  ProjectEventDto,
   ProviderDto,
   ProvidersResponse,
+  PullRequestDto,
   SettingsDto,
   SetupRequest,
+  ShipyardStatusDto,
   SkillDetailDto,
   SkillDto,
+  StartFlowRequest,
   UpdateCrewRequest,
+  UpdateProjectRequest,
   UpdateProviderRequest,
   UpdateUserRequest,
   UpdateWatchRequest,
@@ -192,6 +202,58 @@ export const api = {
     request<{ server: McpServerDto }>("PUT", `/api/mcp/${enc(id)}/crews`, { crews }),
   createCustomMcp: (body: CreateCustomMcpRequest) =>
     request<{ server: McpServerDto }>("POST", "/api/mcp/custom", body),
+
+  // Discord bridge
+  getDiscord: () => request<{ discord: DiscordStatusDto }>("GET", "/api/discord"),
+  updateDiscord: (body: { botToken?: string; guildId?: string }) =>
+    request<{ discord: DiscordStatusDto }>("PUT", "/api/discord", body),
+  disconnectDiscord: () => request<Ok>("DELETE", "/api/discord"),
+  syncDiscord: () => request<{ discord: DiscordStatusDto }>("POST", "/api/discord/sync"),
+  bindDiscordChannel: (slug: string, channelId: string | null) =>
+    request<{ discord: DiscordStatusDto }>("PUT", `/api/discord/channels/${enc(slug)}`, {
+      channelId,
+    }),
+  createDiscordLink: () => request<DiscordLinkCode>("POST", "/api/discord/link"),
+  unlinkDiscord: () => request<Ok>("DELETE", "/api/discord/link"),
+
+  // Shipyard
+  getShipyard: () =>
+    request<{ status: ShipyardStatusDto; projects: ProjectDto[] }>("GET", "/api/shipyard"),
+  createProject: (body: CreateProjectRequest) =>
+    request<{ project: ProjectDto }>("POST", "/api/shipyard/projects", body),
+  getProject: (id: string) =>
+    request<{ project: ProjectDto }>("GET", `/api/shipyard/projects/${enc(id)}`),
+  updateProject: (id: string, body: UpdateProjectRequest) =>
+    request<{ project: ProjectDto }>("PATCH", `/api/shipyard/projects/${enc(id)}`, body),
+  deleteProject: (id: string) => request<Ok>("DELETE", `/api/shipyard/projects/${enc(id)}`),
+  cloneProject: (id: string) =>
+    request<{ project: ProjectDto }>("POST", `/api/shipyard/projects/${enc(id)}/clone`),
+  sandboxAction: (id: string, action: "start" | "stop" | "reset") =>
+    request<{ project: ProjectDto }>("POST", `/api/shipyard/projects/${enc(id)}/sandbox`, {
+      action,
+    }),
+  listPulls: (id: string, state: "open" | "closed" | "all" = "open") =>
+    request<{ pulls: PullRequestDto[] }>(
+      "GET",
+      `/api/shipyard/projects/${enc(id)}/pulls?state=${state}`,
+    ),
+  listIssues: (id: string, state: "open" | "closed" | "all" = "open") =>
+    request<{ issues: IssueDto[] }>(
+      "GET",
+      `/api/shipyard/projects/${enc(id)}/issues?state=${state}`,
+    ),
+  listProjectEvents: (id: string, limit = 50) =>
+    request<{ events: ProjectEventDto[] }>(
+      "GET",
+      `/api/shipyard/projects/${enc(id)}/events?limit=${limit}`,
+    ),
+  startFlow: (id: string, body: StartFlowRequest) =>
+    request<{ conversationId: string }>("POST", `/api/shipyard/projects/${enc(id)}/flows`, body),
+  createProjectConversation: (id: string) =>
+    request<{ conversation: ConversationDto }>(
+      "POST",
+      `/api/shipyard/projects/${enc(id)}/conversations`,
+    ),
 };
 
 export function errorMessage(err: unknown): string {

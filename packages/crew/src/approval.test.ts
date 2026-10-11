@@ -12,6 +12,14 @@ describe("approval rules", () => {
     expect(isConsequential("read")).toBe(false);
     expect(isConsequential("remember")).toBe(false);
   });
+  it("gates the Shipyard's GitHub writes but not its reads", () => {
+    expect(isConsequential("git_push")).toBe(true);
+    expect(isConsequential("open_pull_request")).toBe(true);
+    expect(isConsequential("comment_on_github")).toBe(true);
+    expect(isConsequential("list_issues")).toBe(false);
+    expect(isConsequential("list_pull_requests")).toBe(false);
+    expect(isConsequential("get_pull_request")).toBe(false);
+  });
   it("matches wildcards", () => {
     expect(matches(["mcp__github__*"], "mcp__github__merge_pull_request")).toBe(true);
     expect(matches(["bash"], "bash")).toBe(true);

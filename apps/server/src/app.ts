@@ -15,8 +15,10 @@ import { approvalRoutes, DecisionSchema } from "./routes/approvals.js";
 import { authRoutes } from "./routes/auth.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { crewRoutes } from "./routes/crew.js";
+import { discordRoutes } from "./routes/discord.js";
 import { mcpRoutes } from "./routes/mcp.js";
 import { providerRoutes } from "./routes/providers.js";
+import { shipyardRoutes } from "./routes/shipyard.js";
 import { skillRoutes } from "./routes/skills.js";
 import { settingsRoutes, usageRoutes } from "./routes/usage.js";
 import { userRoutes } from "./routes/users.js";
@@ -52,6 +54,8 @@ export async function buildApp(
     logger?: boolean;
     /** Schedule watches (default on); tests run them by hand. */
     watches?: boolean;
+    /** Stand-in for discord.js (tests). */
+    discordPort?: import("./discord/port.js").DiscordClientPort;
   } = {},
 ) {
   const app = Fastify({
@@ -68,6 +72,7 @@ export async function buildApp(
   app.addHook("onClose", async () => {
     await services.watches.stop();
     services.approvals.close();
+    await services.discord.stop();
     await services.bridge.close();
     await close();
   });
@@ -119,6 +124,8 @@ export async function buildApp(
   await approvalRoutes(app, services);
   await watchRoutes(app, services);
   await mcpRoutes(app, services);
+  await shipyardRoutes(app, services);
+  await discordRoutes(app, services);
 
   // The Bridge's live channel: streams crew replies and takes messages from the person.
   app.get("/api/ws", { websocket: true }, (socket, req) => {

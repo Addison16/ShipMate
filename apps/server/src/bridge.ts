@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
-import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type {
+  AgentSessionEvent,
+  BashOperations,
+  ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
 import type { ConversationDto, MessageDto, ServerEvent } from "@shipmate/core";
 import {
   type ActingUser,
@@ -49,6 +53,25 @@ export interface BridgeDeps {
   agentDir: string;
 }
 
+/**
+ * Supplies a project's workspace to conversations that work in it (the Shipyard): the folder,
+ * the sandboxed shell, project tools (push, pull requests) and a prompt section.
+ */
+export interface WorkspaceProvider {
+  forConversation(
+    projectId: string,
+    user: UserRow,
+    crew: CrewFolder,
+    /** The conversation the session belongs to (e.g. to follow the PRs it opens). */
+    conversationId: string,
+  ): Promise<{
+    dir: string;
+    bash: BashOperations;
+    tools: ToolDefinition[];
+    prompt: string;
+  }>;
+}
+
 /** Everything a cached session's tools need from the turn in progress. */
 interface TurnContext {
   captain: CaptainHost;
@@ -84,6 +107,7 @@ export class Bridge {
   #sockets = new Map<string, Set<Send>>();
   #runs = new Map<string, Run>();
   #watches: WatchService | undefined;
+  #workspaces: WorkspaceProvider | undefined;
 
   constructor(private readonly deps: BridgeDeps) {
     deps.crew.onChange(() => this.broadcast({ type: "crew_changed" }));
@@ -91,6 +115,10 @@ export class Bridge {
   }
 
   /** Watches depend on the Bridge to run, so they are attached after both exist. */
+  attachWorkspaces(provider: WorkspaceProvider) {
+    this.#workspaces = provider;
+  }
+
   attachWatches(watches: WatchService) {
     this.#watches = watches;
   }
@@ -129,7 +157,17 @@ export class Bridge {
 
   async createConversation(
     user: UserRow,
-    input: { kind?: "bridge" | "direct" | undefined; crewSlug?: string | undefined },
+    input: {
+      kind?: "bridge" | "direct" | undefined;
+      crewSlug?: string | undefined;
+      /** web (default), discord, watch. */
+      surface?: string | undefined;
+      /** An id on that surface, e.g. a Discord channel and user. */
+      externalId?: string | undefined;
+      /** Work in this Shipyard project's workspace. */
+      projectId?: string | undefined;
+      title?: string | undefined;
+    },
   ): Promise<ConversationDto> {
     const kind = input.kind ?? "bridge";
     let crewMemberId: string | null = null;
@@ -142,7 +180,15 @@ export class Bridge {
     }
     const [c] = await this.deps.db
       .insert(conversations)
-      .values({ userId: user.id, kind, crewMemberId })
+      .values({
+        userId: user.id,
+        kind,
+        crewMemberId,
+        surface: input.surface ?? "web",
+        externalId: input.externalId ?? null,
+        projectId: input.projectId ?? null,
+        title: input.title ?? null,
+      })
       .returning();
     if (!c) throw new Error("insert failed");
     return toConversationDto(c, slug);
@@ -287,6 +333,11 @@ export class Bridge {
       run.busy = false;
       this.#dispose(conversationId);
     }
+  }
+
+  /** Whether a turn is running in this conversation. */
+  isBusy(conversationId: string): boolean {
+    return this.#runs.get(conversationId)?.busy ?? false;
   }
 
   async close(): Promise<void> {
@@ -592,6 +643,13 @@ export class Bridge {
     const skills = this.deps.skills;
     const { servers, skipped } = await this.deps.mcp.serversFor(folder);
     const model = await this.#model(folder);
+    if (conv.projectId && !this.#workspaces) {
+      throw new HttpError(503, "the Shipyard is not available on this instance");
+    }
+    const workspace =
+      conv.projectId && this.#workspaces
+        ? await this.#workspaces.forConversation(conv.projectId, user, folder, conv.id)
+        : undefined;
     const created = await createCrewSession({
       crew: folder,
       agentDir: this.deps.agentDir,
@@ -610,11 +668,16 @@ export class Bridge {
             ),
         }),
         ...(isCaptain ? captainTools(proxy, acting) : []),
+        ...(workspace?.tools ?? []),
       ],
+      ...(workspace ? { workspace: { dir: workspace.dir, bash: workspace.bash } } : {}),
       mcpServers: servers,
       skillPaths: this.deps.skills.pathsFor(user.id),
       approvals: () => current().approvals,
-      appendSystemPrompt: [await this.#context(user, folder, memory, isCaptain, skipped)],
+      appendSystemPrompt: [
+        await this.#context(user, folder, memory, isCaptain, skipped),
+        ...(workspace ? [workspace.prompt] : []),
+      ],
       ...(conv.sessionFiles[folder.slug] ? { sessionFile: conv.sessionFiles[folder.slug] } : {}),
     });
     run.sessions.set(folder.slug, created);
@@ -806,6 +869,8 @@ function toConversationDto(c: ConversationRow, slug: string | null): Conversatio
     title: c.title,
     kind: c.kind === "direct" ? "direct" : "bridge",
     crewSlug: slug,
+    surface: c.surface,
+    projectId: c.projectId,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   };

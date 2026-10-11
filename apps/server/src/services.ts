@@ -5,6 +5,9 @@ import { SecretVault } from "@shipmate/providers";
 import { SessionStore } from "./auth.js";
 import { Bridge } from "./bridge.js";
 import type { Config } from "./config.js";
+import { DiscordJsPort } from "./discord/discordjs.js";
+import type { DiscordClientPort } from "./discord/port.js";
+import { DiscordService } from "./discord/service.js";
 import { ApprovalService } from "./services/approvals.js";
 import { AuditService } from "./services/audit.js";
 import { CrewService } from "./services/crew.js";
@@ -14,6 +17,7 @@ import { SettingsService } from "./services/settings.js";
 import { SkillService } from "./services/skills.js";
 import { UsageService } from "./services/usage.js";
 import { WatchService } from "./services/watches.js";
+import { ShipyardService } from "./shipyard/service.js";
 
 export interface Services {
   db: Db;
@@ -28,6 +32,8 @@ export interface Services {
   skills: SkillService;
   watches: WatchService;
   bridge: Bridge;
+  discord: DiscordService;
+  shipyard: ShipyardService;
 }
 
 /**
@@ -37,7 +43,12 @@ export interface Services {
 export async function createServices(
   config: Config,
   db: Db,
-  options: { modelRuntime?: ModelRuntime; extraProviders?: string[] } = {},
+  options: {
+    modelRuntime?: ModelRuntime;
+    extraProviders?: string[];
+    /** Stand-in for discord.js (tests). */
+    discordPort?: DiscordClientPort;
+  } = {},
 ): Promise<Services> {
   const vault = new SecretVault(config.SHIPMATE_SECRET);
   const runtime =
@@ -71,10 +82,35 @@ export async function createServices(
   });
   const watches = new WatchService(db, db.$client, crew, bridge, audit, emit, config.SHIPMATE_URL);
   bridge.attachWatches(watches);
+  const shipyard = new ShipyardService({
+    db,
+    vault,
+    bridge,
+    crew,
+    workspacesDir: config.dirs.workspaces,
+    hostDataDir: process.env.SHIPMATE_HOST_DATA_DIR || undefined,
+    dockerSocket: process.env.DOCKER_SOCKET || "/var/run/docker.sock",
+    sandboxImage: process.env.SHIPMATE_SANDBOX_IMAGE || undefined,
+    publicUrl: config.SHIPMATE_URL,
+    githubApi: process.env.SHIPMATE_GITHUB_API || undefined,
+    githubWeb: process.env.SHIPMATE_GITHUB_URL || undefined,
+  });
+  bridge.attachWorkspaces(shipyard);
 
   const current = await settings.get();
   await crew.boot({ name: current.captainName });
   await providers.sync();
+
+  const discord = new DiscordService({
+    db,
+    vault,
+    crew,
+    bridge,
+    approvals,
+    port: options.discordPort ?? new DiscordJsPort(),
+  });
+  // Connects in the background when a bot token is stored; problems show on the Discord page.
+  void discord.start();
 
   return {
     db,
@@ -89,5 +125,7 @@ export async function createServices(
     skills,
     watches,
     bridge,
+    discord,
+    shipyard,
   };
 }

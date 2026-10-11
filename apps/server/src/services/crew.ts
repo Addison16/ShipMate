@@ -1,3 +1,4 @@
+import { cpSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { CrewDetailDto, CrewDto, CrewManifest, CrewStatus } from "@shipmate/core";
 import {
@@ -5,14 +6,19 @@ import {
   type CrewFolder,
   CrewRegistry,
   CrewValidationError,
+  loadCrewFolder,
   MemoryStore,
   parseManifestYaml,
+  writeCrewFolder,
 } from "@shipmate/crew";
 import { crewMembers, type Db } from "@shipmate/db";
 import { eq } from "drizzle-orm";
 import { atLeast, HttpError, type UserRow } from "../auth.js";
 
 type CrewRow = typeof crewMembers.$inferSelect;
+
+/** Template crew seeded on boot besides the Captain (the Shipwright codes in the Shipyard). */
+const STARTER_CREW = ["shipwright"];
 
 /**
  * The crew: folders on disk are the source of truth for what a crew member is; the database
@@ -44,7 +50,19 @@ export class CrewService {
     if (!this.registry.has(CAPTAIN_SLUG)) {
       this.registry.seedCaptain(join(this.templatesDir, "crew", "captain"), options);
     }
+    // Starter crew beside the Captain; seeded active when missing.
+    for (const slug of STARTER_CREW) this.#seedTemplate(slug);
     for (const folder of this.registry.list()) await this.#mirror(folder);
+  }
+
+  /** Copy templates/crew/<slug> into place when that crew member is missing. */
+  #seedTemplate(slug: string) {
+    const template = join(this.templatesDir, "crew", slug);
+    if (this.registry.has(slug) || !existsSync(template)) return;
+    const dir = join(this.registry.root, slug);
+    cpSync(template, dir, { recursive: true });
+    const seeded = loadCrewFolder(dir);
+    writeCrewFolder(dir, seeded.manifest, seeded.persona);
   }
 
   async renameCaptain(name: string): Promise<void> {

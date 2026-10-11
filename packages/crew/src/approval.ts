@@ -15,7 +15,14 @@ export interface ApprovalHost {
 
 const SHELL = new Set(["bash", "powershell"]);
 /** Shipmate tools that change the instance beyond the conversation. */
-const SHIPMATE_CONSEQUENTIAL = new Set(["create_watch", "install_mcp_server"]);
+const SHIPMATE_CONSEQUENTIAL = new Set([
+  "create_watch",
+  "install_mcp_server",
+  // Shipyard: these act on GitHub with the project's token.
+  "git_push",
+  "open_pull_request",
+  "comment_on_github",
+]);
 /** MCP tool names that send, publish, buy, delete, push or otherwise act on the world. */
 const ACTING_VERB =
   /(^|_)(send|post|publish|create|delete|remove|destroy|update|edit|write|push|merge|close|reopen|purchase|buy|pay|order|transfer|execute|run|deploy|invite|share|move|rename|archive|reply|comment|approve|cancel|book|schedule|set|toggle|turn)(_|$)/i;

@@ -17,6 +17,7 @@ export function toUserDto(u: UserRow): UserDto {
     displayName: u.displayName,
     role: u.role,
     monthlyCapCents: u.monthlyCapCents,
+    discordUserId: u.discordUserId,
     createdAt: u.createdAt.toISOString(),
   };
 }

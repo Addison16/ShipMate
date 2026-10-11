@@ -169,6 +169,28 @@ describe("DiscordRelay", () => {
     );
   });
 
+  it("takes a typed approve or deny from the person who was asked", async () => {
+    const { relay, channelId, decided, port } = setup();
+    relay.handle("u1", approval("a3"));
+    relay.handle("u1", approval("a4"));
+    await relay.idle();
+    expect(relay.answer("other-channel", "u1", "approve")).toEqual({ handled: false });
+    expect(relay.answer(channelId, "u1", "what is this?")).toEqual({ handled: false });
+    expect(relay.answer(channelId, "u2", "yes")).toEqual({
+      handled: true,
+      reply: "Only Addison can answer this.",
+    });
+    // The newest card is answered first.
+    expect(relay.answer(channelId, "u1", "Deny.")).toEqual({ handled: true, reply: null });
+    expect(decided).toEqual([{ userId: "u1", id: "a4", decision: "deny" }]);
+    await relay.idle();
+    expect(port.edits.at(-1)?.content).toContain("Addison denied it");
+    expect(relay.answer(channelId, "u1", "approve")).toEqual({ handled: true, reply: null });
+    expect(decided.at(-1)).toEqual({ userId: "u1", id: "a3", decision: "allow" });
+    await relay.idle();
+    expect(relay.answer(channelId, "u1", "approve")).toEqual({ handled: false });
+  });
+
   it("marks a card expired when nobody answers", async () => {
     const { port, relay } = setup();
     relay.handle("u1", approval("a2"));

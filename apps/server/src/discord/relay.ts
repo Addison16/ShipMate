@@ -1,4 +1,5 @@
 import type { ApprovalDecision, ServerEvent } from "@shipmate/core";
+import { answerTyped, type TypedAnswer } from "../chat/relay.js";
 import type { BotButton, DiscordClientPort, DiscordEvent, DiscordWebhook } from "./port.js";
 import { DISCORD_LIMIT, splitMessage } from "./split.js";
 
@@ -164,6 +165,16 @@ export class DiscordRelay {
       return;
     }
     await event.acknowledge();
+  }
+
+  /** A typed "approve" or "deny" in a channel with approval cards; see ChatRelay.answer. */
+  answer(channelId: string, userId: string, text: string): TypedAnswer {
+    return answerTyped(
+      [...this.#cards.entries()].filter(([, c]) => c.channelId === channelId),
+      userId,
+      text,
+      (id, decision) => this.approvals.decide(userId, id, decision),
+    );
   }
 
   /** Resolves when everything queued so far has been sent (tests). */

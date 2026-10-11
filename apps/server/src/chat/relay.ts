@@ -203,6 +203,20 @@ export class ChatRelay {
     return null;
   }
 
+  /**
+   * A typed answer ("approve", "deny", "always") from `userId` in `chatId`, where approval cards
+   * may be waiting. Answers the newest card of theirs there. Not handled when the text is not an
+   * answer or no card waits in the chat, so it goes to the crew as usual.
+   */
+  answer(chatId: string, userId: string, text: string): TypedAnswer {
+    return answerTyped(
+      [...this.#cards.entries()].filter(([, c]) => c.chatId === chatId),
+      userId,
+      text,
+      (id, decision) => this.approvals.decide(userId, id, decision),
+    );
+  }
+
   /** Resolves when everything queued so far has been sent (tests). */
   async idle(): Promise<void> {
     while (this.#queues.size) await Promise.all([...this.#queues.values()]);
@@ -249,6 +263,48 @@ export class ChatRelay {
       if (this.#queues.get(key) === next) this.#queues.delete(key);
     });
   }
+}
+
+export type TypedAnswer = { handled: false } | { handled: true; reply: string | null };
+
+/**
+ * Words people type to answer an approval card. Only read while a card waits in that chat; the
+ * crew member is paused on it then, so "yes" or "no" there can only mean the card.
+ */
+export function parseApprovalReply(text: string): ApprovalDecision | null {
+  const t = text
+    .trim()
+    .toLowerCase()
+    .replace(/^[!/]/, "")
+    .replace(/[.!\s]+$/, "");
+  if (/^(approve|approved|allow|allow once|yes|y|ok|okay|go ahead|👍|✅)$/u.test(t)) return "allow";
+  if (/^(deny|denied|no|n|reject|decline|don't|dont|👎|⛔|❌)$/u.test(t)) return "deny";
+  if (/^(always|always allow|approve always)$/.test(t)) return "always";
+  return null;
+}
+
+/** Shared by the chat relays: answer the newest of the person's cards among `cards`. */
+export function answerTyped<C extends { userId: string; userName: string }>(
+  cards: Array<[string, C]>,
+  userId: string,
+  text: string,
+  decide: (approvalId: string, decision: ApprovalDecision) => void,
+): TypedAnswer {
+  const decision = parseApprovalReply(text);
+  if (!decision || !cards.length) return { handled: false };
+  const mine = cards.filter(([, c]) => c.userId === userId);
+  const newest = mine[mine.length - 1];
+  if (!newest) {
+    const owner = cards[cards.length - 1]?.[1].userName ?? "the person who asked";
+    return { handled: true, reply: `Only ${owner} can answer this.` };
+  }
+  try {
+    decide(newest[0], decision);
+  } catch {
+    return { handled: true, reply: "This request is no longer waiting for an answer." };
+  }
+  // The card itself changes to show the outcome.
+  return { handled: true, reply: null };
 }
 
 export function approvalButtons(approvalId: string, crewName: string): ApprovalButton[] {

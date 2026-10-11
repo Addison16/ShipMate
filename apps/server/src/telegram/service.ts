@@ -320,6 +320,12 @@ export class TelegramService {
     }
     if (!text) return;
 
+    const typed = this.relay.answer(m.chatId, user.id, text);
+    if (typed.handled) {
+      if (typed.reply) await reply(typed.reply);
+      return;
+    }
+
     const outcome = await deliver(this.deps, {
       user,
       slug,

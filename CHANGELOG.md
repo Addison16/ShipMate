@@ -13,6 +13,9 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 - **Approve or deny from the notification**: approval notifications have Approve and Deny
   buttons backed by a one-time token for that request and person, so they work without opening
   the app. Where buttons are not supported, a tap opens the request.
+- **Typed approvals in chat bridges**: besides the buttons, answer an approval card in Discord,
+  Telegram or Slack by typing `approve`, `deny` or `always` (or `yes` / `no`). Only the person
+  who was asked can answer.
 
 - **Light, Dark and Auto** appearance per user, saved to the account so it follows you to every
   device. Auto follows the device and switches live. Pick it in Settings or from the sidebar.

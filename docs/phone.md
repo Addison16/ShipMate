@@ -34,3 +34,12 @@ Requirements:
 How the buttons stay safe: each approval notification carries a token that works for that one
 request, for the person who was asked, once, for 30 minutes. The service worker sends it without
 cookies, so a notification can never act as anyone, or on anything, else.
+
+## Approvals from Discord, Telegram and Slack
+
+When a crew member pauses for your OK in a conversation that lives in Discord, Telegram or
+Slack, the card there has **Allow once**, **Always allow** and **Deny** buttons. You can also
+just type the answer in that chat: `approve` (or `yes`, `ok`, 👍), `deny` (or `no`, 👎), or
+`always`. A typed answer goes to your newest waiting card in that chat. Only the person who
+was asked can answer; anyone else gets "Only <name> can answer this." When nothing is waiting,
+those words go to the crew like any other message.

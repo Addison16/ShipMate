@@ -288,8 +288,9 @@ export class ShipyardJobs {
     if (job?.status !== "reviewing" || job.prNumber !== prNumber) return;
     const row = await this.d.host.row(job.projectId);
     if (row.reviewerSlug !== reviewerSlug) return;
+    // A plain comment review is not a verdict: the PR goes to people with a note to read it.
     await this.#set(job.id, {
-      reviewVerdict: verdict === "approve" ? "approve" : "changes_requested",
+      reviewVerdict: verdict === "comment" ? null : verdict,
       reviewNotes: body.slice(0, 20_000),
     });
   }
@@ -381,7 +382,8 @@ export class ShipyardJobs {
           or(isNull(projects.webhookLastDeliveryAt), lt(shipyardJobs.updatedAt, stale)),
         ),
       );
-    await Promise.all(due.map((j) => this.advance(j.id)));
+    // Each step can run a crew turn; they go on in the background.
+    for (const j of due) void this.advance(j.id);
 
     const triggered = await this.d.db
       .select()
@@ -538,7 +540,7 @@ export class ShipyardJobs {
       await this.#markReady(
         reviewed,
         client,
-        `${green}; ${this.#name(reviewer)} did not post a review`,
+        `${green}; ${this.#name(reviewer)} gave no verdict, read its review if it left one`,
       );
       return;
     }

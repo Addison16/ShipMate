@@ -7,7 +7,7 @@ import {
   shipyardJobs,
   users,
 } from "@shipmate/db";
-import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { atLeast, HttpError, type UserRow } from "../auth.js";
 import type { Bridge } from "../bridge.js";
 import type { CrewService } from "../services/crew.js";
@@ -374,13 +374,28 @@ export class ShipyardJobs {
       await this.assign(user, row.id, issueNumber, source);
     } catch (err) {
       if (err instanceof HttpError && err.statusCode === 409) return;
+      const summary = `Could not start a job for #${issueNumber}: ${(err as Error).message}`.slice(
+        0,
+        300,
+      );
+      // Polling retries every minute: note each reason once a day, not once a minute.
+      const [seen] = await this.d.db
+        .select({ id: projectEvents.id })
+        .from(projectEvents)
+        .where(
+          and(
+            eq(projectEvents.projectId, row.id),
+            eq(projectEvents.kind, "shipmate.job_skipped"),
+            eq(projectEvents.summary, summary),
+            gt(projectEvents.createdAt, new Date(Date.now() - 24 * 60 * 60_000)),
+          ),
+        )
+        .limit(1);
+      if (seen) return;
       await this.d.db.insert(projectEvents).values({
         projectId: row.id,
         kind: "shipmate.job_skipped",
-        summary: `Could not start a job for #${issueNumber}: ${(err as Error).message}`.slice(
-          0,
-          300,
-        ),
+        summary,
       });
     }
   }

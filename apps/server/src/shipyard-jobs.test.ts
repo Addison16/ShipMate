@@ -656,6 +656,22 @@ describe.skipIf(!db)("Shipyard issue-to-PR jobs, webhooks and the reviewer", () 
     }
   });
 
+  it("notes a trigger that cannot start a job once, not on every retry", async () => {
+    // Issue 99 does not exist on GitHub, so its job cannot start; polling would retry each minute.
+    for (let i = 0; i < 3; i++) {
+      await hook("issues", {
+        action: "labeled",
+        label: { name: "shipwright" },
+        issue: { number: 99, title: "Gone", state: "open", labels: [{ name: "shipwright" }] },
+      });
+    }
+    const skipped = () =>
+      t.app.db.select().from(projectEvents).where(eq(projectEvents.kind, "shipmate.job_skipped"));
+    await until(async () => (await skipped()).length > 0);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await skipped()).toHaveLength(1);
+  });
+
   it("never runs a second turn while the person is answering in the job's conversation", async () => {
     const job = (await jobOf(14)) as ShipyardJobDto;
     expect(job.status).toBe("needs_input");

@@ -14,7 +14,8 @@ Version 1.0. See [CHANGELOG.md](CHANGELOG.md) for what is in it and
   ones you come back to.
 - **Crew**: every bot is a folder (`crew.yaml` + `CREW.md`) you can edit in the UI or on disk,
   with its own memory, tools, MCP servers and cost ceiling. Start from ready-made crew (Galley,
-  Purser, Navigator, Tutor, Health Log) at first run or any time later.
+  Purser, Navigator, Tutor, Health Log) at first run or any time later, and share crew members
+  as a single file that others import for review.
 - **Lists**: groceries, to-dos, packing and bills with checkboxes, shared with the household or
   private, kept up to date by you and the crew alike.
 - **Household profiles**: diets, budgets, timezones and schedules every crew member knows, so

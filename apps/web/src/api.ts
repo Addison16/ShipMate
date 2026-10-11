@@ -15,6 +15,8 @@ import type {
   CreateWatchRequest,
   CrewDetailDto,
   CrewDto,
+  CrewImportPreviewDto,
+  CrewImportRequest,
   DiscordLinkCode,
   DiscordStatusDto,
   HouseholdDto,
@@ -152,6 +154,10 @@ export const api = {
     ),
   deleteMemory: (slug: string, scope: "shared" | "user", name: string) =>
     request<Ok>("DELETE", `/api/crew/${enc(slug)}/memory/${enc(scope)}/${enc(name)}`),
+  previewCrewImport: (body: { text: string } | { url: string }) =>
+    request<{ preview: CrewImportPreviewDto }>("POST", "/api/crew/import/preview", body),
+  importCrew: (body: CrewImportRequest) =>
+    request<{ crew: CrewDetailDto }>("POST", "/api/crew/import", body),
   listStarters: () => request<{ starters: StarterCrewDto[] }>("GET", "/api/crew/starters"),
   installStarters: (body: InstallStartersRequest) =>
     request<InstallStartersResponse>("POST", "/api/crew/starters", body),

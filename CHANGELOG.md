@@ -40,6 +40,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 - **Conversation search and pinning**: a search box on the Bridge finds words and phrases across
   all of your own conversations (web, chat bridges and watch runs) with highlighted excerpts,
   using Postgres full-text search. Pin conversations to keep them at the top.
+- **Share crew members**: **Export** on a crew member's page downloads one
+  `.shipmate-crew.json` file with its crew.yaml, CREW.md and skills. Memory, sessions, granted
+  approvals, spend caps and anything that looks like a key are left out. **Crew → Import** reads
+  such a file or an https link (public hosts only, 512 KB at most), shows a preview with
+  warnings, and brings the crew member aboard awaiting review, with its skills pending approval.
 
 ## 1.0.0 — 2026-10-11
 

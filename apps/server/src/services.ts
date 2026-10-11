@@ -13,6 +13,7 @@ import { ApprovalService } from "./services/approvals.js";
 import { AuditService } from "./services/audit.js";
 import { BackupService } from "./services/backups.js";
 import { CrewService } from "./services/crew.js";
+import { CrewBundleService } from "./services/crew-bundles.js";
 import { ListService } from "./services/lists.js";
 import { McpService } from "./services/mcp.js";
 import { type OidcDiscover, OidcService } from "./services/oidc.js";
@@ -54,6 +55,7 @@ export interface Services {
   starters: StarterService;
   lists: ListService;
   profiles: ProfileService;
+  crewBundles: CrewBundleService;
 }
 
 /**
@@ -183,6 +185,7 @@ export async function createServices(
     shipyard,
     lists,
     profiles,
+    crewBundles: new CrewBundleService({ crew, settings, providers, mcp, skills }),
     starters: new StarterService(config.TEMPLATES_DIR, crew, settings, mcp, watches),
     backups: new BackupService(
       db,

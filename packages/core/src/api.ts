@@ -1003,6 +1003,57 @@ export interface HouseholdDto extends HouseholdFacts {
 export type UpdateProfileRequest = Partial<PersonProfile> & { shared?: boolean };
 export type UpdateHouseholdRequest = Partial<HouseholdFacts>;
 
+// ---------- crew import and export (everyday life) ----------
+
+/**
+ * One crew member as a single shareable file (`<slug>.shipmate-crew.json`): crew.yaml, CREW.md
+ * and its active skills. Never memory, sessions, approvals ("allow"), spend caps or secrets.
+ */
+export interface CrewBundle {
+  format: "shipmate-crew";
+  version: 1;
+  /** Suggested slug; the importer may pick another. */
+  slug: string;
+  /** crew.yaml text. */
+  manifest: string;
+  /** CREW.md text. */
+  persona: string;
+  /** Each skill's SKILL.md (only the SKILL.md file; extra skill files are not shared). */
+  skills: Array<{ name: string; content: string }>;
+  exportedAt?: string;
+}
+export interface CrewImportPreviewDto {
+  /** The cleaned bundle to send back with POST /api/crew/import. */
+  bundle: CrewBundle;
+  name: string;
+  role: string;
+  /** The model it will get here (its own when available, else the default). */
+  model: string;
+  /** The bundle asked for a model this instance cannot use, so the default replaces it. */
+  modelReplaced: string | null;
+  backend: "pi" | "claude-code-cli";
+  tools: string[];
+  mcp: Array<{ id: string; known: boolean; installed: boolean }>;
+  skills: Array<{ name: string; description: string }>;
+  persona: string;
+  /** A free slug: the bundle's, or with a number added when that one is taken. */
+  slug: string;
+  /** Things to look at before importing, in plain words. */
+  warnings: string[];
+}
+/**
+ * GET /api/crew/:slug/export → the CrewBundle as a JSON download. Header
+ *   X-Shipmate-Redacted: <n> counts values that looked like keys or tokens and were replaced.
+ * POST /api/crew/import/preview (admin) { text } | { url } → { preview: CrewImportPreviewDto }
+ *   `text` is the file's contents; `url` must be https on a public host (at most 512 KB).
+ * POST /api/crew/import (admin) { bundle, slug } → { crew: CrewDetailDto } (pending review; its
+ *   skills wait for approval on the Skills page)
+ */
+export interface CrewImportRequest {
+  bundle: CrewBundle;
+  slug: string;
+}
+
 // ---------- WebSocket: /api/ws ----------
 
 export type ClientEvent =

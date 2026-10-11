@@ -4,6 +4,7 @@ import { api, errorMessage } from "../api.js";
 import { isAdmin, useUser } from "../auth.js";
 import { Avatar } from "../components/Avatar.js";
 import { CrewBackendSelect } from "../components/ClaudeCliCard.js";
+import { ExportCrewButton, ImportCrewPage } from "../components/CrewBundle.js";
 import { ModelSelect } from "../components/ModelSelect.js";
 import { StarterCrewPicker } from "../components/StarterCrewPicker.js";
 import {
@@ -28,6 +29,7 @@ import { useServerEvents } from "../ws.js";
 export function CrewPage({ slug }: { slug: string | null }) {
   if (slug === "new") return <NewCrew />;
   if (slug === "starters") return <StarterCrew />;
+  if (slug === "import") return <ImportCrew />;
   if (slug) return <CrewDetail key={slug} slug={slug} />;
   return <CrewList />;
 }
@@ -59,6 +61,7 @@ function CrewList() {
         actions={
           isAdmin(user) && (
             <>
+              <Button onClick={() => navigate("/crew/import")}>Import</Button>
               <Button onClick={() => navigate("/crew/starters")}>Add starter crew</Button>
               <Button variant="primary" onClick={() => navigate("/crew/new")}>
                 New crew member
@@ -228,6 +231,18 @@ function NewCrew() {
   );
 }
 
+function ImportCrew() {
+  const user = useUser();
+  if (!isAdmin(user)) {
+    return (
+      <Page>
+        <Muted>Only owners and admins can import crew members.</Muted>
+      </Page>
+    );
+  }
+  return <ImportCrewPage />;
+}
+
 function StarterCrew() {
   const user = useUser();
   const [notes, setNotes] = useState<string[] | null>(null);
@@ -339,7 +354,8 @@ function CrewDetail({ slug }: { slug: string }) {
                 </p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-start gap-2">
+              <ExportCrewButton slug={crew.slug} />
               {admin && crew.status === "pending_review" && (
                 <Button variant="primary" onClick={() => void approve()}>
                   Approve
@@ -355,8 +371,8 @@ function CrewDetail({ slug }: { slug: string }) {
           {crew.status === "pending_review" && (
             <div className="mb-4">
               <Notice>
-                This crew member was recruited by the coordinator and is waiting for review. Read
-                the persona and manifest, then approve it to put it to work.
+                This crew member is waiting for review (recruited by the coordinator, or imported).
+                Read the persona and manifest, then approve it to put it to work.
               </Notice>
             </div>
           )}

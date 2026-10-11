@@ -401,4 +401,103 @@ describe.skipIf(!db)("Everyday life", () => {
     await api("PATCH", `/api/conversations/${a.id}`, { pinned: false });
     expect((await api("GET", "/api/conversations")).json().conversations[0].id).not.toBe(a.id);
   });
+
+  it("exports a crew member as one file and imports it for review", async () => {
+    // Give the Galley an approved tool, a skill, a memory and a key pasted into its persona.
+    const galley = (await api("GET", "/api/crew/galley")).json().crew;
+    expect(galley.manifestYaml).toMatch(/allow: \[\]/);
+    const edited = await api("PUT", "/api/crew/galley", {
+      manifestYaml: galley.manifestYaml
+        .replace("allow: []", "allow: [bash]")
+        .replace("monthlyCapUsd: null", "monthlyCapUsd: 5"),
+      persona: `${galley.persona}\nOur API key is sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123.\n`,
+    });
+    expect(edited.statusCode).toBe(200);
+    await api("POST", "/api/skills", {
+      scope: "crew",
+      crewSlug: "galley",
+      content: "---\nname: weekly-meal-plan\ndescription: plan a week of dinners\n---\n\nSteps.",
+    });
+    const res = await api("GET", "/api/crew/galley/export");
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-disposition"]).toContain("galley.shipmate-crew.json");
+    expect(res.headers["x-shipmate-redacted"]).toBe("1");
+    const bundle = res.json();
+    expect(bundle).toMatchObject({ format: "shipmate-crew", version: 1, slug: "galley" });
+    expect(bundle.persona).toContain("[redacted]");
+    expect(bundle.persona).not.toContain("sk-ant");
+    expect(bundle.manifest).not.toMatch(/allow|monthlyCapUsd|captain/);
+    expect(bundle.skills.map((x: { name: string }) => x.name)).toEqual(["weekly-meal-plan"]);
+    expect(JSON.stringify(bundle)).not.toContain("memory");
+
+    // Members can export what they can see, but only admins import.
+    expect((await api("GET", "/api/crew/galley/export", undefined, memberCookie)).statusCode).toBe(
+      200,
+    );
+    const text = JSON.stringify(bundle);
+    expect((await api("POST", "/api/crew/import/preview", { text }, memberCookie)).statusCode).toBe(
+      403,
+    );
+
+    const preview = (await api("POST", "/api/crew/import/preview", { text })).json().preview;
+    expect(preview).toMatchObject({
+      name: "Galley",
+      slug: "galley-2",
+      model: "faux/m",
+      skills: [{ name: "weekly-meal-plan", description: "plan a week of dinners" }],
+    });
+
+    // A file from elsewhere: unknown model and server, a bash tool, a hidden token.
+    const foreign = {
+      ...bundle,
+      slug: "chef",
+      manifest:
+        "name: Chef\nrole: cooks\nmodel: nowhere/big-model\ncaptain: true\ntools: [read, bash]\nmcp: [time, mystery-server]\nallow: ['*']\n",
+      persona: "Cook well. token: ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+    };
+    const p2 = (
+      await api("POST", "/api/crew/import/preview", { text: JSON.stringify(foreign) })
+    ).json().preview;
+    expect(p2).toMatchObject({ slug: "chef", model: "faux/m", modelReplaced: "nowhere/big-model" });
+    expect(p2.warnings.join(" ")).toMatch(/mystery-server/);
+    expect(p2.warnings.join(" ")).toMatch(/bash/);
+    expect(p2.warnings.join(" ")).toMatch(/look like keys/);
+    expect(p2.bundle.manifest).not.toMatch(/captain|allow/);
+
+    const imported = (
+      await api("POST", "/api/crew/import", { bundle: p2.bundle, slug: "chef" })
+    ).json().crew;
+    expect(imported).toMatchObject({ slug: "chef", status: "pending_review", model: "faux/m" });
+    expect(imported.manifestYaml).not.toMatch(/allow:\s*\n\s*- "\*"/);
+    expect(imported.manifestYaml).toMatch(/captain: false/);
+    const skills = (await api("GET", "/api/skills")).json().skills;
+    expect(skills.find((x: { id: string }) => x.id === "crew:chef:weekly-meal-plan")?.status).toBe(
+      "pending",
+    );
+    expect(
+      (await api("POST", "/api/crew/import", { bundle: p2.bundle, slug: "chef" })).statusCode,
+    ).toBe(409);
+
+    // Nothing unsafe gets through.
+    const bad = async (b: unknown) =>
+      (await api("POST", "/api/crew/import/preview", { text: JSON.stringify(b) })).statusCode;
+    expect(await bad({ ...bundle, skills: [{ name: "../../etc", content: "x" }] })).toBe(400);
+    expect(await bad({ ...bundle, slug: "../captain" })).toBe(400);
+    expect(await bad({ ...bundle, format: "something-else" })).toBe(400);
+    expect(
+      await bad({
+        ...bundle,
+        skills: [{ name: "a", content: "---\nname: b\ndescription: x\n---\n" }],
+      }),
+    ).toBe(400);
+    expect((await api("POST", "/api/crew/import/preview", { text: "not json" })).statusCode).toBe(
+      400,
+    );
+    expect(
+      (await api("POST", "/api/crew/import/preview", { url: "http://example.com/x" })).json().error,
+    ).toMatch(/only https/);
+    expect(
+      (await api("POST", "/api/crew/import", { bundle: p2.bundle, slug: "../../etc" })).statusCode,
+    ).toBe(400);
+  });
 });

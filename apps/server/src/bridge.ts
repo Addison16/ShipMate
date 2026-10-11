@@ -125,6 +125,7 @@ interface Run {
  */
 export class Bridge {
   #sockets = new Map<string, Set<Send>>();
+  #taps = new Set<(userId: string, event: ServerEvent) => void>();
   #runs = new Map<string, Run>();
   #watches: WatchService | undefined;
   #workspaces: WorkspaceProvider | undefined;
@@ -166,6 +167,13 @@ export class Bridge {
 
   emit(userId: string, event: ServerEvent) {
     for (const send of this.#sockets.get(userId) ?? []) send(event);
+    for (const tap of this.#taps) tap(userId, event);
+  }
+
+  /** See every event sent to anyone, connected or not (push notifications). */
+  tap(listener: (userId: string, event: ServerEvent) => void): () => void {
+    this.#taps.add(listener);
+    return () => this.#taps.delete(listener);
   }
 
   broadcast(event: ServerEvent) {

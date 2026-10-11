@@ -1,0 +1,36 @@
+# Phone, voice and files
+
+Shipmate works as an everyday assistant on your phone: notifications when the crew needs you,
+photos and documents in chat, and talking to the Captain out loud.
+
+## Push notifications
+
+Open **Settings → Notifications** on each phone or computer and press **Turn on for this
+device**. Pick what that device gets:
+
+- **Approval requests**: a crew member waits for your OK. The notification has **Approve** and
+  **Deny** buttons that answer straight away, without opening the app.
+- **Watch results**: one of your watches finished or failed.
+- **Crew replies**: a reply on the Bridge while you have no Shipmate tab open.
+
+**Send a test** checks every device at once. Devices that stop accepting notifications (the
+app was uninstalled, or permission withdrawn) are removed automatically.
+
+Requirements:
+
+- Shipmate must be served over **HTTPS** (or opened on `localhost`), with `SHIPMATE_URL` set to
+  that address. Browsers only allow service workers and push on secure origins.
+- **iPhone and iPad** (iOS 16.4 or later): notifications only work in the installed app. In
+  Safari tap Share → **Add to Home Screen**, open Shipmate from the Home Screen, then turn
+  notifications on. iOS does not show Approve and Deny buttons; tapping the notification opens
+  the request instead.
+- The server sends notifications through the browser makers' push services (Google, Mozilla,
+  Apple, Microsoft), so it needs outbound HTTPS to them. Messages are end-to-end encrypted
+  (RFC 8291); the push service only sees an opaque blob. The signing key (VAPID) is generated on
+  first use and kept encrypted with your other secrets, so it survives restarts and restores.
+- Other push services (for example a self-hosted one) can be allowed with
+  `SHIPMATE_PUSH_HOSTS=push.example.org,other.example.net`.
+
+How the buttons stay safe: each approval notification carries a token that works for that one
+request, for the person who was asked, once, for 30 minutes. The service worker sends it without
+cookies, so a notification can never act as anyone, or on anything, else.

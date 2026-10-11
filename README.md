@@ -34,6 +34,8 @@ Version 1.0. See [CHANGELOG.md](CHANGELOG.md) for what is in it and
   plan via Sign in with ChatGPT, and your Claude subscription via the official Claude Code CLI.
 - **Chat anywhere**: the web app (installable as a PWA on phone and desktop), Discord,
   Telegram and Slack.
+- **On your phone**: push notifications for approvals (approve or deny from the notification),
+  watch results and crew replies. See [docs/phone.md](docs/phone.md).
 - **Backups**: nightly or on demand, restorable from the UI or the CLI.
 
 ## Quick start

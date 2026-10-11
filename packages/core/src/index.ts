@@ -1,6 +1,7 @@
 export type * from "./api.js";
 export * from "./crew.js";
 export * from "./memory.js";
+export type * from "./phone.js";
 export * from "./routine.js";
 export * from "./search.js";
 export * from "./skill.js";

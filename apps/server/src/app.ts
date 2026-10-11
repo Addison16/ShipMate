@@ -23,6 +23,7 @@ import { mcpRoutes } from "./routes/mcp.js";
 import { oidcRoutes } from "./routes/oidc.js";
 import { profileRoutes } from "./routes/profiles.js";
 import { providerRoutes } from "./routes/providers.js";
+import { pushRoutes } from "./routes/push.js";
 import { shipyardRoutes } from "./routes/shipyard.js";
 import { skillRoutes } from "./routes/skills.js";
 import { slackRoutes } from "./routes/slack.js";
@@ -44,7 +45,7 @@ const PUBLIC = new Set([
   "/api/auth/oidc/callback",
 ]);
 /** Prefixes reachable without signing in; each route checks its own credential (a token). */
-const PUBLIC_PREFIXES = ["/api/hooks/"];
+const PUBLIC_PREFIXES = ["/api/hooks/", "/api/push/act/"];
 
 const ClientEventSchema = z.discriminatedUnion("type", [
   z.object({
@@ -71,6 +72,8 @@ export async function buildApp(
     slackPort?: import("./slack/port.js").SlackPort;
     /** Stand-in for Open-Meteo (tests). */
     weather?: import("./services/weather.js").WeatherService;
+    /** Stand-in for the Web Push services (tests). */
+    pushFetch?: import("./push/webpush.js").PushFetch;
   } = {},
 ) {
   const app = Fastify({
@@ -154,6 +157,7 @@ export async function buildApp(
   await slackRoutes(app, services);
   await backupRoutes(app, services);
   await claudeCliRoutes(app, services);
+  await pushRoutes(app, services);
   await oidcRoutes(app, services, { secureCookies: config.secureCookies });
 
   // The Bridge's live channel: streams crew replies and takes messages from the person.
@@ -163,7 +167,12 @@ export async function buildApp(
       if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(event));
     };
     const disconnect = services.bridge.connect(user.id, send);
-    socket.on("close", disconnect);
+    // While a tab is open, crew replies show there instead of as push notifications.
+    const present = services.push.opened(user.id);
+    socket.on("close", () => {
+      disconnect();
+      present();
+    });
     send({ type: "hello", version: SHIPMATE_VERSION, userId: user.id });
     socket.on("message", (raw: Buffer) => {
       let event: ClientEvent;

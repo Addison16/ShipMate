@@ -9,6 +9,8 @@ import { DiscordJsPort } from "./discord/discordjs.js";
 import type { DiscordClientPort } from "./discord/port.js";
 import { DiscordService } from "./discord/service.js";
 import { EverydayTools } from "./everyday.js";
+import { PushService } from "./push/service.js";
+import type { PushFetch } from "./push/webpush.js";
 import { ApprovalService } from "./services/approvals.js";
 import { AuditService } from "./services/audit.js";
 import { BackupService } from "./services/backups.js";
@@ -56,6 +58,7 @@ export interface Services {
   lists: ListService;
   profiles: ProfileService;
   crewBundles: CrewBundleService;
+  push: PushService;
 }
 
 /**
@@ -77,6 +80,8 @@ export async function createServices(
     oidcDiscover?: OidcDiscover;
     /** Stand-in for Open-Meteo (tests). */
     weather?: WeatherService;
+    /** Stand-in for the Web Push services (tests). */
+    pushFetch?: PushFetch;
   } = {},
 ): Promise<Services> {
   const vault = new SecretVault(config.SHIPMATE_SECRET);
@@ -133,6 +138,15 @@ export async function createServices(
     githubWeb: process.env.SHIPMATE_GITHUB_URL || undefined,
   });
   bridge.attachWorkspaces(shipyard);
+  const push = new PushService({
+    db,
+    vault,
+    secret: config.SHIPMATE_SECRET,
+    publicUrl: config.SHIPMATE_URL,
+    extraHosts: (process.env.SHIPMATE_PUSH_HOSTS ?? "").split(","),
+    ...(options.pushFetch ? { fetch: options.pushFetch } : {}),
+  });
+  bridge.tap((userId, event) => push.handle(userId, event));
 
   const current = await settings.get();
   await crew.boot({ name: current.captainName });
@@ -187,6 +201,7 @@ export async function createServices(
     profiles,
     crewBundles: new CrewBundleService({ crew, settings, providers, mcp, skills }),
     starters: new StarterService(config.TEMPLATES_DIR, crew, settings, mcp, watches),
+    push,
     backups: new BackupService(
       db,
       settings,

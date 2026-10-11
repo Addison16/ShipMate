@@ -6,6 +6,14 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Push notifications** on phones and desktops (Web Push, no third-party account): approval
+  requests, watch results, and crew replies while no tab is open. Turn them on per device in
+  Settings → Notifications and choose what each device gets; **Send a test** checks them all.
+  On iPhone and iPad, add Shipmate to the Home Screen first. See [docs/phone.md](docs/phone.md).
+- **Approve or deny from the notification**: approval notifications have Approve and Deny
+  buttons backed by a one-time token for that request and person, so they work without opening
+  the app. Where buttons are not supported, a tap opens the request.
+
 - **Light, Dark and Auto** appearance per user, saved to the account so it follows you to every
   device. Auto follows the device and switches live. Pick it in Settings or from the sidebar.
 - **Color themes** with a nautical feel: Harbor (teal, the default), Open Sea, Coral Reef,

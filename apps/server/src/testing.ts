@@ -9,6 +9,7 @@ import { buildApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import type { DiscordClientPort } from "./discord/port.js";
 import type { WeatherService } from "./services/weather.js";
+import type { PushFetch } from "./push/webpush.js";
 import type { SlackPort } from "./slack/port.js";
 import type { TelegramPort } from "./telegram/port.js";
 
@@ -40,6 +41,7 @@ export async function testApp(
     telegramPort?: TelegramPort;
     slackPort?: SlackPort;
     weather?: WeatherService;
+    pushFetch?: PushFetch;
   } = {},
 ) {
   await resetDatabase(url);
@@ -65,6 +67,7 @@ export async function testApp(
     ...(options.telegramPort ? { telegramPort: options.telegramPort } : {}),
     ...(options.slackPort ? { slackPort: options.slackPort } : {}),
     ...(options.weather ? { weather: options.weather } : {}),
+    ...(options.pushFetch ? { pushFetch: options.pushFetch } : {}),
   });
   await app.ready();
   return { app, faux, config };

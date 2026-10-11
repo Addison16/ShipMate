@@ -6,6 +6,7 @@ import { BackupSettings } from "../components/BackupSettings.js";
 import { ModelSelect } from "../components/ModelSelect.js";
 import { OidcSettings } from "../components/OidcSettings.js";
 import { ProfileSettings } from "../components/ProfileSettings.js";
+import { PushSettings } from "../components/PushSettings.js";
 import { Badge, Button, Card, ErrorText, Page, PageHeader, TextField } from "../components/ui.js";
 import { useResource } from "../lib/useResource.js";
 
@@ -22,6 +23,7 @@ export function SettingsPage() {
       <div className="space-y-6">
         <AppearanceSettings />
         <ProfileSettings />
+        <PushSettings />
         <InstanceSettings />
         <OidcSettings />
         <BackupSettings />

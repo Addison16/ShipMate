@@ -214,23 +214,52 @@ export class Bridge {
     const vector = sql`to_tsvector('english', ${messages.content})`;
     const rank = sql<number>`ts_rank(${vector}, ${tsquery})`;
     const options = `StartSel=${SEARCH_MARK.start}, StopSel=${SEARCH_MARK.end}, MaxWords=24, MinWords=8, MaxFragments=2, FragmentDelimiter=" … "`;
-    const hits = await this.deps.db
+    const matched = and(eq(conversations.userId, user.id), sql`${vector} @@ ${tsquery}`);
+    // Pick the best conversations first, so one long chat can't crowd the others out.
+    const top = await this.deps.db
+      .select({ conversationId: messages.conversationId, best: sql<number>`max(${rank})` })
+      .from(messages)
+      .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+      .where(matched)
+      .groupBy(messages.conversationId)
+      .orderBy(sql`max(${rank}) desc`)
+      .limit(limit);
+    const topIds = top.map((t) => t.conversationId);
+    // Then up to three best messages in each of them.
+    const ranked = this.deps.db
       .select({
         id: messages.id,
         conversationId: messages.conversationId,
         createdAt: messages.createdAt,
-        userName: users.displayName,
-        crewName: crewMembers.name,
-        snippet: sql<string>`ts_headline('english', ${messages.content}, ${tsquery}, ${options})`,
-        rank,
+        userId: messages.userId,
+        crewMemberId: messages.crewMemberId,
+        content: messages.content,
+        rank: rank.as("rank"),
+        place:
+          sql<number>`row_number() over (partition by ${messages.conversationId} order by ${rank} desc, ${messages.createdAt} desc)`.as(
+            "place",
+          ),
       })
       .from(messages)
-      .innerJoin(conversations, eq(conversations.id, messages.conversationId))
-      .leftJoin(users, eq(users.id, messages.userId))
-      .leftJoin(crewMembers, eq(crewMembers.id, messages.crewMemberId))
-      .where(and(eq(conversations.userId, user.id), sql`${vector} @@ ${tsquery}`))
-      .orderBy(desc(rank), desc(messages.createdAt))
-      .limit(300);
+      .where(and(inArray(messages.conversationId, topIds), sql`${vector} @@ ${tsquery}`))
+      .as("ranked");
+    const hits = topIds.length
+      ? await this.deps.db
+          .select({
+            id: ranked.id,
+            conversationId: ranked.conversationId,
+            createdAt: ranked.createdAt,
+            userName: users.displayName,
+            crewName: crewMembers.name,
+            snippet: sql<string>`ts_headline('english', ${ranked.content}, ${tsquery}, ${options})`,
+            rank: ranked.rank,
+          })
+          .from(ranked)
+          .leftJoin(users, eq(users.id, ranked.userId))
+          .leftJoin(crewMembers, eq(crewMembers.id, ranked.crewMemberId))
+          .where(sql`${ranked.place} <= 3`)
+          .orderBy(desc(ranked.rank), desc(ranked.createdAt))
+      : [];
     const pattern = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
     const titled = await this.deps.db
       .select({ id: conversations.id })

@@ -70,6 +70,8 @@ describe("labels", () => {
     expect(repoUrl(null)).toBeNull();
     expect(surfaceLabel("discord")).toBe("Discord");
     expect(surfaceLabel("watch")).toBe("Watch");
+    expect(surfaceLabel("telegram")).toBe("Telegram");
+    expect(surfaceLabel("slack")).toBe("Slack");
     expect(surfaceLabel("web")).toBeNull();
   });
 });

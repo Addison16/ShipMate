@@ -321,6 +321,8 @@ function Thread({
 }) {
   const user = useUser();
   const socketState = useSocketState();
+  // Chats from Discord, Telegram, Slack or a watch (opened from search) are shown, not continued.
+  const readOnly = conversation !== null && conversation.surface !== "web";
   const [state, dispatch] = useReducer(timelineReducer, initialTimeline);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [text, setText] = useState("");
@@ -490,7 +492,7 @@ function Thread({
               <h1 className="min-w-0 truncate font-semibold">{title}</h1>
               <span className="flex shrink-0 items-center gap-1.5">{tags}</span>
             </div>
-            {voice && voice.stt !== "off" && (
+            {voice && voice.stt !== "off" && !readOnly && (
               <Button
                 size="sm"
                 variant={handsFree ? "primary" : "ghost"}
@@ -501,7 +503,7 @@ function Thread({
                 Hands-free
               </Button>
             )}
-            {conversation && (
+            {conversation && !readOnly && (
               <>
                 <Button
                   size="sm"
@@ -552,97 +554,109 @@ function Thread({
         </div>
       </div>
 
-      <form
-        onSubmit={send}
-        onDragOver={(e) => {
-          if (e.dataTransfer.types.includes("Files")) e.preventDefault();
-        }}
-        onDrop={(e) => {
-          if (!e.dataTransfer.files.length) return;
-          e.preventDefault();
-          files.add(e.dataTransfer.files);
-        }}
-        className="border-t border-slate-200 bg-white px-3 py-3 sm:px-6 dark:border-slate-800 dark:bg-slate-900"
-      >
-        <div className="mx-auto max-w-3xl space-y-2">
-          {state.error && (
-            <div className="flex items-start gap-2">
-              <div className="flex-1">
-                <ErrorText>{state.error}</ErrorText>
+      {readOnly ? (
+        <p className="border-t border-slate-200 bg-white px-3 py-3 text-center text-sm text-slate-500 sm:px-6 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+          {conversation?.surface === "watch"
+            ? "A watch ran this conversation. It is shown here to read."
+            : `This conversation happened in ${surfaceLabel(conversation?.surface ?? "") ?? "another app"}. Reply there to continue it.`}
+        </p>
+      ) : (
+        <form
+          onSubmit={send}
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+          }}
+          onDrop={(e) => {
+            if (!e.dataTransfer.files.length) return;
+            e.preventDefault();
+            files.add(e.dataTransfer.files);
+          }}
+          className="border-t border-slate-200 bg-white px-3 py-3 sm:px-6 dark:border-slate-800 dark:bg-slate-900"
+        >
+          <div className="mx-auto max-w-3xl space-y-2">
+            {state.error && (
+              <div className="flex items-start gap-2">
+                <div className="flex-1">
+                  <ErrorText>{state.error}</ErrorText>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => dispatch({ type: "dismissError" })}
+                >
+                  Dismiss
+                </Button>
               </div>
-              <Button size="sm" variant="ghost" onClick={() => dispatch({ type: "dismissError" })}>
-                Dismiss
-              </Button>
-            </div>
-          )}
-          <ErrorText>{sendError}</ErrorText>
-          <PendingFiles items={files.items} onRemove={files.remove} />
-          <div className="flex items-end gap-2">
-            <AttachButtons onFiles={files.add} disabled={files.full} />
-            {voice && voice.stt !== "off" && (
-              <MicButton
-                mode={voice.stt}
-                disabled={state.busy && handsFree}
-                onError={setSendError}
-                onText={(heard) => {
-                  // Hands-free sends right away, unless it cannot yet (a file still uploading,
-                  // the crew still answering): then the words wait in the composer, not lost.
-                  if (handsFree && !state.busy && !files.uploading) {
-                    send(undefined, heard);
-                    return;
-                  }
-                  setText((t) => (t.trim() ? `${t.trimEnd()} ${heard}` : heard));
-                  inputRef.current?.focus();
-                }}
-              />
             )}
-            <label htmlFor="composer" className="sr-only">
-              Message
-            </label>
-            <textarea
-              id="composer"
-              ref={inputRef}
-              rows={rows}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={onKeyDown}
-              onPaste={(e) => {
-                if (!e.clipboardData.files.length) return;
-                e.preventDefault();
-                files.add(e.clipboardData.files);
-              }}
-              placeholder={state.busy ? "The crew is working…" : "Message the crew"}
-              className={cx(
-                "min-h-[42px] flex-1 resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-[15px] dark:border-slate-600 dark:bg-slate-950",
-                focusRing,
+            <ErrorText>{sendError}</ErrorText>
+            <PendingFiles items={files.items} onRemove={files.remove} />
+            <div className="flex items-end gap-2">
+              <AttachButtons onFiles={files.add} disabled={files.full} />
+              {voice && voice.stt !== "off" && (
+                <MicButton
+                  mode={voice.stt}
+                  disabled={state.busy && handsFree}
+                  onError={setSendError}
+                  onText={(heard) => {
+                    // Hands-free sends right away, unless it cannot yet (a file still uploading,
+                    // the crew still answering): then the words wait in the composer, not lost.
+                    if (handsFree && !state.busy && !files.uploading) {
+                      send(undefined, heard);
+                      return;
+                    }
+                    setText((t) => (t.trim() ? `${t.trimEnd()} ${heard}` : heard));
+                    inputRef.current?.focus();
+                  }}
+                />
               )}
-            />
-            {state.busy ? (
-              <Button
-                variant="danger"
-                onClick={() => socket.send({ type: "abort", conversationId })}
-              >
-                Stop
-              </Button>
-            ) : (
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={
-                  (!text.trim() && !files.ids.length) || files.uploading || socketState !== "open"
-                }
-              >
-                Send
-              </Button>
-            )}
+              <label htmlFor="composer" className="sr-only">
+                Message
+              </label>
+              <textarea
+                id="composer"
+                ref={inputRef}
+                rows={rows}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={onKeyDown}
+                onPaste={(e) => {
+                  if (!e.clipboardData.files.length) return;
+                  e.preventDefault();
+                  files.add(e.clipboardData.files);
+                }}
+                placeholder={state.busy ? "The crew is working…" : "Message the crew"}
+                className={cx(
+                  "min-h-[42px] flex-1 resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-[15px] dark:border-slate-600 dark:bg-slate-950",
+                  focusRing,
+                )}
+              />
+              {state.busy ? (
+                <Button
+                  variant="danger"
+                  onClick={() => socket.send({ type: "abort", conversationId })}
+                >
+                  Stop
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={
+                    (!text.trim() && !files.ids.length) || files.uploading || socketState !== "open"
+                  }
+                >
+                  Send
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {handsFree
+                ? "Hands-free: tap the mic, speak, tap again to send. Replies are read aloud."
+                : "Enter to send, Shift+Enter for a new line."}
+            </p>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            {handsFree
-              ? "Hands-free: tap the mic, speak, tap again to send. Replies are read aloud."
-              : "Enter to send, Shift+Enter for a new line."}
-          </p>
-        </div>
-      </form>
+        </form>
+      )}
     </>
   );
 }

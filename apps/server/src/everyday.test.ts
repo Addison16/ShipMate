@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import type { ServerEvent } from "@shipmate/core";
+import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { WeatherService } from "./services/weather.js";
 import { TEST_DATABASE_URL, testApp } from "./testing.js";
@@ -400,6 +401,21 @@ describe.skipIf(!db)("Everyday life", () => {
     ).toBe(404);
     await api("PATCH", `/api/conversations/${a.id}`, { pinned: false });
     expect((await api("GET", "/api/conversations")).json().conversations[0].id).not.toBe(a.id);
+    // One long chat full of matches doesn't crowd the other matching chats out.
+    const busy = (await api("POST", "/api/conversations", {})).json().conversation;
+    const raw = postgres(db as string, { max: 1, onnotice: () => {} });
+    try {
+      await raw`insert into messages (conversation_id, role, content)
+        select ${busy.id}, 'assistant', 'More ricotta notes, part ' || n from generate_series(1, 320) n`;
+    } finally {
+      await raw.end();
+    }
+    const crowded = await search("ricotta");
+    const ids = crowded.map((r: { conversation: { id: string } }) => r.conversation.id);
+    expect(ids).toEqual(expect.arrayContaining([a.id, busy.id]));
+    expect(
+      crowded.find((r: { conversation: { id: string } }) => r.conversation.id === busy.id).matches,
+    ).toHaveLength(3);
   });
 
   it("exports a crew member as one file and imports it for review", async () => {

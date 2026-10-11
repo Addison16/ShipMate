@@ -1,0 +1,1 @@
+ALTER TABLE "watches" ADD COLUMN "monthly_cap_cents" integer;

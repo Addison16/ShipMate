@@ -240,10 +240,22 @@ export interface UsageResponse {
   byUser: Array<
     UsageTotals & { userId: string | null; displayName: string; capCents: number | null }
   >;
-  byCrew: Array<UsageTotals & { slug: string | null; name: string }>;
+  /** capUsd: the crew member's monthlyCapUsd from crew.yaml (phase 4). */
+  byCrew: Array<UsageTotals & { slug: string | null; name: string; capUsd: number | null }>;
   byModel: Array<UsageTotals & { model: string }>;
+  /** Spend per watch (routine) this month (phase 4). */
+  byWatch: Array<
+    UsageTotals & { watchId: string; name: string; capCents: number | null }
+  >;
+  /** One entry per UTC day of the month up to today, zeros included (phase 4). */
+  daily: Array<{ date: string; costMicroUsd: number; calls: number }>;
 }
-/** GET /api/usage?month=YYYY-MM&scope=me|all → UsageResponse (scope=all needs owner or admin) */
+/**
+ * GET /api/usage?month=YYYY-MM&scope=me|all → UsageResponse (scope=all needs owner or admin)
+ * GET /api/usage/export?month=YYYY-MM&scope=me|all → text/csv, one row per model call (phase 4)
+ * Ceilings (phase 4): a turn is refused when the person's monthly cap, the crew member's
+ * `monthlyCapUsd`, or (for watch runs) the watch's `monthlyCapCents` is reached.
+ */
 
 // ---------- settings ----------
 
@@ -360,6 +372,8 @@ export interface WatchDto {
   webhookUrl: string | null;
   lastRun: WatchRunDto | null;
   nextRunAt: string | null;
+  /** Monthly spend ceiling for this watch in USD cents; null = none (phase 4). */
+  monthlyCapCents: number | null;
   createdAt: string;
 }
 export interface WatchRunDto {
@@ -393,6 +407,7 @@ export interface CreateWatchRequest {
   prompt: string;
   enabled?: boolean;
   session?: "fresh" | "continue";
+  monthlyCapCents?: number | null;
 }
 export type UpdateWatchRequest = Partial<CreateWatchRequest>;
 
@@ -600,6 +615,69 @@ export interface StartFlowRequest {
  *   conversation with the project's crew member, started with the flow's prompt)
  * POST /api/shipyard/projects/:id/conversations → { conversation } (an empty one, for chat)
  * POST /api/hooks/github/:projectId (public; X-Hub-Signature-256 checked) → { ok: true }
+ */
+
+// ---------- sign-in with OIDC (phase 4) ----------
+
+/** GET /api/auth/oidc (public) → OidcPublicDto: whether the login page shows the SSO button. */
+export interface OidcPublicDto {
+  enabled: boolean;
+  /** Button text, e.g. "Sign in with Authentik". */
+  label: string;
+}
+export interface OidcSettingsDto {
+  enabled: boolean;
+  /** Issuer URL; discovery is read from <issuer>/.well-known/openid-configuration. */
+  issuer: string;
+  clientId: string;
+  /** A client secret is stored (never returned). */
+  hasClientSecret: boolean;
+  label: string;
+  /** Create a member account on first sign-in; otherwise only existing emails may sign in. */
+  allowSignup: boolean;
+  /** Only these email domains may sign up (empty = any). */
+  allowedDomains: string[];
+  /** Register this in the identity provider. */
+  redirectUri: string;
+}
+/**
+ * GET /api/auth/oidc/start?next=<hash route> → 302 to the provider (public; PKCE + state + nonce)
+ * GET /api/auth/oidc/callback → 302 to SHIPMATE_URL (session cookie set) or to /#/login?error=…
+ *   Matches users by `oidcSubject`, else by verified email (then stores the subject).
+ * GET /api/settings/oidc (owner) → { oidc: OidcSettingsDto }
+ * PUT /api/settings/oidc (owner) Partial<{ enabled, issuer, clientId, clientSecret, label,
+ *   allowSignup, allowedDomains }> → { oidc } (clientSecret "" clears; discovery is checked)
+ */
+
+// ---------- backups (phase 4) ----------
+
+export interface BackupDto {
+  /** File name, e.g. shipmate-2026-10-11T0300Z.tar.gz */
+  name: string;
+  sizeBytes: number;
+  createdAt: string;
+  /** "manual" | "scheduled" | "cli" */
+  trigger: string;
+}
+export interface BackupSettingsDto {
+  /** Nightly backups at this UTC hour (0-23); null = off. */
+  hourUtc: number | null;
+  /** Keep this many most recent backups; older ones are deleted. */
+  keep: number;
+  /** Where backups are written (inside the data volume by default). */
+  dir: string;
+}
+/**
+ * A backup is one .tar.gz holding a JSON-lines dump of every table plus the data folder
+ * (crew, skills, workspaces excluded by default, pi config). Secrets stay encrypted, so
+ * SHIPMATE_SECRET (or /data/.secret, which is included) is needed to read them after a restore.
+ *
+ * GET /api/backups (owner) → { backups: BackupDto[], settings: BackupSettingsDto }
+ * POST /api/backups (owner) → { backup } (runs now)
+ * GET /api/backups/:name (owner) → the file (download)
+ * DELETE /api/backups/:name (owner) → { ok: true }
+ * PUT /api/backups/settings (owner) Partial<{ hourUtc, keep }> → { settings }
+ * CLI: `shipmate backup [--out file]`, `shipmate restore <file> --yes`, `shipmate doctor`
  */
 
 // ---------- WebSocket: /api/ws ----------

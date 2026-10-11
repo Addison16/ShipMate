@@ -202,6 +202,8 @@ export const watches = pgTable("watches", {
   webhookToken: text("webhook_token").notNull(),
   /** pi session file reused when session = continue. */
   sessionFile: text("session_file"),
+  /** Monthly spend ceiling in USD cents; null = none. */
+  monthlyCapCents: integer("monthly_cap_cents"),
   createdAt: createdAt(),
 });
 

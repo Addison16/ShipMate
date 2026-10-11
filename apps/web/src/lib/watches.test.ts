@@ -13,6 +13,7 @@ function watch(id: string, trigger: WatchTrigger): WatchDto {
     session: "fresh",
     owner: { id: "u1", name: "Addison" },
     webhookUrl: null,
+    monthlyCapCents: null,
     lastRun: null,
     nextRunAt: null,
     createdAt: "2026-10-11T00:00:00.000Z",

@@ -409,6 +409,7 @@ export class WatchService {
       session: w.session === "continue" ? "continue" : "fresh",
       owner: { id: w.ownerId, name: ownerName },
       // The URL is the webhook's credential, so only the owner sees it.
+      monthlyCapCents: w.monthlyCapCents ?? null,
       webhookUrl:
         trigger.kind === "webhook" && viewer.id === w.ownerId
           ? `${this.baseUrl.replace(/\/+$/, "")}/api/hooks/watches/${w.id}/${w.webhookToken}`

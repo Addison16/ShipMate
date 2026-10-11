@@ -1,4 +1,4 @@
-import type { ListKind } from "@shipmate/core";
+import type { ListDetailDto, ListKind } from "@shipmate/core";
 
 export const LIST_KINDS: Array<{ id: ListKind; label: string; placeholder: string }> = [
   { id: "grocery", label: "Groceries", placeholder: "e.g. 2 onions" },
@@ -51,4 +51,14 @@ export function dueLabel(
     text: `Due ${d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}`,
     tone: "neutral",
   };
+}
+
+/** The list as it will look once an item is (un)checked, so the checkbox responds at once. */
+export function withItemChecked(
+  list: ListDetailDto,
+  itemId: string,
+  checked: boolean,
+): ListDetailDto {
+  const items = list.items.map((i) => (i.id === itemId ? { ...i, checked } : i));
+  return { ...list, items, openCount: items.filter((i) => !i.checked).length };
 }

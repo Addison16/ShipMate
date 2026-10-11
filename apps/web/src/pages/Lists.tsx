@@ -15,7 +15,14 @@ import {
   SelectField,
   TextField,
 } from "../components/ui.js";
-import { dueLabel, itemPlaceholder, kindLabel, LIST_KINDS, localToday } from "../lib/lists.js";
+import {
+  dueLabel,
+  itemPlaceholder,
+  kindLabel,
+  LIST_KINDS,
+  localToday,
+  withItemChecked,
+} from "../lib/lists.js";
 import { useResource } from "../lib/useResource.js";
 import { href, navigate } from "../router.js";
 import { useServerEvents } from "../ws.js";
@@ -151,12 +158,18 @@ function ListDetail({ id }: { id: string }) {
 
   const l = list.data;
   /** Apply a change that returns the updated list; errors show above the items. */
-  async function apply(fn: () => Promise<{ list: ListDetailDto }>) {
+  async function apply(
+    fn: () => Promise<{ list: ListDetailDto }>,
+    /** Shown right away, before the server answers. */
+    optimistic?: (current: ListDetailDto) => ListDetailDto,
+  ) {
     setError(null);
+    if (optimistic && list.data) list.setData(optimistic(list.data));
     try {
       list.setData((await fn()).list);
     } catch (err) {
       setError(errorMessage(err));
+      if (optimistic) void list.reload();
     }
   }
 
@@ -387,7 +400,10 @@ function ItemRow({
   listId: string;
   item: ListItemDto;
   today: string;
-  apply: (fn: () => Promise<{ list: ListDetailDto }>) => Promise<void>;
+  apply: (
+    fn: () => Promise<{ list: ListDetailDto }>,
+    optimistic?: (current: ListDetailDto) => ListDetailDto,
+  ) => Promise<void>;
 }) {
   const id = `item-${item.id}`;
   const due = item.dueOn && !item.checked ? dueLabel(item.dueOn, today) : null;
@@ -397,9 +413,13 @@ function ItemRow({
         id={id}
         type="checkbox"
         checked={item.checked}
-        onChange={(e) =>
-          void apply(() => api.updateListItem(listId, item.id, { checked: e.target.checked }))
-        }
+        onChange={(e) => {
+          const checked = e.target.checked;
+          void apply(
+            () => api.updateListItem(listId, item.id, { checked }),
+            (current) => withItemChecked(current, item.id, checked),
+          );
+        }}
         className="mt-0.5 size-5 shrink-0 accent-accent-700"
       />
       <div className="min-w-0 flex-1">

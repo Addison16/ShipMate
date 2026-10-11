@@ -1,5 +1,6 @@
+import type { ListDetailDto } from "@shipmate/core";
 import { describe, expect, it } from "vitest";
-import { daysUntil, dueLabel, kindLabel, localToday } from "./lists.js";
+import { daysUntil, dueLabel, kindLabel, localToday, withItemChecked } from "./lists.js";
 
 describe("lists", () => {
   it("labels kinds", () => {
@@ -25,5 +26,40 @@ describe("lists", () => {
 
   it("formats the local date", () => {
     expect(localToday(new Date(2026, 0, 5, 23, 30))).toBe("2026-01-05");
+  });
+});
+
+describe("withItemChecked", () => {
+  const item = (id: string, checked: boolean) => ({
+    id,
+    text: id,
+    checked,
+    dueOn: null,
+    note: null,
+    position: 0,
+    addedBy: null,
+    checkedAt: null,
+    createdAt: "2026-10-11T00:00:00.000Z",
+  });
+  const list: ListDetailDto = {
+    id: "l",
+    name: "Groceries",
+    kind: "grocery",
+    shared: true,
+    owner: null,
+    createdById: null,
+    openCount: 2,
+    itemCount: 3,
+    createdAt: "2026-10-11T00:00:00.000Z",
+    updatedAt: "2026-10-11T00:00:00.000Z",
+    items: [item("milk", false), item("eggs", false), item("rice", true)],
+  };
+
+  it("checks an item and recounts what is open", () => {
+    const next = withItemChecked(list, "milk", true);
+    expect(next.items.find((i) => i.id === "milk")?.checked).toBe(true);
+    expect(next.openCount).toBe(1);
+    expect(withItemChecked(list, "rice", false).openCount).toBe(3);
+    expect(list.openCount).toBe(2);
   });
 });

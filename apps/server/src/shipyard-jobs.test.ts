@@ -767,4 +767,49 @@ describe.skipIf(!db)("Shipyard issue-to-PR jobs, webhooks and the reviewer", () 
     expect(cancelled).toBe(200);
     expect(await jobOf(24)).toMatchObject({ status: "cancelled", detail: "Cancelled by Addison" });
   });
+
+  it("runs one job's crew turn at a time in a project; the others wait their turn", async () => {
+    let release = () => {};
+    const held = new Promise<void>((r) => {
+      release = r;
+    });
+    const started: string[] = [];
+    t.faux.setResponses([
+      async (ctx) => {
+        started.push(lastPrompt(ctx));
+        await held;
+        return fauxAssistantMessage("Need details on 20.");
+      },
+      (ctx) => {
+        started.push(lastPrompt(ctx));
+        return fauxAssistantMessage("Need details on 21.");
+      },
+    ]);
+    const start = async (issue: number) =>
+      (await api("POST", `/api/shipyard/projects/${project.id}/jobs`, { issue })).json()
+        .job as ShipyardJobDto;
+    await start(20);
+    await until(() => started.length === 1);
+    // Two more issues come in while the first job's turn has the workspace.
+    await start(21);
+    const third = await start(22);
+    const waiting = "Waiting for another job in this project";
+    await until(
+      async () => (await jobOf(21))?.detail === waiting && (await jobOf(22))?.detail === waiting,
+    );
+    expect(await statusOf(21)).toBe("working");
+    expect(started).toHaveLength(1);
+    // One is cancelled while it waits: it never runs.
+    expect((await api("POST", `/api/shipyard/jobs/${third.id}/cancel`)).statusCode).toBe(200);
+
+    release();
+    await until(
+      async () => (await statusOf(20)) === "needs_input" && (await statusOf(21)) === "needs_input",
+    );
+    expect(started).toHaveLength(2);
+    expect(started[1]).toContain("issue #21");
+    expect((await jobOf(21))?.detail).toContain("stopped without opening a pull request");
+    expect(await jobOf(22)).toMatchObject({ status: "cancelled", detail: "Cancelled by Addison" });
+    expect(t.faux.getPendingResponseCount()).toBe(0);
+  });
 });

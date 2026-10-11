@@ -37,6 +37,8 @@ const NO_CI_GRACE_MS = 10 * 60_000;
 /** Polling interval, and how stale a webhook-driven job may get before polling checks it. */
 const POLL_MS = 60_000;
 const STALE_MS = 15 * 60_000;
+/** The card's detail while a job waits for another job's turn in the same workspace. */
+const WAITING = "Waiting for another job in this project";
 
 /**
  * Issue-to-PR jobs. A crew member (the project's, normally the Shipwright) works an issue on a
@@ -48,6 +50,11 @@ const STALE_MS = 15 * 60_000;
 export class ShipyardJobs {
   /** Jobs with a step in flight in this process. */
   #busy = new Set<string>();
+  /**
+   * Per project, the tail of the queue of job turns: they share one workspace and sandbox, so
+   * one runs at a time (in this process, like #busy; Shipmate runs as one process).
+   */
+  #workspaces = new Map<string, Promise<void>>();
   #timer: NodeJS.Timeout | undefined;
 
   constructor(
@@ -180,20 +187,23 @@ export class ShipyardJobs {
     );
     const jobId = job.id;
     void this.#step(jobId, async () => {
-      await this.d.host.refreshWorkspace(row).catch(() => {});
-      // Cancelled while the workspace was fetched: do not start the work anyway.
-      if (!isActive((await this.#job(jobId)).status)) return;
-      try {
-        await this.d.bridge.send(user, conv.id, prompt);
-      } catch (err) {
-        // Refused before the turn began (a usage cap, the crew member paused): say so on the card.
-        await this.#setWhileActive(jobId, {
-          status: "needs_input",
-          detail: (err as Error).message.slice(0, 300),
-        });
-        return;
-      }
-      await this.#afterWork(jobId);
+      const worked = await this.#inWorkspace(job, false, async () => {
+        await this.d.host.refreshWorkspace(row).catch(() => {});
+        // Cancelled while the workspace was fetched: do not start the work anyway.
+        if (!isActive((await this.#job(jobId)).status)) return false;
+        try {
+          await this.d.bridge.send(user, conv.id, prompt);
+        } catch (err) {
+          // Refused before the turn began (a usage cap, the crew member paused): say so on the card.
+          await this.#setWhileActive(jobId, {
+            status: "needs_input",
+            detail: (err as Error).message.slice(0, 300),
+          });
+          return false;
+        }
+        return true;
+      });
+      if (worked) await this.#afterWork(jobId);
     }).catch(() => {});
     return this.#dtoFor(job, user);
   }
@@ -669,10 +679,12 @@ export class ShipyardJobs {
   /** One crew turn in the job's conversation; false (and the job says why) when it failed. */
   async #turn(job: JobRow, slug: string, prompt: string, user: UserRow, conv: string) {
     try {
-      await this.d.bridge.runTurn(user, conv, slug, prompt, {});
-      const now = await this.#job(job.id);
-      // Cancelled while the turn ran.
-      return isActive(now.status);
+      return await this.#inWorkspace(job, false, async () => {
+        await this.d.bridge.runTurn(user, conv, slug, prompt, {});
+        const now = await this.#job(job.id);
+        // Cancelled while the turn ran.
+        return isActive(now.status);
+      });
     } catch (err) {
       // Cancelled (or merged, or closed) while the turn ran: the abort's error is not news, and
       // must not put the job back in play.
@@ -707,6 +719,35 @@ export class ShipyardJobs {
   }
 
   // ---------- helpers ----------
+
+  /**
+   * Run a job's crew turn once no other job's turn is running in the project's workspace (they
+   * would switch branches and commit over each other). While it waits the card says so; if the
+   * job stopped meanwhile, `skipped` is returned without running `fn`.
+   */
+  async #inWorkspace<T>(job: JobRow, skipped: T, fn: () => Promise<T>): Promise<T> {
+    const ahead = this.#workspaces.get(job.projectId);
+    let release = () => {};
+    const mine = new Promise<void>((r) => {
+      release = r;
+    });
+    const tail = (ahead ?? Promise.resolve()).then(() => mine);
+    this.#workspaces.set(job.projectId, tail);
+    try {
+      if (ahead) {
+        const before = (await this.#job(job.id)).detail;
+        await this.#setWhileActive(job.id, { detail: WAITING });
+        await ahead;
+        const now = await this.#job(job.id);
+        if (!isActive(now.status)) return skipped;
+        if (now.detail === WAITING) await this.#setWhileActive(job.id, { detail: before });
+      }
+      return await fn();
+    } finally {
+      release();
+      if (this.#workspaces.get(job.projectId) === tail) this.#workspaces.delete(job.projectId);
+    }
+  }
 
   /** Run `fn` unless a step for this job is already running in this process. */
   async #step(id: string, fn: () => Promise<void>): Promise<void> {

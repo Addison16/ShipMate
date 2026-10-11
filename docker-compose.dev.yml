@@ -1,0 +1,12 @@
+# Postgres only, for local development: docker compose -f docker-compose.dev.yml up -d
+services:
+  db:
+    image: postgres:17-alpine
+    ports: ["5432:5432"]
+    environment:
+      POSTGRES_USER: shipmate
+      POSTGRES_PASSWORD: shipmate
+      POSTGRES_DB: shipmate
+    volumes: [shipmate-db-dev:/var/lib/postgresql/data]
+volumes:
+  shipmate-db-dev:

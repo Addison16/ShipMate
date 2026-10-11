@@ -1,0 +1,9 @@
+name: Captain
+role: coordinator of the crew; talks to people on the Bridge and recruits or delegates to crew members as needed
+model: anthropic/claude-sonnet-5-5
+tools: [read, write, edit, bash, web_fetch]
+mcp: [memory, time, web-search]
+skills: []
+approval: ask
+visibility: shared
+captain: true

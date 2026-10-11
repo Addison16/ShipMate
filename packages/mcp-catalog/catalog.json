@@ -1,0 +1,232 @@
+[
+  {
+    "id": "filesystem",
+    "name": "Filesystem",
+    "description": "Read and write files in allowed directories.",
+    "tier": "core",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+    "tags": ["files"]
+  },
+  {
+    "id": "git",
+    "name": "Git",
+    "description": "Inspect and operate on git repositories.",
+    "tier": "core",
+    "transport": "stdio",
+    "command": "uvx",
+    "args": ["mcp-server-git"],
+    "tags": ["dev"]
+  },
+  {
+    "id": "github",
+    "name": "GitHub",
+    "description": "Issues, pull requests, repositories and actions.",
+    "tier": "core",
+    "transport": "http",
+    "url": "https://api.githubcopilot.com/mcp/",
+    "secrets": [{ "env": "GITHUB_PERSONAL_ACCESS_TOKEN", "label": "GitHub token" }],
+    "tags": ["dev"]
+  },
+  {
+    "id": "fetch",
+    "name": "Fetch",
+    "description": "Fetch web pages and convert them to text.",
+    "tier": "core",
+    "transport": "stdio",
+    "command": "uvx",
+    "args": ["mcp-server-fetch"],
+    "tags": ["web"]
+  },
+  {
+    "id": "browser",
+    "name": "Browser (Playwright)",
+    "description": "Drive a real browser for sites without an API. Users enter logins and 2FA themselves.",
+    "tier": "core",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@playwright/mcp@latest"],
+    "tags": ["web"]
+  },
+  {
+    "id": "web-search",
+    "name": "Web search (SearXNG or Brave)",
+    "description": "Search the web. Points at a self-hosted SearXNG by default; Brave with a key.",
+    "tier": "core",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "mcp-searxng"],
+    "secrets": [
+      { "env": "SEARXNG_URL", "label": "SearXNG URL", "required": false },
+      { "env": "BRAVE_API_KEY", "label": "Brave API key", "required": false }
+    ],
+    "tags": ["web"]
+  },
+  {
+    "id": "memory",
+    "name": "Memory (knowledge graph)",
+    "description": "Persistent notes and entities across sessions.",
+    "tier": "core",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-memory"],
+    "tags": ["memory"]
+  },
+  {
+    "id": "time",
+    "name": "Time",
+    "description": "Current time and timezone conversion.",
+    "tier": "core",
+    "transport": "stdio",
+    "command": "uvx",
+    "args": ["mcp-server-time"],
+    "tags": ["utility"]
+  },
+  {
+    "id": "sequential-thinking",
+    "name": "Sequential thinking",
+    "description": "Structured step-by-step reasoning scratchpad.",
+    "tier": "core",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+    "tags": ["utility"]
+  },
+
+  {
+    "id": "gitlab",
+    "name": "GitLab",
+    "description": "Projects, merge requests and pipelines.",
+    "tier": "catalog",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-gitlab"],
+    "secrets": [{ "env": "GITLAB_PERSONAL_ACCESS_TOKEN", "label": "GitLab token" }],
+    "tags": ["dev"]
+  },
+  {
+    "id": "postgres",
+    "name": "Postgres",
+    "description": "Query a Postgres database read-only.",
+    "tier": "catalog",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-postgres"],
+    "secrets": [{ "env": "DATABASE_URL", "label": "Connection string" }],
+    "tags": ["data"]
+  },
+  {
+    "id": "sqlite",
+    "name": "SQLite",
+    "description": "Query SQLite files.",
+    "tier": "catalog",
+    "transport": "stdio",
+    "command": "uvx",
+    "args": ["mcp-server-sqlite"],
+    "tags": ["data"]
+  },
+  {
+    "id": "docker",
+    "name": "Docker",
+    "description": "Manage containers, images and compose stacks.",
+    "tier": "catalog",
+    "transport": "stdio",
+    "command": "uvx",
+    "args": ["docker-mcp"],
+    "tags": ["ops"]
+  },
+  {
+    "id": "google-workspace",
+    "name": "Google Workspace",
+    "description": "Gmail, Calendar and Drive.",
+    "tier": "catalog",
+    "transport": "stdio",
+    "command": "uvx",
+    "args": ["workspace-mcp"],
+    "secrets": [
+      { "env": "GOOGLE_OAUTH_CLIENT_ID", "label": "OAuth client id" },
+      { "env": "GOOGLE_OAUTH_CLIENT_SECRET", "label": "OAuth client secret" }
+    ],
+    "tags": ["life", "work"]
+  },
+  {
+    "id": "notion",
+    "name": "Notion",
+    "description": "Pages and databases in Notion.",
+    "tier": "catalog",
+    "transport": "http",
+    "url": "https://mcp.notion.com/mcp",
+    "tags": ["work"]
+  },
+  {
+    "id": "obsidian",
+    "name": "Obsidian",
+    "description": "Read and write an Obsidian vault.",
+    "tier": "catalog",
+    "transport": "stdio",
+    "command": "uvx",
+    "args": ["mcp-obsidian"],
+    "secrets": [{ "env": "OBSIDIAN_API_KEY", "label": "Local REST API key" }],
+    "tags": ["notes"]
+  },
+  {
+    "id": "todoist",
+    "name": "Todoist",
+    "description": "Tasks and projects.",
+    "tier": "catalog",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@doist/todoist-ai"],
+    "secrets": [{ "env": "TODOIST_API_KEY", "label": "Todoist API token" }],
+    "tags": ["life"]
+  },
+  {
+    "id": "slack",
+    "name": "Slack",
+    "description": "Read and post in Slack.",
+    "tier": "catalog",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-slack"],
+    "secrets": [
+      { "env": "SLACK_BOT_TOKEN", "label": "Bot token" },
+      { "env": "SLACK_TEAM_ID", "label": "Team id" }
+    ],
+    "tags": ["work"]
+  },
+  {
+    "id": "home-assistant",
+    "name": "Home Assistant",
+    "description": "Control smart home devices.",
+    "tier": "catalog",
+    "transport": "http",
+    "url": "http://homeassistant.local:8123/mcp_server/sse",
+    "secrets": [{ "env": "HASS_TOKEN", "label": "Long-lived access token" }],
+    "tags": ["life"]
+  },
+  {
+    "id": "spotify",
+    "name": "Spotify",
+    "description": "Playback and playlists.",
+    "tier": "catalog",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "spotify-mcp-server"],
+    "secrets": [
+      { "env": "SPOTIFY_CLIENT_ID", "label": "Client id" },
+      { "env": "SPOTIFY_CLIENT_SECRET", "label": "Client secret" }
+    ],
+    "tags": ["life"]
+  },
+  {
+    "id": "weather",
+    "name": "Weather",
+    "description": "Forecasts via Open-Meteo, no key needed.",
+    "tier": "catalog",
+    "transport": "stdio",
+    "command": "uvx",
+    "args": ["mcp-weather-server"],
+    "tags": ["life"]
+  }
+]

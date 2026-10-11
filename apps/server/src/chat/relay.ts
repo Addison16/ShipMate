@@ -284,20 +284,19 @@ export function parseApprovalReply(text: string): ApprovalDecision | null {
 }
 
 /** Shared by the chat relays: answer the newest of the person's cards among `cards`. */
-export function answerTyped<C extends { userId: string; userName: string }>(
+export function answerTyped<C extends { userId: string }>(
   cards: Array<[string, C]>,
   userId: string,
   text: string,
   decide: (approvalId: string, decision: ApprovalDecision) => void,
 ): TypedAnswer {
   const decision = parseApprovalReply(text);
-  if (!decision || !cards.length) return { handled: false };
+  if (!decision) return { handled: false };
+  // Shared channels hold one conversation per person: someone else's "ok" or "no" is a
+  // message to their own crew conversation, not an answer to this person's card.
   const mine = cards.filter(([, c]) => c.userId === userId);
   const newest = mine[mine.length - 1];
-  if (!newest) {
-    const owner = cards[cards.length - 1]?.[1].userName ?? "the person who asked";
-    return { handled: true, reply: `Only ${owner} can answer this.` };
-  }
+  if (!newest) return { handled: false };
   try {
     decide(newest[0], decision);
   } catch {

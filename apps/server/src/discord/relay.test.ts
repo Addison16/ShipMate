@@ -176,10 +176,9 @@ describe("DiscordRelay", () => {
     await relay.idle();
     expect(relay.answer("other-channel", "u1", "approve")).toEqual({ handled: false });
     expect(relay.answer(channelId, "u1", "what is this?")).toEqual({ handled: false });
-    expect(relay.answer(channelId, "u2", "yes")).toEqual({
-      handled: true,
-      reply: "Only Addison can answer this.",
-    });
+    // Someone else in the channel saying "yes" is talking to their own crew conversation.
+    expect(relay.answer(channelId, "u2", "yes")).toEqual({ handled: false });
+    expect(decided).toEqual([]);
     // The newest card is answered first.
     expect(relay.answer(channelId, "u1", "Deny.")).toEqual({ handled: true, reply: null });
     expect(decided).toEqual([{ userId: "u1", id: "a4", decision: "deny" }]);

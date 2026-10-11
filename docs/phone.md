@@ -41,8 +41,9 @@ When a crew member pauses for your OK in a conversation that lives in Discord, T
 Slack, the card there has **Allow once**, **Always allow** and **Deny** buttons. You can also
 just type the answer in that chat: `approve` (or `yes`, `ok`, 👍), `deny` (or `no`, 👎), or
 `always`. A typed answer goes to your newest waiting card in that chat. Only the person who
-was asked can answer; anyone else gets "Only <name> can answer this." When nothing is waiting,
-those words go to the crew like any other message.
+was asked can answer: when someone else in a shared channel types `yes` or `no`, it goes to
+their own conversation with the crew. When nothing of yours is waiting, those words go to the
+crew like any other message.
 
 ## Photos and files in chat
 

@@ -700,4 +700,21 @@ describe.skipIf(!db)("Shipyard issue-to-PR jobs, webhooks and the reviewer", () 
     expect(t.faux.getPendingResponseCount()).toBe(0);
   });
 
+  it("closes a ready job whose PR was closed when there is no webhook", async () => {
+    t.faux.setResponses([
+      fauxAssistantMessage([
+        fauxToolCall("open_pull_request", { title: "Fix 18", body: "Fixes #18", head: "fix/18-x" }),
+      ]),
+      fauxAssistantMessage("Opened."),
+    ]);
+    gh.checks.set("fix_18-x-1", [{ name: "test", status: "completed", conclusion: "success" }]);
+    await api("POST", `/api/shipyard/projects/${project.id}/jobs`, { issue: 18 });
+    await until(async () => (await statusOf(18)) === "ready");
+    const pr = (await jobOf(18))?.pr?.number as number;
+    gh.pulls.set(pr, { ...(gh.pulls.get(pr) as FakePull), state: "closed" });
+    project = (await api("POST", `/api/shipyard/projects/${project.id}/webhook-secret`)).json()
+      .project;
+    await t.app.services.shipyard.jobs.poll({ leaderOnly: false });
+    await until(async () => (await statusOf(18)) === "closed");
+  });
 });

@@ -415,7 +415,8 @@ export class ShipyardJobs {
       .innerJoin(projects, eq(projects.id, shipyardJobs.projectId))
       .where(
         and(
-          inArray(shipyardJobs.status, FOLLOWING),
+          // Ready jobs too: without a (working) webhook nothing else sees their PR merged or closed.
+          inArray(shipyardJobs.status, [...FOLLOWING, "ready"]),
           or(isNull(projects.webhookLastDeliveryAt), lt(shipyardJobs.updatedAt, stale)),
         ),
       );
@@ -465,7 +466,10 @@ export class ShipyardJobs {
   async advance(id: string): Promise<void> {
     await this.#step(id, async () => {
       const job = await this.#job(id).catch(() => null);
-      if (!job || !FOLLOWING.includes(job.status as ShipyardJobStatus) || !job.prNumber) return;
+      if (!job?.prNumber) return;
+      const following = FOLLOWING.includes(job.status as ShipyardJobStatus);
+      // A ready job still holds its issue until its PR is merged or closed.
+      if (!following && job.status !== "ready") return;
       const row = await this.d.host.row(job.projectId);
       const client = await this.d.host.client(row);
       const pr = await client.pullState(job.prNumber);
@@ -476,6 +480,7 @@ export class ShipyardJobs {
         });
         return;
       }
+      if (!following) return;
       const ci = await client.checkSummary(pr.headSha);
       if (pr.headSha !== job.headSha) await this.#set(id, { headSha: pr.headSha });
       if (ci.state === "pending" || (ci.state === null && age(job) < NO_CI_GRACE_MS)) {

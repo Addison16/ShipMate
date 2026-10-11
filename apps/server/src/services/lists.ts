@@ -249,7 +249,11 @@ export class ListService {
     const changed: ItemRow[] = [];
     const missing: string[] = [];
     for (const name of names) {
-      const hit = matchItem(items, name);
+      // A checked "Milk" from last week and today's open "Milk" can both be on the list:
+      // checking off or removing means the open one, unchecking means the checked one.
+      const hit = matchItem(items, name, (i) =>
+        change === "remove" ? !i.checked : i.checked !== change.checked,
+      );
       if (hit) changed.push(hit);
       else missing.push(name);
     }
@@ -393,16 +397,23 @@ export class ListService {
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
+/**
+ * The item `name` refers to. Among several candidates, those `prefer` accepts win (e.g. the open
+ * copy of an item when checking it off), so a stale checked duplicate is not picked instead.
+ */
 export function matchItem<T extends { id: string; text: string }>(
   items: T[],
   name: string,
+  prefer: (item: T) => boolean = () => true,
 ): T | undefined {
   const key = norm(name);
   if (!key) return undefined;
   const exact = items.filter((i) => i.id === name.trim() || norm(i.text) === key);
-  if (exact.length) return exact[0];
+  if (exact.length) return exact.find(prefer) ?? exact[0];
   const partial = items.filter((i) => norm(i.text).includes(key));
-  return partial.length === 1 ? partial[0] : undefined;
+  if (partial.length === 1) return partial[0];
+  const preferred = partial.filter(prefer);
+  return preferred.length === 1 ? preferred[0] : undefined;
 }
 
 function toItemDto(i: ItemRow, names: Map<string, string>): ListItemDto {

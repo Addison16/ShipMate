@@ -178,11 +178,24 @@ export class ShipyardJobs {
       issue.labels,
       body,
     );
-    void this.#step(job.id, async () => {
+    const jobId = job.id;
+    void this.#step(jobId, async () => {
       await this.d.host.refreshWorkspace(row).catch(() => {});
-      await this.d.bridge.send(user, conv.id, prompt);
-      await this.#afterWork(job.id);
-    });
+      // Cancelled while the workspace was fetched: do not start the work anyway.
+      if (!isActive((await this.#job(jobId)).status)) return;
+      try {
+        await this.d.bridge.send(user, conv.id, prompt);
+      } catch (err) {
+        // Refused before the turn began (a usage cap, the crew member paused): say so on the card.
+        if (!isActive((await this.#job(jobId)).status)) return;
+        await this.#set(jobId, {
+          status: "needs_input",
+          detail: (err as Error).message.slice(0, 300),
+        });
+        return;
+      }
+      await this.#afterWork(jobId);
+    }).catch(() => {});
     return this.#dtoFor(job, user);
   }
 

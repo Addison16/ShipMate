@@ -50,7 +50,10 @@ function fakeGitHub() {
     updated_at: "2026-10-11T00:00:00Z",
   });
   const issues = new Map(
-    [12, 13, 14, 15, 16].map((n) => [n, issue(n, n >= 14 ? ["shipwright"] : [])]),
+    [12, 13, 14, 15, 16, 18, 19].map((n) => [
+      n,
+      issue(n, n >= 14 && n <= 16 ? ["shipwright"] : []),
+    ]),
   );
   const raw = (p: FakePull) => ({
     number: p.number,
@@ -633,6 +636,26 @@ describe.skipIf(!db)("Shipyard issue-to-PR jobs, webhooks and the reviewer", () 
     expect(conv?.projectId).toBe(project.id);
     expect(conv?.surface).toBe("watch");
   });
+  it("puts a job that a usage cap refuses in needs_input instead of leaving it working", async () => {
+    const kid = (await api("GET", "/api/users"))
+      .json()
+      .users.find((u: { email: string }) => u.email === "kid@example.com");
+    await api("PATCH", `/api/users/${kid.id}`, { monthlyCapCents: 0 });
+    try {
+      const res = await api(
+        "POST",
+        `/api/shipyard/projects/${project.id}/jobs`,
+        { issue: 19 },
+        member,
+      );
+      expect(res.statusCode).toBe(200);
+      await until(async () => (await statusOf(19)) === "needs_input");
+      expect((await jobOf(19))?.detail).toContain("monthly usage cap");
+    } finally {
+      await api("PATCH", `/api/users/${kid.id}`, { monthlyCapCents: null });
+    }
+  });
+
   it("never runs a second turn while the person is answering in the job's conversation", async () => {
     const job = (await jobOf(14)) as ShipyardJobDto;
     expect(job.status).toBe("needs_input");

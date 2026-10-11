@@ -463,6 +463,14 @@ describe.skipIf(!db)("Everyday life", () => {
     expect(p2.warnings.join(" ")).toMatch(/bash/);
     expect(p2.warnings.join(" ")).toMatch(/look like keys/);
     expect(p2.bundle.manifest).not.toMatch(/captain|allow/);
+    // No tool list means every built-in tool, so the shell warning applies too.
+    const allTools = (
+      await api("POST", "/api/crew/import/preview", {
+        text: JSON.stringify({ ...foreign, manifest: "name: Chef\nrole: cooks\nmodel: faux/m\n" }),
+      })
+    ).json().preview;
+    expect(allTools.tools).toEqual([]);
+    expect(allTools.warnings.join(" ")).toMatch(/including a shell \(bash\)/);
 
     const imported = (
       await api("POST", "/api/crew/import", { bundle: p2.bundle, slug: "chef" })

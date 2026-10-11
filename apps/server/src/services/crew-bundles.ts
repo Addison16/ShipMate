@@ -180,8 +180,11 @@ export class CrewBundleService {
         `It lists MCP servers this instance does not know (${unknown.join(", ")}); they will be skipped until added.`,
       );
     }
-    if (manifest.tools.includes("bash")) {
-      warnings.push("It asks for a shell (bash). Shell commands still wait for approval.");
+    // No tool list means all of pi's built-in tools, the shell included.
+    if (!manifest.tools.length || manifest.tools.includes("bash")) {
+      warnings.push(
+        `It ${manifest.tools.length ? "asks for" : "gets every built-in tool, including"} a shell (bash). Shell commands still wait for approval.`,
+      );
     }
     if (manifest.approval === "auto") {
       warnings.push(

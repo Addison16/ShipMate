@@ -71,6 +71,13 @@
       "when": 1791760210572,
       "tag": "0009_shipyard",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791760525227,
+      "tag": "0010_local_admin",
+      "breakpoints": true
     }
   ]
 }

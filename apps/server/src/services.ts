@@ -11,11 +11,11 @@ import type { DiscordClientPort } from "./discord/port.js";
 import { DiscordService } from "./discord/service.js";
 import { EverydayTools } from "./everyday.js";
 import { AttachmentService } from "./files/service.js";
-import { PushService } from "./push/service.js";
-import type { PushFetch } from "./push/webpush.js";
 import { ReleaseChecker } from "./health/releases.js";
 import { HealthService } from "./health/service.js";
 import { Updater } from "./health/updater.js";
+import { PushService } from "./push/service.js";
+import type { PushFetch } from "./push/webpush.js";
 import { ApprovalService } from "./services/approvals.js";
 import { AuditService } from "./services/audit.js";
 import { BackupService } from "./services/backups.js";
@@ -33,8 +33,7 @@ import { StarterService } from "./services/starters.js";
 import { UsageService } from "./services/usage.js";
 import { WatchService } from "./services/watches.js";
 import { WeatherService } from "./services/weather.js";
-import { endpointFromEnv } from "./shipyard/docker.js";
-import { DockerClient } from "./shipyard/docker.js";
+import { DockerClient, endpointFromEnv } from "./shipyard/docker.js";
 import { ShipyardService } from "./shipyard/service.js";
 import type { SlackPort } from "./slack/port.js";
 import { SlackService } from "./slack/service.js";
@@ -267,13 +266,6 @@ export async function createServices(
     push,
     files,
     voice: new VoiceService(db, vault, settings, options.voiceFetch),
-    backups: new BackupService(
-      db,
-      settings,
-      audit,
-      config.dirs.root,
-      process.env.SHIPMATE_BACKUP_DIR || `${config.dirs.root}/backups`,
-    ),
     backups,
     health,
     localAi: new LocalAiService(providers, settings, config.SHIPMATE_OLLAMA_URL),

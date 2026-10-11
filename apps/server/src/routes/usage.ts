@@ -53,16 +53,6 @@ export async function usageRoutes(app: FastifyInstance, s: Services) {
   });
 }
 
-export async function settingsRoutes(app: FastifyInstance, s: Services) {
-  const dto = async (): Promise<SettingsDto> => {
-    const settings = await s.settings.get();
-    return {
-      captainName: s.crew.captain().manifest.name,
-      captainSlug: CAPTAIN_SLUG,
-      defaultModel: settings.defaultModel,
-      mcpEnabled: s.mcp.isEnabled,
-      visionModel: settings.visionModel,
-    };
 /** GET /api/settings's body; also returned by routes that change a setting. */
 export async function settingsDto(s: Services): Promise<SettingsDto> {
   const settings = await s.settings.get();
@@ -71,6 +61,7 @@ export async function settingsDto(s: Services): Promise<SettingsDto> {
     captainSlug: CAPTAIN_SLUG,
     defaultModel: settings.defaultModel,
     mcpEnabled: s.mcp.isEnabled,
+    visionModel: settings.visionModel,
   };
 }
 

@@ -42,6 +42,8 @@ export const crewMembers = pgTable("crew_members", {
   createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
   /** Parsed crew.yaml, cached from disk. Disk is the source of truth. */
   manifest: jsonb("manifest").notNull(),
+  /** active | pending_review (recruited by the Captain, awaiting a person's review). */
+  status: text("status").notNull().default("active"),
   retiredAt: timestamp("retired_at", { withTimezone: true }),
   createdAt: createdAt(),
 });
@@ -59,9 +61,14 @@ export const conversations = pgTable(
     /** Where it lives: web, discord, routine. */
     surface: text("surface").notNull().default("web"),
     externalId: text("external_id"),
+    /** For "direct" conversations: the crew member being talked to. */
+    crewMemberId: uuid("crew_member_id").references(() => crewMembers.id, { onDelete: "set null" }),
+    /** pi session file per crew member slug, so a conversation resumes with full context. */
+    sessionFiles: jsonb("session_files").$type<Record<string, string>>().notNull().default({}),
     createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("conversations_user_idx").on(t.userId)],
+  (t) => [index("conversations_user_idx").on(t.userId, t.updatedAt)],
 );
 
 export const messages = pgTable(
@@ -91,6 +98,8 @@ export const providers = pgTable("providers", {
   baseUrl: text("base_url"),
   /** Vault reference, never the secret itself. */
   secretRef: text("secret_ref"),
+  /** Model ids for self-hosted kinds (ollama, openai-compatible), probed or typed in. */
+  models: jsonb("models").$type<string[]>().notNull().default([]),
   enabled: boolean("enabled").notNull().default(true),
   createdAt: createdAt(),
 });
@@ -137,6 +146,27 @@ export const auditEvents = pgTable(
   },
   (t) => [index("audit_time_idx").on(t.createdAt)],
 );
+
+/** Browser sessions. The cookie holds a random token; only its SHA-256 is stored. */
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    id: text("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("auth_sessions_user_idx").on(t.userId)],
+);
+
+/** Instance settings (captain name, default model, ...), one JSON value per key. */
+export const settings = pgTable("settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const usersRelations = relations(users, ({ many }) => ({
   conversations: many(conversations),

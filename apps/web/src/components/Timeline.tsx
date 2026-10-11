@@ -1,0 +1,166 @@
+import type { MessageDto } from "@shipmate/core";
+import type { ReactNode } from "react";
+import { formatTime } from "../lib/format.js";
+import { type Handoff, messageHandoff, type TimelineItem, type ToolChip } from "../lib/timeline.js";
+import { Markdown } from "./Markdown.js";
+import { cx } from "./ui.js";
+
+export function HandoffLine({ handoff }: { handoff: Handoff }) {
+  return (
+    <div className="my-1 flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+      <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" aria-hidden="true" />
+      <span className="max-w-[80%] text-center">
+        <span className="font-medium text-teal-800 dark:text-teal-300">
+          {handoff.from.name} → {handoff.to.name}
+        </span>
+        {handoff.task && <span>: {handoff.task}</span>}
+      </span>
+      <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" aria-hidden="true" />
+    </div>
+  );
+}
+
+function Chip({ chip }: { chip: ToolChip }) {
+  return (
+    <span
+      title={chip.summary}
+      className={cx(
+        "inline-flex max-w-full items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs",
+        chip.isError
+          ? "border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/50 dark:text-red-200"
+          : "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={cx(
+          "size-1.5 shrink-0 rounded-full",
+          chip.running
+            ? "animate-pulse bg-amber-500"
+            : chip.isError
+              ? "bg-red-500"
+              : "bg-emerald-500",
+        )}
+      />
+      <span className="font-mono font-medium">{chip.name}</span>
+      {chip.summary && <span className="truncate">{chip.summary}</span>}
+      {chip.isError && <span className="sr-only">(failed)</span>}
+      {chip.running && <span className="sr-only">(running)</span>}
+    </span>
+  );
+}
+
+/** Tool summaries a persisted message may carry in `meta.tools`; read defensively. */
+function metaTools(message: MessageDto): ToolChip[] {
+  const tools = message.meta?.tools;
+  if (!Array.isArray(tools)) return [];
+  return tools.flatMap((t, i): ToolChip[] => {
+    if (!t || typeof t !== "object") return [];
+    const o = t as Record<string, unknown>;
+    const name = o.toolName ?? o.name;
+    if (typeof name !== "string") return [];
+    return [
+      {
+        id: typeof o.toolCallId === "string" ? o.toolCallId : String(i),
+        name,
+        summary: typeof o.summary === "string" ? o.summary : "",
+        running: false,
+        isError: o.isError === true,
+      },
+    ];
+  });
+}
+
+function Bubble({
+  name,
+  mine,
+  time,
+  tools,
+  children,
+  live,
+}: {
+  name: string;
+  mine: boolean;
+  time?: string;
+  tools: ToolChip[];
+  children: ReactNode;
+  live?: boolean;
+}) {
+  return (
+    <div className={cx("flex flex-col", mine ? "items-end" : "items-start")}>
+      <div className="mb-1 flex items-baseline gap-2 px-1 text-xs text-slate-500 dark:text-slate-400">
+        <span className="font-medium text-slate-700 dark:text-slate-200">{name}</span>
+        {time && <time>{time}</time>}
+        {live && <span className="text-teal-700 dark:text-teal-300">typing…</span>}
+      </div>
+      {tools.length > 0 && (
+        <div className="mb-1.5 flex max-w-[85%] flex-wrap gap-1.5">
+          {tools.map((t) => (
+            <Chip key={t.id} chip={t} />
+          ))}
+        </div>
+      )}
+      <div
+        className={cx(
+          "max-w-[85%] rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed",
+          mine
+            ? "rounded-br-sm bg-teal-700 text-white dark:bg-teal-700 [&_a]:text-white [&_code]:bg-teal-900/50"
+            : "rounded-bl-sm border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900",
+        )}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function MessageView({ message, selfId }: { message: MessageDto; selfId: string }) {
+  const a = message.author;
+  if (a.kind === "system" || message.role === "system") {
+    return (
+      <div className="mx-auto max-w-[85%] text-center text-xs text-slate-500 dark:text-slate-400">
+        <Markdown text={message.content} />
+      </div>
+    );
+  }
+  const handoff = messageHandoff(message);
+  const mine = a.kind === "user" && a.id === selfId;
+  return (
+    <>
+      {handoff && <HandoffLine handoff={handoff} />}
+      <Bubble
+        name={a.kind === "user" ? (mine ? "You" : a.name) : a.name}
+        mine={mine}
+        time={formatTime(message.createdAt)}
+        tools={metaTools(message)}
+      >
+        <Markdown text={message.content} />
+      </Bubble>
+    </>
+  );
+}
+
+export function TimelineView({ items, selfId }: { items: TimelineItem[]; selfId: string }) {
+  return (
+    <div className="space-y-4">
+      {items.map((it) => {
+        if (it.kind === "message") {
+          return <MessageView key={it.key} message={it.message} selfId={selfId} />;
+        }
+        if (it.kind === "handoff") return <HandoffLine key={it.key} handoff={it} />;
+        return (
+          <Bubble key={it.key} name={it.crew.name} mine={false} tools={it.tools} live={!it.done}>
+            {it.text ? (
+              <Markdown text={it.text} />
+            ) : (
+              <span className="text-slate-400">
+                <span aria-hidden="true">…</span>
+                <span className="sr-only">Thinking</span>
+              </span>
+            )}
+          </Bubble>
+        );
+      })}
+    </div>
+  );
+}

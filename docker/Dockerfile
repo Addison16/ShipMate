@@ -27,7 +27,7 @@ RUN npm install -g @anthropic-ai/claude-code
 COPY --from=build /out/server /app
 COPY --from=build /app/apps/web/dist /app/web
 COPY templates /app/templates
-ENV NODE_ENV=production PORT=3000 SHIPMATE_DATA_DIR=/data WEB_DIST=/app/web CLAUDE_CONFIG_DIR=/data/claude
+ENV NODE_ENV=production PORT=3000 SHIPMATE_DATA_DIR=/data WEB_DIST=/app/web TEMPLATES_DIR=/app/templates CLAUDE_CONFIG_DIR=/data/claude
 VOLUME /data
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s CMD curl -fsS http://localhost:3000/healthz || exit 1

@@ -5,11 +5,17 @@
 export const PROVIDER_KINDS = [
   { kind: "anthropic", label: "Anthropic (API key)", auth: "api-key" },
   { kind: "openai", label: "OpenAI (API key)", auth: "api-key" },
-  { kind: "openai-chatgpt", label: "ChatGPT plan (Sign in with ChatGPT)", auth: "oauth" },
+  {
+    kind: "openai-chatgpt",
+    label: "ChatGPT plan (Sign in with ChatGPT)",
+    auth: "oauth",
+    comingSoon: true,
+  },
   {
     kind: "claude-code-cli",
     label: "Claude subscription (official Claude Code CLI)",
     auth: "external",
+    comingSoon: true,
   },
   { kind: "xai", label: "xAI", auth: "api-key" },
   { kind: "google", label: "Google", auth: "api-key" },
@@ -22,3 +28,10 @@ export const PROVIDER_KINDS = [
   },
 ] as const;
 export type ProviderKind = (typeof PROVIDER_KINDS)[number]["kind"];
+
+export function providerKind(kind: string) {
+  return PROVIDER_KINDS.find((k) => k.kind === kind);
+}
+
+/** Kinds whose models come from a server the owner runs, not from pi's built-in catalog. */
+export const SELF_HOSTED_KINDS: readonly string[] = ["ollama", "openai-compatible"];

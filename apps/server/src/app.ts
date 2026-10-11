@@ -1,22 +1,82 @@
 import { existsSync } from "node:fs";
+import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import cookie from "@fastify/cookie";
 import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
-import { SHIPMATE_VERSION } from "@shipmate/core";
-import { createDb, type Db } from "@shipmate/db";
+import { type ClientEvent, type ServerEvent, SHIPMATE_VERSION } from "@shipmate/core";
+import { createDb } from "@shipmate/db";
 import { coreServers } from "@shipmate/mcp-catalog";
 import { sql } from "drizzle-orm";
 import Fastify from "fastify";
+import { ZodError, z } from "zod";
+import { HttpError, type UserRow } from "./auth.js";
 import type { Config } from "./config.js";
+import { authRoutes } from "./routes/auth.js";
+import { conversationRoutes } from "./routes/conversations.js";
+import { crewRoutes } from "./routes/crew.js";
+import { providerRoutes } from "./routes/providers.js";
+import { settingsRoutes, usageRoutes } from "./routes/usage.js";
+import { userRoutes } from "./routes/users.js";
+import { createServices } from "./services.js";
 
-export async function buildApp(config: Config) {
-  const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });
+/** Routes reachable without signing in. */
+const PUBLIC = new Set([
+  "/api/auth/me",
+  "/api/auth/login",
+  "/api/auth/logout",
+  "/api/setup",
+  "/api/meta",
+]);
+
+const ClientEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("send"),
+    conversationId: z.string().uuid(),
+    text: z.string().max(100_000),
+  }),
+  z.object({ type: z.literal("abort"), conversationId: z.string().uuid() }),
+]);
+
+export async function buildApp(
+  config: Config,
+  options: { modelRuntime?: ModelRuntime; extraProviders?: string[]; logger?: boolean } = {},
+) {
+  const app = Fastify({
+    logger: options.logger === false ? false : { level: process.env.LOG_LEVEL ?? "info" },
+  });
   const { db, close } = createDb(config.DATABASE_URL);
+  const services = await createServices(config, db, options);
   app.decorate("db", db);
+  app.decorate("services", services);
+  app.decorateRequest("user", null as unknown as UserRow);
   app.addHook("onClose", async () => {
+    await services.bridge.close();
     await close();
   });
 
+  await app.register(cookie);
   await app.register(websocket);
+
+  app.setErrorHandler((err, req, reply) => {
+    if (err instanceof HttpError) return reply.code(err.statusCode).send({ error: err.message });
+    if (err instanceof ZodError) {
+      const issue = err.issues[0];
+      const where = issue?.path.length ? `${issue.path.join(".")}: ` : "";
+      return reply.code(400).send({ error: `${where}${issue?.message ?? "invalid request"}` });
+    }
+    const status = (err as { statusCode?: number }).statusCode;
+    if (status && status < 500) return reply.code(status).send({ error: (err as Error).message });
+    req.log.error(err);
+    return reply.code(500).send({ error: "something went wrong on the server" });
+  });
+
+  app.addHook("onRequest", async (req) => {
+    const path = req.url.split("?")[0] ?? "";
+    if (!path.startsWith("/api/") || PUBLIC.has(path)) return;
+    const user = await services.sessions.user(req);
+    if (!user) throw new HttpError(401, "sign in first");
+    req.user = user;
+  });
 
   app.get("/healthz", async () => {
     await db.execute(sql`select 1`);
@@ -27,12 +87,41 @@ export async function buildApp(config: Config) {
     version: SHIPMATE_VERSION,
     url: config.SHIPMATE_URL,
     coreMcpServers: coreServers().map((s) => s.id),
-    dataDir: config.dirs.root,
   }));
 
-  // Live events for the Bridge; the real protocol lands in phase 1.
-  app.get("/api/ws", { websocket: true }, (socket) => {
-    socket.send(JSON.stringify({ type: "hello", version: SHIPMATE_VERSION }));
+  await authRoutes(app, services);
+  await userRoutes(app, services);
+  await providerRoutes(app, services);
+  await crewRoutes(app, services);
+  await conversationRoutes(app, services);
+  await usageRoutes(app, services);
+  await settingsRoutes(app, services);
+
+  // The Bridge's live channel: streams crew replies and takes messages from the person.
+  app.get("/api/ws", { websocket: true }, (socket, req) => {
+    const user = req.user;
+    const send = (event: ServerEvent) => {
+      if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(event));
+    };
+    const disconnect = services.bridge.connect(user.id, send);
+    socket.on("close", disconnect);
+    send({ type: "hello", version: SHIPMATE_VERSION, userId: user.id });
+    socket.on("message", (raw: Buffer) => {
+      let event: ClientEvent;
+      try {
+        event = ClientEventSchema.parse(JSON.parse(raw.toString()));
+      } catch {
+        send({ type: "error", message: "unrecognized message" });
+        return;
+      }
+      const run =
+        event.type === "send"
+          ? services.bridge.send(user, event.conversationId, event.text)
+          : services.bridge.abort(user, event.conversationId);
+      run.catch((err: Error) =>
+        send({ type: "error", conversationId: event.conversationId, message: err.message }),
+      );
+    });
   });
 
   if (config.WEB_DIST && existsSync(config.WEB_DIST)) {
@@ -48,6 +137,11 @@ export async function buildApp(config: Config) {
 
 declare module "fastify" {
   interface FastifyInstance {
-    db: Db;
+    db: import("@shipmate/db").Db;
+    services: import("./services.js").Services;
+  }
+  interface FastifyRequest {
+    /** Set for every /api route except the public ones. */
+    user: UserRow;
   }
 }

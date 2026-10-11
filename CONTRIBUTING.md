@@ -11,6 +11,8 @@ Thanks for helping. A few ground rules keep the project healthy.
 
 - Node 22 and pnpm (`corepack enable`). `pnpm install`, then `pnpm dev`.
 - CI runs `pnpm lint`, `pnpm typecheck`, `pnpm test` and `pnpm build`. Run them before pushing.
+- Server integration tests need Postgres and run only when `TEST_DATABASE_URL` is set. They wipe
+  that database, so point it at a scratch one (e.g. `createdb shipmate_test`), never your dev data.
 - Keep changes small and focused. One PR per concern.
 - Schema changes go through `pnpm db:generate` so a migration is committed with them.
 

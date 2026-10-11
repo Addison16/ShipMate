@@ -1,0 +1,124 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { describe, expect, it } from "vitest";
+import { MemoryStore } from "./memory.js";
+import { CrewRegistry } from "./registry.js";
+import { createCrewSession } from "./session.js";
+import { type CaptainHost, captainTools, memoryTools } from "./tools.js";
+
+const template = new URL("../../../templates/crew/captain", import.meta.url).pathname;
+const user = { id: "u1", displayName: "Addison", role: "owner" as const };
+
+async function setup() {
+  const root = mkdtempSync(join(tmpdir(), "sess-"));
+  const runtime = await ModelRuntime.create({
+    authPath: join(root, "auth.json"),
+    modelsPath: join(root, "models.json"),
+    allowModelNetwork: false,
+  });
+  const faux = fauxProvider({ provider: "faux", models: [{ id: "m" }] });
+  runtime.registerNativeProvider(faux.provider);
+  const registry = new CrewRegistry(join(root, "crew"));
+  const captain = registry.seedCaptain(template, { model: "faux/m" });
+  return { root, runtime, faux, registry, captain };
+}
+
+describe("createCrewSession", () => {
+  it("runs Shipmate tools and streams the reply", async () => {
+    const { root, runtime, faux, captain } = await setup();
+    const memory = new MemoryStore(captain.dir);
+    const delegated: string[] = [];
+    const host: CaptainHost = {
+      listCrew: async () => [],
+      recruit: async () => {
+        throw new Error("unused");
+      },
+      edit: async () => {
+        throw new Error("unused");
+      },
+      retire: async () => {},
+      delegate: async (slug, task) => {
+        delegated.push(`${slug}:${task}`);
+        return "Tuesday: pasta.";
+      },
+    };
+    faux.setResponses([
+      fauxAssistantMessage([
+        fauxToolCall("remember", { name: "diet", description: "veggie", body: "No meat." }),
+        fauxToolCall("delegate", { crew: "galley", task: "plan dinner" }),
+      ]),
+      fauxAssistantMessage("Galley has it covered."),
+    ]);
+    const s = await createCrewSession({
+      crew: captain,
+      agentDir: root,
+      modelRuntime: runtime,
+      inMemory: true,
+      customTools: [...memoryTools(memory, user), ...captainTools(host, user)],
+      appendSystemPrompt: [memory.contextFor(user.id)],
+    });
+    let streamed = "";
+    const tools: string[] = [];
+    s.subscribe((e) => {
+      if (e.type === "message_update" && e.assistantMessageEvent.type === "text_delta") {
+        streamed += e.assistantMessageEvent.delta;
+      }
+      if (e.type === "tool_execution_end") tools.push(`${e.toolName}:${e.isError ? "err" : "ok"}`);
+    });
+    await s.prompt("I'm vegetarian, plan dinner");
+    s.dispose();
+    expect(streamed).toBe("Galley has it covered.");
+    expect(tools).toEqual(["remember:ok", "delegate:ok"]);
+    expect(delegated).toEqual(["galley:plan dinner"]);
+    expect(memory.list("user", "u1")[0]?.name).toBe("diet");
+  });
+
+  it("blocks the shell and files outside the crew folder", async () => {
+    const { root, runtime, faux, captain } = await setup();
+    faux.setResponses([
+      fauxAssistantMessage([
+        fauxToolCall("bash", { command: "cat /etc/passwd" }),
+        fauxToolCall("read", { path: "/etc/hostname" }),
+        fauxToolCall("read", { path: "CREW.md" }),
+      ]),
+      fauxAssistantMessage("ok"),
+    ]);
+    const s = await createCrewSession({
+      crew: captain,
+      agentDir: root,
+      modelRuntime: runtime,
+      inMemory: true,
+    });
+    const results: string[] = [];
+    s.subscribe((e) => {
+      if (e.type === "tool_execution_end")
+        results.push(`${e.toolName}:${e.isError ? "err" : "ok"}`);
+    });
+    await s.prompt("try things");
+    s.dispose();
+    expect(results).toEqual(["bash:err", "read:err", "read:ok"]);
+  });
+
+  it("persists to a session file and reopens it", async () => {
+    const { root, runtime, faux, captain } = await setup();
+    faux.setResponses([fauxAssistantMessage("first"), fauxAssistantMessage("second")]);
+    const a = await createCrewSession({ crew: captain, agentDir: root, modelRuntime: runtime });
+    await a.prompt("one");
+    const file = a.sessionFile;
+    a.dispose();
+    expect(file).toBeTruthy();
+    const b = await createCrewSession({
+      crew: captain,
+      agentDir: root,
+      modelRuntime: runtime,
+      sessionFile: file as string,
+    });
+    expect(b.session.messages.filter((m) => m.role === "user")).toHaveLength(1);
+    await b.prompt("two");
+    expect(b.session.messages.filter((m) => m.role === "user")).toHaveLength(2);
+    b.dispose();
+  });
+});

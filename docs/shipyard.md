@@ -42,6 +42,9 @@ Shipmate; without one, Shipmate polls every minute and picks each matching issue
 
 Issue text is treated as data, never as instructions, but anyone who can label or assign issues
 can start a job: keep triggers to repositories where that is people you trust.
+Use a label of its own for the trigger, not one your issue templates add by themselves (such as
+`bug`): template labels are applied for anyone who opens an issue, including strangers on a public
+repository.
 
 ## A reviewer before you: the Bosun
 

@@ -62,3 +62,37 @@ export function withItemChecked(
   const items = list.items.map((i) => (i.id === itemId ? { ...i, checked } : i));
   return { ...list, items, openCount: items.filter((i) => !i.checked).length };
 }
+
+/**
+ * Keeps the list from flickering back while quick changes are in flight: an answer from the
+ * server (or a refetch after a live update) can predate a change made after it, and showing it
+ * would undo that change on screen. Only the change that finishes last shows its answer, and live
+ * updates that arrive meanwhile are fetched once everything has settled.
+ */
+export class PendingChanges {
+  #pending = 0;
+  #stale = false;
+
+  start(): void {
+    this.#pending++;
+  }
+
+  /** One change finished (`ok` false when it failed): show its answer, refetch, or both. */
+  finish(ok: boolean): { show: boolean; reload: boolean } {
+    this.#pending = Math.max(0, this.#pending - 1);
+    if (!ok) this.#stale = true;
+    const last = this.#pending === 0;
+    const reload = last && this.#stale;
+    if (last) this.#stale = false;
+    return { show: last && ok, reload };
+  }
+
+  /** Something changed elsewhere; true when it is safe to refetch now. */
+  changedElsewhere(): boolean {
+    if (this.#pending > 0) {
+      this.#stale = true;
+      return false;
+    }
+    return true;
+  }
+}

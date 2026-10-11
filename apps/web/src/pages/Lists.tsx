@@ -1,5 +1,5 @@
 import type { ListDetailDto, ListItemDto, ListKind } from "@shipmate/core";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { isAdmin, useUser } from "../auth.js";
 import {
@@ -21,6 +21,7 @@ import {
   kindLabel,
   LIST_KINDS,
   localToday,
+  PendingChanges,
   withItemChecked,
 } from "../lib/lists.js";
 import { useResource } from "../lib/useResource.js";
@@ -150,10 +151,11 @@ function ListDetail({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [kind, setKind] = useState<ListKind>("other");
+  const pending = useRef(new PendingChanges()).current;
   useServerEvents((ev) => {
     if (ev.type !== "list_changed" || ev.listId !== id) return;
     if (ev.deleted) navigate("/lists");
-    else void list.reload();
+    else if (pending.changedElsewhere()) void list.reload();
   });
 
   const l = list.data;
@@ -164,13 +166,17 @@ function ListDetail({ id }: { id: string }) {
     optimistic?: (current: ListDetailDto) => ListDetailDto,
   ) {
     setError(null);
+    pending.start();
     if (optimistic && list.data) list.setData(optimistic(list.data));
+    let next: ListDetailDto | null = null;
     try {
-      list.setData((await fn()).list);
+      next = (await fn()).list;
     } catch (err) {
       setError(errorMessage(err));
-      if (optimistic) void list.reload();
     }
+    const { show, reload } = pending.finish(next !== null);
+    if (show && next) list.setData(next);
+    if (reload) void list.reload();
   }
 
   async function remove() {

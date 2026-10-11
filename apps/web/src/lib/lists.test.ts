@@ -1,6 +1,13 @@
 import type { ListDetailDto } from "@shipmate/core";
 import { describe, expect, it } from "vitest";
-import { daysUntil, dueLabel, kindLabel, localToday, withItemChecked } from "./lists.js";
+import {
+  daysUntil,
+  dueLabel,
+  kindLabel,
+  localToday,
+  PendingChanges,
+  withItemChecked,
+} from "./lists.js";
 
 describe("lists", () => {
   it("labels kinds", () => {
@@ -61,5 +68,22 @@ describe("withItemChecked", () => {
     expect(next.openCount).toBe(1);
     expect(withItemChecked(list, "rice", false).openCount).toBe(3);
     expect(list.openCount).toBe(2);
+  });
+
+  it("shows only the last answer of quick changes and refetches live updates afterwards", () => {
+    const p = new PendingChanges();
+    p.start(); // check milk
+    p.start(); // check eggs
+    // A live update for milk arrives while eggs is in flight: its refetch would uncheck eggs.
+    expect(p.changedElsewhere()).toBe(false);
+    // Milk's answer predates eggs' change, so it is not shown.
+    expect(p.finish(true)).toEqual({ show: false, reload: false });
+    expect(p.finish(true)).toEqual({ show: true, reload: true });
+    // Settled: live updates refetch at once again.
+    expect(p.changedElsewhere()).toBe(true);
+    p.start();
+    expect(p.finish(false)).toEqual({ show: false, reload: true });
+    p.start();
+    expect(p.finish(true)).toEqual({ show: true, reload: false });
   });
 });

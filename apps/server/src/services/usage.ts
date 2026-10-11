@@ -1,8 +1,8 @@
 import type { Api, Model, Usage } from "@earendil-works/pi-ai";
 import { calculateCost } from "@earendil-works/pi-ai";
 import type { UsageResponse, UsageTotals } from "@shipmate/core";
-import { crewMembers, type Db, usageEvents, users } from "@shipmate/db";
-import { and, eq, gte, lt, type SQL, sql } from "drizzle-orm";
+import { crewMembers, type Db, usageEvents, users, watches } from "@shipmate/db";
+import { and, asc, eq, gte, isNotNull, lt, type SQL, sql } from "drizzle-orm";
 
 export interface UsageContext {
   userId: string | null;
@@ -48,26 +48,38 @@ export class UsageService {
   }
 
   /** This month's spend for a user, in micro-USD (for caps). */
-  async monthSpend(userId: string, now = new Date()): Promise<number> {
+  monthSpend(userId: string, now = new Date()): Promise<number> {
+    return this.#spend(eq(usageEvents.userId, userId), now);
+  }
+
+  /** This month's spend for a crew member (all people together), in micro-USD. */
+  monthSpendCrew(crewMemberId: string, now = new Date()): Promise<number> {
+    return this.#spend(eq(usageEvents.crewMemberId, crewMemberId), now);
+  }
+
+  /** This month's spend for a watch (all its runs), in micro-USD. */
+  monthSpendWatch(watchId: string, now = new Date()): Promise<number> {
+    return this.#spend(eq(usageEvents.routineId, watchId), now);
+  }
+
+  async #spend(filter: SQL, now: Date): Promise<number> {
     const { start, end } = monthRange(currentMonth(now));
     const [row] = await this.db
       .select({ cost: sql<string>`coalesce(sum(${usageEvents.costMicroUsd}), 0)` })
       .from(usageEvents)
-      .where(
-        and(
-          eq(usageEvents.userId, userId),
-          gte(usageEvents.createdAt, start),
-          lt(usageEvents.createdAt, end),
-        ),
-      );
+      .where(and(filter, gte(usageEvents.createdAt, start), lt(usageEvents.createdAt, end)));
     return Number(row?.cost ?? 0);
   }
 
-  async summary(month: string, onlyUserId?: string): Promise<UsageResponse> {
+  #where(month: string, onlyUserId?: string) {
     const { start, end } = monthRange(month);
     const filters: SQL[] = [gte(usageEvents.createdAt, start), lt(usageEvents.createdAt, end)];
     if (onlyUserId) filters.push(eq(usageEvents.userId, onlyUserId));
-    const where = and(...filters);
+    return { start, end, where: and(...filters) };
+  }
+
+  async summary(month: string, options: SummaryOptions = {}): Promise<UsageResponse> {
+    const { start, end, where } = this.#where(month, options.userId);
     const totals = {
       calls: sql<string>`count(*)`,
       inputTokens: sql<string>`coalesce(sum(${usageEvents.inputTokens}), 0)`,
@@ -108,6 +120,38 @@ export class UsageService {
       .from(usageEvents)
       .where(where)
       .groupBy(usageEvents.model);
+    // Watch runs record the watch as the event's routine.
+    const byWatch = await this.db
+      .select({
+        ...totals,
+        watchId: usageEvents.routineId,
+        name: watches.name,
+        capCents: watches.monthlyCapCents,
+      })
+      .from(usageEvents)
+      .leftJoin(watches, eq(watches.id, usageEvents.routineId))
+      .where(and(where, isNotNull(usageEvents.routineId)))
+      .groupBy(usageEvents.routineId, watches.name, watches.monthlyCapCents);
+    const day = sql<string>`to_char(${usageEvents.createdAt} at time zone 'UTC', 'YYYY-MM-DD')`;
+    const perDay = await this.db
+      .select({ date: day, calls: totals.calls, costMicroUsd: totals.costMicroUsd })
+      .from(usageEvents)
+      .where(where)
+      .groupBy(day);
+
+    const byDate = new Map(perDay.map((d) => [d.date, d]));
+    const now = options.now ?? new Date();
+    const last = Math.min(end.getTime(), now.getTime());
+    const daily: UsageResponse["daily"] = [];
+    for (let t = start.getTime(); t < last; t += 86_400_000) {
+      const date = new Date(t).toISOString().slice(0, 10);
+      const d = byDate.get(date);
+      daily.push({
+        date,
+        calls: Number(d?.calls ?? 0),
+        costMicroUsd: Number(d?.costMicroUsd ?? 0),
+      });
+    }
 
     const byCost = <T extends UsageTotals>(a: T, b: T) => b.costMicroUsd - a.costMicroUsd;
     return {
@@ -122,9 +166,92 @@ export class UsageService {
         }))
         .sort(byCost),
       byCrew: byCrew
-        .map((r) => ({ ...num(r), slug: r.slug, name: r.name ?? "(retired crew)" }))
+        .map((r) => ({
+          ...num(r),
+          slug: r.slug,
+          name: r.name ?? "(retired crew)",
+          capUsd: r.slug && options.crewCapUsd ? options.crewCapUsd(r.slug) : null,
+        }))
         .sort(byCost),
       byModel: byModel.map((r) => ({ ...num(r), model: r.model })).sort(byCost),
+      byWatch: byWatch
+        .map((r) => ({
+          ...num(r),
+          watchId: r.watchId ?? "",
+          name: r.name ?? "(deleted watch)",
+          capCents: r.capCents ?? null,
+        }))
+        .sort(byCost),
+      daily,
     };
   }
+
+  /** One CSV row per model call in the month, oldest first (GET /api/usage/export). */
+  async exportCsv(month: string, onlyUserId?: string): Promise<string> {
+    const { where } = this.#where(month, onlyUserId);
+    const rows = await this.db
+      .select({
+        e: usageEvents,
+        user: users.displayName,
+        crew: crewMembers.slug,
+        watch: watches.name,
+      })
+      .from(usageEvents)
+      .leftJoin(users, eq(users.id, usageEvents.userId))
+      .leftJoin(crewMembers, eq(crewMembers.id, usageEvents.crewMemberId))
+      .leftJoin(watches, eq(watches.id, usageEvents.routineId))
+      .where(where)
+      .orderBy(asc(usageEvents.createdAt));
+    const header = [
+      "time",
+      "person",
+      "crew",
+      "watch",
+      "watch_id",
+      "conversation_id",
+      "model",
+      "input_tokens",
+      "output_tokens",
+      "cache_read_tokens",
+      "cache_write_tokens",
+      "cost_usd",
+    ];
+    const lines = [header.join(",")];
+    for (const { e, user, crew, watch } of rows) {
+      lines.push(
+        [
+          e.createdAt.toISOString(),
+          csvText(user ?? (e.userId ? "(deleted user)" : "")),
+          csvText(crew ?? ""),
+          csvText(watch ?? (e.routineId ? "(deleted watch)" : "")),
+          e.routineId ?? "",
+          e.conversationId ?? "",
+          csvText(e.model),
+          e.inputTokens,
+          e.outputTokens,
+          e.cacheReadTokens,
+          e.cacheWriteTokens,
+          (e.costMicroUsd / 1_000_000).toFixed(6),
+        ].join(","),
+      );
+    }
+    return `${lines.join("\r\n")}\r\n`;
+  }
+}
+
+export interface SummaryOptions {
+  /** Only this person's usage (scope=me). */
+  userId?: string;
+  /** The crew member's monthlyCapUsd from its manifest, or null. */
+  crewCapUsd?: (slug: string) => number | null;
+  now?: Date;
+}
+
+/**
+ * One CSV field of free text (RFC 4180): quoted when it holds a comma, quote or line break.
+ * A leading =, +, - or @ is prefixed with ' so spreadsheets do not run it as a formula.
+ */
+export function csvText(value: string): string {
+  const v = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 }

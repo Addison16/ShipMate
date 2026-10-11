@@ -1,24 +1,55 @@
 import type { SettingsDto } from "@shipmate/core";
 import { CAPTAIN_SLUG } from "@shipmate/crew";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { requireRole } from "../auth.js";
 import { currentMonth } from "../services/usage.js";
 import type { Services } from "../services.js";
 
+const UsageQuery = z.object({
+  month: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+    .optional(),
+  scope: z.enum(["me", "all"]).default("me"),
+});
+
 export async function usageRoutes(app: FastifyInstance, s: Services) {
-  app.get("/api/usage", async (req) => {
-    const q = z
-      .object({
-        month: z
-          .string()
-          .regex(/^\d{4}-\d{2}$/)
-          .optional(),
-        scope: z.enum(["me", "all"]).default("me"),
-      })
-      .parse(req.query);
+  /** Members see their own usage; scope=all (everyone's) needs admin or owner. */
+  const parse = (req: FastifyRequest) => {
+    const q = UsageQuery.parse(req.query);
     if (q.scope === "all") requireRole(req.user, "admin");
-    return s.usage.summary(q.month ?? currentMonth(), q.scope === "me" ? req.user.id : undefined);
+    return {
+      month: q.month ?? currentMonth(),
+      userId: q.scope === "me" ? req.user.id : undefined,
+    };
+  };
+
+  app.get("/api/usage", async (req) => {
+    const { month, userId } = parse(req);
+    return s.usage.summary(month, {
+      ...(userId ? { userId } : {}),
+      crewCapUsd: (slug) => {
+        try {
+          return s.crew.folder(slug).manifest.monthlyCapUsd ?? null;
+        } catch {
+          return null; // retired or removed crew folder
+        }
+      },
+    });
+  });
+
+  app.get("/api/usage/export", async (req, reply) => {
+    const { month, userId } = parse(req);
+    const csv = await s.usage.exportCsv(month, userId);
+    return reply
+      .header("content-type", "text/csv; charset=utf-8")
+      .header(
+        "content-disposition",
+        `attachment; filename="shipmate-usage-${month}${userId ? "-me" : ""}.csv"`,
+      )
+      .header("cache-control", "no-store")
+      .send(csv);
   });
 }
 

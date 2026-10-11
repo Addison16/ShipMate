@@ -47,7 +47,7 @@ const NAV: Array<{ group: string | null; items: NavItem[] }> = [
     group: "Manage",
     items: [
       { path: "providers", label: "Providers" },
-      { path: "usage", label: "Usage" },
+      { path: "usage", label: "Cost" },
       { path: "audit", label: "Audit" },
       { path: "users", label: "Users", adminOnly: true },
       { path: "discord", label: "Discord" },

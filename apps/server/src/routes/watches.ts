@@ -11,6 +11,8 @@ const Watch = z.object({
   prompt: z.string().trim().min(1).max(20_000),
   enabled: z.boolean().optional(),
   session: z.enum(["fresh", "continue"]).optional(),
+  /** USD cents; null clears it. Up to $1,000,000 a month. */
+  monthlyCapCents: z.number().int().min(0).max(100_000_000).nullable().optional(),
 });
 
 export async function watchRoutes(app: FastifyInstance, s: Services) {

@@ -1,15 +1,45 @@
-import { type FormEvent, useState } from "react";
+import type { OidcPublicDto } from "@shipmate/core";
+import { type FormEvent, useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { useAuth } from "../auth.js";
 import { AuthLayout } from "../components/AuthLayout.js";
-import { Button, ErrorText, TextField } from "../components/ui.js";
+import { Button, cx, ErrorText, focusRing, TextField } from "../components/ui.js";
+import { loginErrorCode, oidcApi, oidcErrorMessage, oidcStartUrl } from "../lib/oidc.js";
+
+/** The hash to return to after single sign-on; the login route itself is not worth returning to. */
+function returnRoute(hash: string): string | undefined {
+  return hash.startsWith("#/") && !hash.startsWith("#/login") ? hash : undefined;
+}
 
 export function LoginPage() {
   const { setUser } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() =>
+    oidcErrorMessage(loginErrorCode(window.location.hash)),
+  );
   const [busy, setBusy] = useState(false);
+  const [sso, setSso] = useState<OidcPublicDto | null>(null);
+  const [next] = useState(() => returnRoute(window.location.hash));
+
+  useEffect(() => {
+    // The error came from a single sign-on redirect; drop it from the address bar once shown.
+    if (window.location.hash.startsWith("#/login")) {
+      history.replaceState(null, "", `${window.location.pathname}${window.location.search}#/`);
+    }
+    let live = true;
+    oidcApi
+      .publicInfo()
+      .then((info) => {
+        if (live) setSso(info);
+      })
+      .catch(() => {
+        // No button when the server cannot say; password sign-in still works.
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -27,6 +57,24 @@ export function LoginPage() {
 
   return (
     <AuthLayout title="Sign in">
+      {sso?.enabled && (
+        <>
+          <a
+            href={oidcStartUrl(next)}
+            className={cx(
+              "inline-flex w-full items-center justify-center rounded-md bg-teal-700 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-800 dark:bg-teal-600 dark:hover:bg-teal-500",
+              focusRing,
+            )}
+          >
+            Sign in with {sso.label}
+          </a>
+          <div className="my-5 flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+            <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+            or with a password
+            <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+          </div>
+        </>
+      )}
       <form onSubmit={submit} className="space-y-4">
         <TextField
           label="Email"
@@ -45,7 +93,12 @@ export function LoginPage() {
           onChange={(e) => setPassword(e.target.value)}
         />
         <ErrorText>{error}</ErrorText>
-        <Button type="submit" variant="primary" disabled={busy} className="w-full">
+        <Button
+          type="submit"
+          variant={sso?.enabled ? "secondary" : "primary"}
+          disabled={busy}
+          className="w-full"
+        >
           {busy ? "Signing in…" : "Sign in"}
         </Button>
       </form>

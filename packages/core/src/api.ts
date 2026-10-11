@@ -244,9 +244,7 @@ export interface UsageResponse {
   byCrew: Array<UsageTotals & { slug: string | null; name: string; capUsd: number | null }>;
   byModel: Array<UsageTotals & { model: string }>;
   /** Spend per watch (routine) this month (phase 4). */
-  byWatch: Array<
-    UsageTotals & { watchId: string; name: string; capCents: number | null }
-  >;
+  byWatch: Array<UsageTotals & { watchId: string; name: string; capCents: number | null }>;
   /** One entry per UTC day of the month up to today, zeros included (phase 4). */
   daily: Array<{ date: string; costMicroUsd: number; calls: number }>;
 }
@@ -662,7 +660,10 @@ export interface BackupDto {
 export interface BackupSettingsDto {
   /** Nightly backups at this UTC hour (0-23); null = off. */
   hourUtc: number | null;
-  /** Keep this many most recent backups; older ones are deleted. */
+  /**
+   * Keep this many most recent scheduled backups; older scheduled ones are deleted. Manual
+   * and CLI backups stay until someone deletes them.
+   */
   keep: number;
   /** Where backups are written (inside the data volume by default). */
   dir: string;

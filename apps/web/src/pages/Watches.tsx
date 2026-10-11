@@ -28,7 +28,7 @@ import {
   TextAreaField,
   TextField,
 } from "../components/ui.js";
-import { formatCost } from "../lib/format.js";
+import { dollarsToCents, formatCents, formatCost } from "../lib/format.js";
 import type { TimelineItem } from "../lib/timeline.js";
 import { useResource } from "../lib/useResource.js";
 import {
@@ -287,6 +287,8 @@ interface FormState {
   prompt: string;
   session: "fresh" | "continue";
   enabled: boolean;
+  /** Monthly cap in dollars, as typed; "" = none. */
+  cap: string;
 }
 
 function toForm(w: WatchDto | null, crew: CrewDto[]): FormState {
@@ -305,6 +307,7 @@ function toForm(w: WatchDto | null, crew: CrewDto[]): FormState {
     prompt: w?.prompt ?? "",
     session: w?.session ?? "fresh",
     enabled: w?.enabled ?? true,
+    cap: w?.monthlyCapCents != null ? (w.monthlyCapCents / 100).toFixed(2) : "",
   };
 }
 
@@ -359,6 +362,11 @@ function WatchForm({
       setError(trigger);
       return;
     }
+    const monthlyCapCents = dollarsToCents(f.cap);
+    if (monthlyCapCents === undefined) {
+      setError("Enter the monthly cap in dollars, like 5 or 12.50, or leave it empty for no cap.");
+      return;
+    }
     const body: CreateWatchRequest = {
       name: f.name.trim(),
       crewSlug,
@@ -366,6 +374,7 @@ function WatchForm({
       prompt: f.prompt,
       enabled: f.enabled,
       session: f.session,
+      monthlyCapCents,
     };
     setBusy(true);
     setError(null);
@@ -527,6 +536,15 @@ function WatchForm({
         </div>
       </fieldset>
 
+      <TextField
+        label="Monthly cap (USD, optional)"
+        inputMode="decimal"
+        placeholder="No cap"
+        hint="Runs stop and are marked failed once this watch has spent this much in the month (UTC)."
+        value={f.cap}
+        onChange={(e) => set("cap", e.target.value)}
+      />
+
       <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"
@@ -642,6 +660,9 @@ function WatchDetail({ id }: { id: string }) {
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 Owner: {watch.owner.id === user.id ? "you" : watch.owner.name} · session{" "}
                 {watch.session === "fresh" ? "starts fresh" : "continues"}
+                {watch.monthlyCapCents !== null && (
+                  <> · monthly cap {formatCents(watch.monthlyCapCents)}</>
+                )}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">

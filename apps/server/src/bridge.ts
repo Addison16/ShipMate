@@ -21,7 +21,7 @@ import {
   skillTools,
   splitModelRef,
 } from "@shipmate/crew";
-import { conversations, crewMembers, type Db, messages, users } from "@shipmate/db";
+import { conversations, crewMembers, type Db, messages, users, watches } from "@shipmate/db";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { HttpError, type UserRow } from "./auth.js";
 import type { ApprovalService } from "./services/approvals.js";
@@ -256,8 +256,10 @@ export class Bridge {
     // Claim the run before any await, so two quick sends cannot both start a turn.
     run.busy = true;
 
+    let slug: string | null;
     try {
-      await this.#checkCap(user);
+      slug = conv.kind === "direct" ? await this.#slugOf(conv.crewMemberId) : CAPTAIN_SLUG;
+      await this.#checkCap(user, slug);
     } catch (err) {
       run.busy = false;
       throw err;
@@ -281,7 +283,6 @@ export class Bridge {
           .where(eq(conversations.id, conv.id));
       }
 
-      const slug = conv.kind === "direct" ? await this.#slugOf(conv.crewMemberId) : CAPTAIN_SLUG;
       if (!slug) throw new HttpError(410, "this crew member is no longer aboard");
       await this.#assertActive(slug, user);
       await this.#turn(user, conv, run, slug, content, {});
@@ -325,7 +326,7 @@ export class Bridge {
     const run = this.#run(conversationId);
     run.busy = true;
     try {
-      await this.#checkCap(user);
+      await this.#checkCap(user, slug, options.watchId);
       await this.#assertActive(slug, user);
       const text = await this.#turn(user, conv, run, slug, prompt, options);
       return { text, sessionFile: run.sessions.get(slug)?.sessionFile };
@@ -409,6 +410,7 @@ export class Bridge {
         if (target === slug) throw new Error("you cannot delegate to yourself");
         const to = this.deps.crew.folder(target);
         await this.#assertActive(target, user);
+        await this.#checkCrewCap(target);
         await this.#closeStream(conv, crewRow.id, stream);
         this.emit(user.id, {
           type: "handoff",
@@ -502,14 +504,50 @@ export class Bridge {
     return final;
   }
 
-  /** Refuse a turn once the person has spent their monthly cap (watch runs count too). */
-  async #checkCap(user: UserRow) {
-    if (user.monthlyCapCents === null) return;
-    const spent = await this.deps.usage.monthSpend(user.id);
-    if (spent >= user.monthlyCapCents * 10_000) {
+  /**
+   * Refuse a turn once a monthly ceiling is reached: the person's cap (watch runs count too),
+   * the crew member's `monthlyCapUsd`, and for watch runs the watch's own cap. Callers claim
+   * the run first, so two quick turns cannot both pass the check.
+   */
+  async #checkCap(user: UserRow, slug: string | null, watchId?: string) {
+    if (user.monthlyCapCents !== null) {
+      const spent = await this.deps.usage.monthSpend(user.id);
+      if (spent >= user.monthlyCapCents * 10_000) {
+        throw new HttpError(
+          402,
+          `You have reached your monthly usage cap (${usd(user.monthlyCapCents / 100)}). An owner can raise it on the Users page.`,
+        );
+      }
+    }
+    if (slug) await this.#checkCrewCap(slug);
+    if (watchId) {
+      const [w] = await this.deps.db
+        .select({ name: watches.name, capCents: watches.monthlyCapCents })
+        .from(watches)
+        .where(eq(watches.id, watchId));
+      if (w && w.capCents !== null) {
+        const spent = await this.deps.usage.monthSpendWatch(watchId);
+        if (spent >= w.capCents * 10_000) {
+          throw new HttpError(
+            402,
+            `The watch "${w.name}" has reached its monthly ceiling (${usd(w.capCents / 100)}). Its owner can raise it on the Watches page.`,
+          );
+        }
+      }
+    }
+  }
+
+  /** A crew member's monthly ceiling (`monthlyCapUsd` in crew.yaml), across everyone. */
+  async #checkCrewCap(slug: string) {
+    const manifest = this.deps.crew.folder(slug).manifest;
+    const cap = manifest.monthlyCapUsd;
+    if (cap === null || cap === undefined) return;
+    const row = await this.deps.crew.row(slug);
+    const spent = await this.deps.usage.monthSpendCrew(row.id);
+    if (spent >= cap * 1_000_000) {
       throw new HttpError(
         402,
-        "You have reached your monthly usage cap. An owner can raise it on the Users page.",
+        `${manifest.name} has reached its monthly ceiling (${usd(cap)}). An admin can raise monthlyCapUsd on the Crew page.`,
       );
     }
   }
@@ -896,3 +934,5 @@ function toMessageDto(
     createdAt: m.createdAt.toISOString(),
   };
 }
+
+const usd = (dollars: number) => `$${dollars.toFixed(2)}`;

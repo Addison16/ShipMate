@@ -26,6 +26,9 @@ docker compose up -d
 open http://localhost:3000
 ```
 
+On a NAS: [Unraid template](deploy/unraid/README.md) or [TrueNAS SCALE custom app](deploy/truenas/README.md).
+Back up from **Settings → Backups** or with `shipmate backup`; check an install with `shipmate doctor`.
+
 ### Discord (optional)
 
 1. Create an application at <https://discord.com/developers/applications>, open **Bot**, copy

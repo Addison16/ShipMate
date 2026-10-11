@@ -3,6 +3,7 @@ import { ApprovalsProvider } from "../approvals.js";
 import { isAdmin, useAuth, useUser } from "../auth.js";
 import { AuditPage } from "../pages/Audit.js";
 import { BridgePage } from "../pages/Bridge.js";
+import { ChatBridgesPage } from "../pages/ChatBridges.js";
 import { CrewPage } from "../pages/Crew.js";
 import { DiscordPage } from "../pages/Discord.js";
 import { McpPage } from "../pages/Mcp.js";
@@ -50,7 +51,7 @@ const NAV: Array<{ group: string | null; items: NavItem[] }> = [
       { path: "usage", label: "Cost" },
       { path: "audit", label: "Audit" },
       { path: "users", label: "Users", adminOnly: true },
-      { path: "discord", label: "Discord" },
+      { path: "bridges", label: "Chat bridges" },
       { path: "settings", label: "Settings" },
     ],
   },
@@ -223,6 +224,9 @@ export function Shell() {
     case "discord":
       page = <DiscordPage />;
       break;
+    case "bridges":
+      page = <ChatBridgesPage tab={route[1] ?? null} />;
+      break;
     case "skills":
       page = <SkillsPage skillId={route[1] ?? null} />;
       break;
@@ -276,12 +280,12 @@ export function Shell() {
             <button
               type="button"
               aria-label="Close navigation"
-              className="absolute inset-0 bg-slate-950/40"
+              className="slide-over-backdrop absolute inset-0 bg-slate-950/40"
               onClick={() => setDrawer(false)}
             />
             <nav
               aria-label="Main"
-              className="absolute inset-y-0 left-0 flex w-64 flex-col bg-white shadow-xl dark:bg-slate-900"
+              className="slide-over-panel absolute inset-y-0 left-0 flex w-64 max-w-[85vw] flex-col bg-white shadow-xl dark:bg-slate-900"
             >
               <div className="flex items-center justify-between px-4 py-3">
                 <Brand />
@@ -311,7 +315,7 @@ export function Shell() {
           <UserBox />
         </nav>
 
-        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">{page}</main>
+        <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto">{page}</main>
         <Toasts />
       </div>
     </ApprovalsProvider>

@@ -2,6 +2,7 @@ import type { CrewDetailDto, CrewDto, MemoryEntryDto } from "@shipmate/core";
 import { type FormEvent, useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { isAdmin, useUser } from "../auth.js";
+import { CrewBackendSelect } from "../components/ClaudeCliCard.js";
 import { ModelSelect } from "../components/ModelSelect.js";
 import {
   Badge,
@@ -345,6 +346,9 @@ function CrewDetail({ slug }: { slug: string }) {
               <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
                 The approval policy and allow list are edited in the Manifest tab.
               </p>
+            )}
+            {tab === "manifest" && (
+              <CrewBackendSelect crew={crew} readOnly={!admin} onSaved={detail.setData} />
             )}
             {tab === "manifest" && (
               <FileEditor

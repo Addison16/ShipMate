@@ -11,6 +11,32 @@ export const ApprovalPolicy = z.union([
 ]);
 
 /**
+ * What runs a crew member's turns: `pi` (default; Shipmate's own agent with the instance's
+ * providers) or `claude-code-cli` (the unmodified official `claude` binary, signed in by the user
+ * with their own Claude subscription; Shipmate never touches its credentials, §11/§12).
+ */
+export const CrewBackend = z.enum(["pi", "claude-code-cli"]);
+export type CrewBackend = z.infer<typeof CrewBackend>;
+
+/** Settings for the `claude-code-cli` backend (ignored by `pi`). */
+export const ClaudeCliSettings = z.object({
+  /** Passed to `claude --model`: an alias (sonnet, opus, haiku) or a full model name. */
+  model: z
+    .string()
+    .regex(/^[A-Za-z0-9._[\]-]{1,100}$/, "cli.model must be a model alias or name")
+    .optional(),
+  /** Tools the CLI may use without asking (`--allowedTools`), e.g. Read, Edit, "Bash(git *)". */
+  allowedTools: z.array(z.string().min(1).max(200)).default([]),
+  /**
+   * `--permission-mode`. `dontAsk` (default) refuses every tool call not in allowedTools, since
+   * nobody can answer the CLI's own prompts; `acceptEdits` also lets it edit files in its folder;
+   * `plan` keeps it read-only.
+   */
+  permissionMode: z.enum(["dontAsk", "acceptEdits", "plan"]).default("dontAsk"),
+});
+export type ClaudeCliSettings = z.infer<typeof ClaudeCliSettings>;
+
+/**
  * `crew.yaml` — the manifest of one crew member. The folder it lives in is the
  * crew member's working directory for its pi session.
  */
@@ -18,6 +44,10 @@ export const CrewManifest = z.object({
   name: z.string().min(1).max(60),
   role: z.string().min(1).max(200),
   model: ModelRef,
+  /** What runs this crew member's turns (see CrewBackend). */
+  backend: CrewBackend.default("pi"),
+  /** Options for the claude-code-cli backend. */
+  cli: ClaudeCliSettings.optional(),
   /** Built-in pi tools this crew member may use. */
   tools: z.array(z.string().min(1)).default([]),
   /** MCP server ids from the catalog or custom servers. */

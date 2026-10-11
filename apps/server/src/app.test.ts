@@ -108,7 +108,9 @@ describe.skipIf(!db)("Shipmate server", () => {
     const ollama = await api("POST", "/api/providers", { kind: "ollama", models: ["qwen3:8b"] });
     expect(ollama.json().provider.baseUrl).toBe("http://localhost:11434/v1");
     const kinds = (await api("GET", "/api/providers")).json().kinds;
-    expect(kinds.find((k: { kind: string }) => k.kind === "claude-code-cli").comingSoon).toBe(true);
+    expect(kinds.find((k: { kind: string }) => k.kind === "claude-code-cli").auth).toBe("external");
+    const cli = await api("POST", "/api/providers", { kind: "claude-code-cli" });
+    expect(cli.statusCode).toBe(400);
   });
 
   it("validates crew edits", async () => {

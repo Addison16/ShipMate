@@ -24,6 +24,7 @@ import {
 import { conversations, crewMembers, type Db, messages, users, watches } from "@shipmate/db";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { HttpError, type UserRow } from "./auth.js";
+import { ClaudeCliTurns } from "./claude-cli-turn.js";
 import type { ApprovalService } from "./services/approvals.js";
 import type { AuditService } from "./services/audit.js";
 import type { CrewService } from "./services/crew.js";
@@ -108,8 +109,11 @@ export class Bridge {
   #runs = new Map<string, Run>();
   #watches: WatchService | undefined;
   #workspaces: WorkspaceProvider | undefined;
+  /** Turns of `backend: claude-code-cli` crew members (the official `claude` binary). */
+  #cli: ClaudeCliTurns;
 
   constructor(private readonly deps: BridgeDeps) {
+    this.#cli = new ClaudeCliTurns(deps.db);
     deps.crew.onChange(() => this.broadcast({ type: "crew_changed" }));
     deps.skills.onChange(() => this.broadcast({ type: "skills_changed" }));
   }
@@ -308,6 +312,7 @@ export class Bridge {
     if (!run?.busy) return;
     run.aborted = true;
     this.deps.approvals.cancelConversation(conversationId);
+    this.#cli.abort(conversationId);
     await Promise.all([...run.sessions.values()].map((s) => s.abort()));
   }
 
@@ -363,6 +368,29 @@ export class Bridge {
     const crew = { slug, name: folder.manifest.name };
     let stream = this.#openStream(user.id, conv.id, crew);
     let final = "";
+
+    if (folder.manifest.backend === "claude-code-cli") {
+      try {
+        return await this.#cli.turn({
+          user,
+          conv,
+          folder,
+          prompt,
+          stream,
+          usage: {
+            userId: user.id,
+            crewMemberId: crewRow.id,
+            conversationId: conv.id,
+            routineId: options.watchId ?? null,
+          },
+          emit: (event) => this.emit(user.id, event),
+          record: (...args) => this.#recordUsage(run, ...args),
+        });
+      } finally {
+        await this.#closeStream(conv, crewRow.id, stream);
+        await Promise.all(run.writes);
+      }
+    }
 
     const host: CaptainHost = {
       listCrew: () => this.#roster(user),
@@ -870,6 +898,7 @@ export class Bridge {
   #dispose(conversationId: string) {
     const run = this.#runs.get(conversationId);
     if (!run) return;
+    this.#cli.abort(conversationId);
     clearTimeout(run.idleTimer);
     for (const s of run.sessions.values()) s.dispose();
     this.#runs.delete(conversationId);

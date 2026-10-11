@@ -4,27 +4,48 @@ A self-hosted crew of AI bots for everyday life and for work. One **Captain** co
 recruits and delegates to **crew members** you can shape yourself. Built on the
 [pi agent harness](https://pi.dev). Source-available and free for noncommercial use.
 
-> Status: phase 0 (scaffold). Nothing to run yet beyond a health check. See
-> [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) for the full plan and phases.
+Version 1.0. See [CHANGELOG.md](CHANGELOG.md) for what is in it and
+[docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) for the design.
 
-## What it will do
+## Features
 
 - **Bridge**: chat with the Captain, who pulls in the right crew member or recruits a new one.
-- **Crew**: every bot is a folder (`crew.yaml` + `CREW.md`) you can edit in the UI or on disk.
-- **Skills and Watches**: reusable skills made by you or by the crew, and scheduled routines.
-- **Shipyard**: GitHub projects worked in sandboxed containers, with PR flows.
-- **MCP**: the common servers bundled, the rest one click away.
-- **Users**: several logins on one instance, usage tracked per person.
+  Replies stream in; hand-offs and tool calls are visible.
+- **Crew**: every bot is a folder (`crew.yaml` + `CREW.md`) you can edit in the UI or on disk,
+  with its own memory, tools, MCP servers and cost ceiling.
+- **Skills and Watches**: reusable skills made by you or by the crew (with approval), and
+  watches that run on a schedule, a webhook or after another watch.
+- **Shipyard**: GitHub or local projects worked in sandboxed containers, with PR flows and
+  CI and review events routed back to the conversation.
+- **Approvals and audit**: consequential actions wait for the person who asked; every tool call
+  is logged.
+- **MCP**: the common servers bundled, the rest one click away from the catalog.
+- **Users**: several logins on one instance (password or OIDC), with roles, usage tracked per
+  person and monthly caps.
 - **Models**: API keys, self-hosted models (Ollama, vLLM, LM Studio, llama.cpp), your ChatGPT
   plan via Sign in with ChatGPT, and your Claude subscription via the official Claude Code CLI.
+- **Chat anywhere**: the web app (installable as a PWA on phone and desktop), Discord,
+  Telegram and Slack.
+- **Backups**: nightly or on demand, restorable from the UI or the CLI.
 
-## Run it
+## Quick start
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/Addison16/ShipMate/main/docker-compose.yml
 docker compose up -d
 open http://localhost:3000
 ```
+
+The first visit creates the owner account. Then add a provider under **Providers** (an API key,
+a local model server, or a subscription sign-in) and say hello to the Captain on the **Bridge**.
+Set `SHIPMATE_URL` to the address people use to reach the instance; it is needed for OIDC,
+webhooks and links in chat bridges.
+
+Images are tagged `ghcr.io/addison16/shipmate:1.0.0`, `:1.0`, `:1` and `:latest`; pin a version
+tag to control upgrades. Migrations run on boot. `:edge` follows `main`.
+
+To install the web app, open it in a browser and use **Install app** (desktop) or **Add to Home
+Screen** (iOS and Android). The service worker needs HTTPS (or `localhost`).
 
 On a NAS: [Unraid template](deploy/unraid/README.md) or [TrueNAS SCALE custom app](deploy/truenas/README.md).
 Back up from **Settings → Backups** or with `shipmate backup`; check an install with `shipmate doctor`.
@@ -55,6 +76,7 @@ pnpm dev                                          # server on 3000, web on 5173
 
 ## License
 
+Shipmate is source-available, not open source: it is licensed under
 [PolyForm Noncommercial 1.0.0](LICENSE). Use it, change it, self-host it and share it for any
 noncommercial purpose. Commercial use needs a separate license; open an issue to ask. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the contributor agreement.

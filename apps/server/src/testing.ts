@@ -8,6 +8,8 @@ import postgres from "postgres";
 import { buildApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import type { DiscordClientPort } from "./discord/port.js";
+import type { SlackPort } from "./slack/port.js";
+import type { TelegramPort } from "./telegram/port.js";
 
 /**
  * Database for integration tests; they are skipped when it is unset. The tests wipe it, so it is
@@ -31,7 +33,12 @@ export async function resetDatabase(url: string) {
 /** A full app on a fresh database and data dir, with a scripted "faux/m" model. */
 export async function testApp(
   url: string,
-  options: { watches?: boolean; discordPort?: DiscordClientPort } = {},
+  options: {
+    watches?: boolean;
+    discordPort?: DiscordClientPort;
+    telegramPort?: TelegramPort;
+    slackPort?: SlackPort;
+  } = {},
 ) {
   await resetDatabase(url);
   const dataDir = mkdtempSync(join(tmpdir(), "shipmate-test-"));
@@ -53,6 +60,8 @@ export async function testApp(
     logger: false,
     watches: options.watches ?? false,
     ...(options.discordPort ? { discordPort: options.discordPort } : {}),
+    ...(options.telegramPort ? { telegramPort: options.telegramPort } : {}),
+    ...(options.slackPort ? { slackPort: options.slackPort } : {}),
   });
   await app.ready();
   return { app, faux, config };

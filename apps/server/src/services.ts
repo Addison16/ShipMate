@@ -20,6 +20,12 @@ import { SkillService } from "./services/skills.js";
 import { UsageService } from "./services/usage.js";
 import { WatchService } from "./services/watches.js";
 import { ShipyardService } from "./shipyard/service.js";
+import type { SlackPort } from "./slack/port.js";
+import { SlackService } from "./slack/service.js";
+import { SlackWebApi } from "./slack/webapi.js";
+import { TelegramBotApi } from "./telegram/botapi.js";
+import type { TelegramPort } from "./telegram/port.js";
+import { TelegramService } from "./telegram/service.js";
 
 export interface Services {
   db: Db;
@@ -35,6 +41,8 @@ export interface Services {
   watches: WatchService;
   bridge: Bridge;
   discord: DiscordService;
+  telegram: TelegramService;
+  slack: SlackService;
   shipyard: ShipyardService;
   oidc: OidcService;
   backups: BackupService;
@@ -52,6 +60,9 @@ export async function createServices(
     extraProviders?: string[];
     /** Stand-in for discord.js (tests). */
     discordPort?: DiscordClientPort;
+    /** Stand-ins for the Telegram Bot API and Slack (tests). */
+    telegramPort?: TelegramPort;
+    slackPort?: SlackPort;
     /** Stand-in for OIDC discovery (tests). */
     oidcDiscover?: OidcDiscover;
   } = {},
@@ -117,6 +128,23 @@ export async function createServices(
   });
   // Connects in the background when a bot token is stored; problems show on the Discord page.
   void discord.start();
+  // Telegram and Slack start when the app is ready (app.ts), if their tokens are stored.
+  const telegram = new TelegramService({
+    db,
+    vault,
+    crew,
+    bridge,
+    approvals,
+    port: options.telegramPort ?? new TelegramBotApi(),
+  });
+  const slack = new SlackService({
+    db,
+    vault,
+    crew,
+    bridge,
+    approvals,
+    port: options.slackPort ?? new SlackWebApi(),
+  });
 
   return {
     db,
@@ -132,6 +160,8 @@ export async function createServices(
     watches,
     bridge,
     discord,
+    telegram,
+    slack,
     shipyard,
     backups: new BackupService(
       db,

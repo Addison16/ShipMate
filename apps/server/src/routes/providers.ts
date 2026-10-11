@@ -3,10 +3,13 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireRole } from "../auth.js";
 import type { Services } from "../services.js";
+import { chatgptRoutes } from "./chatgpt.js";
 
 const Models = z.array(z.string().trim().min(1).max(200)).max(500);
 
 export async function providerRoutes(app: FastifyInstance, s: Services) {
+  await chatgptRoutes(app, s);
+
   app.get(
     "/api/providers",
     async (): Promise<ProvidersResponse> => ({

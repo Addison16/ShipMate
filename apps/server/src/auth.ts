@@ -18,6 +18,8 @@ export function toUserDto(u: UserRow): UserDto {
     role: u.role,
     monthlyCapCents: u.monthlyCapCents,
     discordUserId: u.discordUserId,
+    telegramUserId: u.telegramUserId,
+    slackUserId: u.slackUserId,
     createdAt: u.createdAt.toISOString(),
   };
 }

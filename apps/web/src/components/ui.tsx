@@ -212,7 +212,9 @@ export function Page({ children, wide }: { children: ReactNode; wide?: boolean }
 
 export function Table({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+    // `relative` keeps absolutely positioned cell content (sr-only labels) inside the scroller,
+    // so a wide table scrolls in its card instead of widening the page on phones.
+    <div className="relative overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
       <table className="w-full text-left text-sm">{children}</table>
     </div>
   );

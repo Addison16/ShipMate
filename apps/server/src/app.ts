@@ -14,6 +14,7 @@ import type { Config } from "./config.js";
 import { approvalRoutes, DecisionSchema } from "./routes/approvals.js";
 import { authRoutes } from "./routes/auth.js";
 import { backupRoutes } from "./routes/backups.js";
+import { claudeCliRoutes } from "./routes/claude-cli.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { crewRoutes } from "./routes/crew.js";
 import { discordRoutes } from "./routes/discord.js";
@@ -22,6 +23,8 @@ import { oidcRoutes } from "./routes/oidc.js";
 import { providerRoutes } from "./routes/providers.js";
 import { shipyardRoutes } from "./routes/shipyard.js";
 import { skillRoutes } from "./routes/skills.js";
+import { slackRoutes } from "./routes/slack.js";
+import { telegramRoutes } from "./routes/telegram.js";
 import { settingsRoutes, usageRoutes } from "./routes/usage.js";
 import { userRoutes } from "./routes/users.js";
 import { watchRoutes } from "./routes/watches.js";
@@ -61,6 +64,9 @@ export async function buildApp(
     watches?: boolean;
     /** Stand-in for discord.js (tests). */
     discordPort?: import("./discord/port.js").DiscordClientPort;
+    /** Stand-ins for the Telegram Bot API and Slack (tests). */
+    telegramPort?: import("./telegram/port.js").TelegramPort;
+    slackPort?: import("./slack/port.js").SlackPort;
   } = {},
 ) {
   const app = Fastify({
@@ -74,12 +80,17 @@ export async function buildApp(
   app.addHook("onReady", async () => {
     if (options.watches !== false) await services.watches.start();
     await services.backups.start();
+    // Chat bridges connect in the background when configured; problems show on their pages.
+    void services.telegram.start();
+    void services.slack.start();
   });
   app.addHook("onClose", async () => {
     await services.backups.stop();
     await services.watches.stop();
     services.approvals.close();
     await services.discord.stop();
+    await services.telegram.stop();
+    await services.slack.stop();
     await services.bridge.close();
     await close();
   });
@@ -133,7 +144,10 @@ export async function buildApp(
   await mcpRoutes(app, services);
   await shipyardRoutes(app, services);
   await discordRoutes(app, services);
+  await telegramRoutes(app, services);
+  await slackRoutes(app, services);
   await backupRoutes(app, services);
+  await claudeCliRoutes(app, services);
   await oidcRoutes(app, services, { secureCookies: config.secureCookies });
 
   // The Bridge's live channel: streams crew replies and takes messages from the person.
@@ -182,7 +196,25 @@ export async function buildApp(
   });
 
   if (config.WEB_DIST && existsSync(config.WEB_DIST)) {
-    await app.register(fastifyStatic, { root: config.WEB_DIST, wildcard: false });
+    await app.register(fastifyStatic, {
+      root: config.WEB_DIST,
+      wildcard: false,
+      // PWA: the service worker and the shell must revalidate every load; hashed assets never change.
+      cacheControl: false,
+      setHeaders(res, filePath) {
+        const name = filePath.replaceAll("\\", "/");
+        if (name.endsWith("/sw.js") || name.endsWith("/index.html")) {
+          res.setHeader("Cache-Control", "no-cache");
+        } else if (name.includes("/assets/")) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        } else {
+          res.setHeader("Cache-Control", "public, max-age=0");
+        }
+        if (name.endsWith(".webmanifest")) {
+          res.setHeader("Content-Type", "application/manifest+json");
+        }
+      },
+    });
     app.setNotFoundHandler((req, reply) => {
       if (req.method === "GET" && !req.url.startsWith("/api")) return reply.sendFile("index.html");
       return reply.code(404).send({ error: "not found" });

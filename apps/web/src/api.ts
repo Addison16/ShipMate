@@ -2,6 +2,7 @@ import type {
   ApprovalDecision,
   ApprovalDto,
   AuditEventDto,
+  BridgeLinkCode,
   ConversationDto,
   CreateCrewRequest,
   CreateCustomMcpRequest,
@@ -31,7 +32,9 @@ import type {
   ShipyardStatusDto,
   SkillDetailDto,
   SkillDto,
+  SlackStatusDto,
   StartFlowRequest,
+  TelegramStatusDto,
   UpdateCrewRequest,
   UpdateProjectRequest,
   UpdateProviderRequest,
@@ -215,6 +218,26 @@ export const api = {
     }),
   createDiscordLink: () => request<DiscordLinkCode>("POST", "/api/discord/link"),
   unlinkDiscord: () => request<Ok>("DELETE", "/api/discord/link"),
+
+  // Telegram and Slack bridges (phase 5)
+  getTelegram: () => request<{ telegram: TelegramStatusDto }>("GET", "/api/telegram"),
+  updateTelegram: (botToken: string) =>
+    request<{ telegram: TelegramStatusDto }>("PUT", "/api/telegram", { botToken }),
+  disconnectTelegram: () => request<Ok>("DELETE", "/api/telegram"),
+  mapTelegramChat: (chatId: string, crewSlug: string | null) =>
+    request<{ telegram: TelegramStatusDto }>("PUT", `/api/telegram/chats/${enc(chatId)}`, {
+      crewSlug,
+    }),
+  createTelegramLink: () => request<BridgeLinkCode>("POST", "/api/telegram/link"),
+  unlinkTelegram: () => request<Ok>("DELETE", "/api/telegram/link"),
+  getSlack: () => request<{ slack: SlackStatusDto }>("GET", "/api/slack"),
+  updateSlack: (body: { botToken?: string; appToken?: string }) =>
+    request<{ slack: SlackStatusDto }>("PUT", "/api/slack", body),
+  disconnectSlack: () => request<Ok>("DELETE", "/api/slack"),
+  bindSlackChannel: (slug: string, channelId: string | null) =>
+    request<{ slack: SlackStatusDto }>("PUT", `/api/slack/channels/${enc(slug)}`, { channelId }),
+  createSlackLink: () => request<BridgeLinkCode>("POST", "/api/slack/link"),
+  unlinkSlack: () => request<Ok>("DELETE", "/api/slack/link"),
 
   // Shipyard
   getShipyard: () =>

@@ -22,6 +22,19 @@ import { useResource } from "../lib/useResource.js";
 import { useServerEvents } from "../ws.js";
 
 export function DiscordPage() {
+  return (
+    <Page>
+      <PageHeader
+        title="Discord"
+        description="Talk to the crew from Discord: each crew member gets its own channel and posts under its own name."
+      />
+      <DiscordPanel />
+    </Page>
+  );
+}
+
+/** The Discord settings without the page frame (also a tab on the Chat bridges page). */
+export function DiscordPanel() {
   const user = useUser();
   const admin = isAdmin(user);
   const owner = user.role === "owner";
@@ -33,25 +46,19 @@ export function DiscordPage() {
   const d = discord.data;
 
   return (
-    <Page>
-      <PageHeader
-        title="Discord"
-        description="Talk to the crew from Discord: each crew member gets its own channel and posts under its own name."
-      />
-      <div className="space-y-6">
-        <ErrorText>{discord.error}</ErrorText>
-        {discord.loading && !d && <Muted>Loading…</Muted>}
-        {d && <StatusCard d={d} onReload={() => void discord.reload()} busy={discord.loading} />}
-        {d && owner && <OwnerCard d={d} onChange={discord.setData} onReload={discord.reload} />}
-        {d && admin && !owner && !d.configured && (
-          <Card>
-            <Muted>Only the owner can connect a Discord bot.</Muted>
-          </Card>
-        )}
-        {d?.configured && <ChannelsCard d={d} admin={admin} onChange={discord.setData} />}
-        <LinkAccountCard configured={d?.configured ?? false} />
-      </div>
-    </Page>
+    <div className="space-y-6">
+      <ErrorText>{discord.error}</ErrorText>
+      {discord.loading && !d && <Muted>Loading…</Muted>}
+      {d && <StatusCard d={d} onReload={() => void discord.reload()} busy={discord.loading} />}
+      {d && owner && <OwnerCard d={d} onChange={discord.setData} onReload={discord.reload} />}
+      {d && admin && !owner && !d.configured && (
+        <Card>
+          <Muted>Only the owner can connect a Discord bot.</Muted>
+        </Card>
+      )}
+      {d?.configured && <ChannelsCard d={d} admin={admin} onChange={discord.setData} />}
+      <LinkAccountCard configured={d?.configured ?? false} />
+    </div>
   );
 }
 

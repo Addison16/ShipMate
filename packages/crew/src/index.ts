@@ -6,6 +6,21 @@ export {
   isConsequential,
   matches,
 } from "./approval.js";
+export {
+  CLAUDE_CLI_SIGN_IN_HINT,
+  type ClaudeCliEvent,
+  ClaudeCliMissingError,
+  type ClaudeCliResult,
+  type ClaudeCliRunOptions,
+  type ClaudeCliStatus,
+  type ClaudeCliUsage,
+  childEnv,
+  claudeCliArgs,
+  claudeCliBin,
+  claudeCliStatus,
+  claudeConfigDir,
+  runClaudeCli,
+} from "./claude-cli.js";
 export { type CrewFolder, loadCrewFolder, writeCrewFolder } from "./folder.js";
 export { type GuardOptions, guardExtension, isInside } from "./guard.js";
 export { type MemoryEntry, type MemoryScope, MemoryStore } from "./memory.js";

@@ -31,7 +31,7 @@ export const inviteUrl = (applicationId: string) =>
   `https://discord.com/oauth2/authorize?client_id=${applicationId}&scope=bot%20applications.commands&permissions=${BOT_PERMISSIONS}`;
 
 export const LINK_HINT =
-  "I don't know who you are yet. In Shipmate, open the Discord page (under Manage) and press **Get a link code**, then type `/shipmate link` here with the code it shows.";
+  "I don't know who you are yet. In Shipmate, open Chat bridges → Discord (under Manage) and press **Get a link code**, then type `/shipmate link` here with the code it shows.";
 
 export interface DiscordServiceDeps {
   db: Db;

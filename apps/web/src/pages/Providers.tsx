@@ -2,6 +2,8 @@ import type { ProviderAuth, ProviderDto, ProviderKindDto } from "@shipmate/core"
 import { type FormEvent, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { useUser } from "../auth.js";
+import { ChatGptCard } from "../components/ChatGptCard.js";
+import { ClaudeCliCard } from "../components/ClaudeCliCard.js";
 import {
   Badge,
   Button,
@@ -68,7 +70,19 @@ export function ProvidersPage() {
             onChanged={reloadAll}
           />
         ))}
-        {owner && providers.data && <AddProvider kinds={kinds} onAdded={reloadAll} />}
+        {owner && providers.data && (
+          <AddProvider
+            kinds={kinds.filter((k) => k.kind !== "openai-chatgpt" && k.kind !== "claude-code-cli")}
+            onAdded={reloadAll}
+          />
+        )}
+      </div>
+
+      <div className="mt-4">
+        <div className="mb-4">
+          <ChatGptCard onChanged={reloadAll} />
+        </div>
+        <ClaudeCliCard />
       </div>
 
       <h2 className="mt-10 mb-3 text-lg font-semibold">Models</h2>

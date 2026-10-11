@@ -1,7 +1,7 @@
 {
   "name": "shipmate",
   "private": true,
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Self-hosted crew of AI bots for everyday life and work, captained by one coordinator. Built on the pi agent harness.",
   "license": "PolyForm-Noncommercial-1.0.0",
   "packageManager": "pnpm@10.28.0",

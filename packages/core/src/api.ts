@@ -18,6 +18,10 @@ export interface UserDto {
   monthlyCapCents: number | null;
   /** Linked Discord account (phase 3); messages from it are attributed to this person. */
   discordUserId: string | null;
+  /** Linked Telegram account (phase 5). */
+  telegramUserId: string | null;
+  /** Linked Slack account (phase 5). */
+  slackUserId: string | null;
   createdAt: string;
 }
 
@@ -680,6 +684,163 @@ export interface BackupSettingsDto {
  * PUT /api/backups/settings (owner) Partial<{ hourUtc, keep }> → { settings }
  * CLI: `shipmate backup [--out file]`, `shipmate restore <file> --yes`, `shipmate doctor`
  */
+
+// ---------- Telegram and Slack bridges (phase 5) ----------
+
+/** What POST /api/telegram/link and POST /api/slack/link return; same shape as Discord's. */
+export type BridgeLinkCode = DiscordLinkCode;
+
+export interface TelegramChatDto {
+  /** Telegram chat id (negative for groups). */
+  chatId: string;
+  title: string | null;
+  crewSlug: string;
+  crewName: string;
+}
+/** A chat the bot heard from that is not mapped yet, so an admin can pick it. */
+export interface TelegramSeenChatDto {
+  chatId: string;
+  title: string;
+  kind: "private" | "group" | "supergroup" | "channel";
+}
+export interface TelegramStatusDto {
+  /** A bot token is stored. */
+  configured: boolean;
+  /** Long polling is running right now. */
+  connected: boolean;
+  /** The bot's @username, once connected. */
+  botUsername: string | null;
+  /** https://t.me/<botUsername> */
+  botUrl: string | null;
+  error: string | null;
+  /** Private chats with the bot that are not mapped go to the Captain. */
+  chats: TelegramChatDto[];
+  seenChats: TelegramSeenChatDto[];
+}
+/**
+ * One Telegram bot per instance, over long polling (no public URL needed). A Telegram bot has
+ * one name, so each reply starts with the crew member's name. Each chat (group or DM) is mapped
+ * to one crew member; unmapped DMs go to the Captain. People link their Telegram account with
+ * a code (`/link 123456` to the bot); messages from unlinked accounts get a hint and never run.
+ * Conversations use surface "telegram", one per chat and person.
+ *
+ * GET /api/telegram → { telegram: TelegramStatusDto } (any signed-in user)
+ * PUT /api/telegram (owner) { botToken: string } → { telegram } (reconnects)
+ * DELETE /api/telegram (owner) → { ok: true } (stops polling and forgets the token)
+ * PUT /api/telegram/chats/:chatId (admin) { crewSlug: string | null }
+ *   → { telegram } (map a chat to a crew member, or null to unmap)
+ * POST /api/telegram/link → BridgeLinkCode   DELETE /api/telegram/link → { ok: true }
+ */
+
+export interface SlackChannelDto {
+  crewSlug: string;
+  crewName: string;
+  /** Null until bound. */
+  channelId: string | null;
+  channelName: string | null;
+}
+export interface SlackStatusDto {
+  /** Both the bot token and the app-level token are stored. */
+  configured: boolean;
+  /** Which tokens are stored (never their values). */
+  hasBotToken: boolean;
+  hasAppToken: boolean;
+  /** The Socket Mode connection is open right now. */
+  connected: boolean;
+  teamId: string | null;
+  teamName: string | null;
+  botUserId: string | null;
+  error: string | null;
+  channels: SlackChannelDto[];
+}
+/**
+ * One Slack app per instance over Socket Mode (no public URL needed). Each crew member is bound
+ * to an existing channel and posts there with its own name and icon (chat:write.customize).
+ * Direct messages to the app go to the Captain. People link their Slack account with a code
+ * (`/shipmate link 123456`, or `!link 123456` in a crew channel). Surface "slack".
+ *
+ * GET /api/slack → { slack: SlackStatusDto } (any signed-in user)
+ * PUT /api/slack (owner) { botToken?: string, appToken?: string } → { slack } (reconnects)
+ * DELETE /api/slack (owner) → { ok: true } (disconnects and forgets both tokens)
+ * PUT /api/slack/channels/:slug (admin) { channelId: string | null } → { slack }
+ * POST /api/slack/link → BridgeLinkCode   DELETE /api/slack/link → { ok: true }
+ */
+
+// ---------- ChatGPT plan: Sign in with ChatGPT (phase 5) ----------
+
+/** A sign-in that was started and is waiting for the owner to finish it in their browser. */
+export interface ChatGptPendingSignInDto {
+  /** Open this in a browser and sign in with the ChatGPT account whose plan should be used. */
+  authorizeUrl: string;
+  /**
+   * Where OpenAI sends the browser afterwards (a localhost address). Unless Shipmate runs on
+   * the same computer as the browser, that page will not load: copy the full address from the
+   * address bar and paste it into Shipmate.
+   */
+  redirectUri: string;
+  startedAt: string;
+  /** The pending sign-in is dropped after this time; start again. */
+  expiresAt: string;
+}
+export interface ChatGptStatusDto {
+  signedIn: boolean;
+  /** From the access token's claims when present; display only. */
+  email: string | null;
+  /** ChatGPT plan type ("plus", "pro", ...) when present. */
+  plan: string | null;
+  signedInAt: string | null;
+  /** When the current access token expires. It is renewed on demand, never on a timer. */
+  accessExpiresAt: string | null;
+  /** The pi provider id model refs use (`chatgpt/<model>`). */
+  providerId: string;
+  /** Model refs crew can pick while signed in. */
+  models: string[];
+  pending: ChatGptPendingSignInDto | null;
+  /** Last refresh failure, e.g. access was revoked; sign in again to fix. */
+  lastError: string | null;
+}
+/**
+ * Usage counts against the signed-in person's ChatGPT plan. Tokens are held only on the
+ * server: the refresh token is encrypted in the secrets vault and no endpoint returns any token.
+ * Access tokens are renewed on demand right before a model call that needs one (single-flight),
+ * never by a background timer.
+ *
+ * GET /api/providers/chatgpt (owner) → { chatgpt: ChatGptStatusDto }
+ * POST /api/providers/chatgpt/start (owner) → { chatgpt } with `pending` set (a new start
+ *   replaces an unfinished one)
+ * POST /api/providers/chatgpt/complete (owner) { callbackUrl } → { chatgpt }. callbackUrl is the
+ *   full address the browser landed on (http://127.0.0.1:1455/auth/callback?code=…&state=…).
+ * DELETE /api/providers/chatgpt/start (owner) → { chatgpt } (cancels a pending sign-in)
+ * DELETE /api/providers/chatgpt (owner) → { chatgpt } (signs out: deletes the stored tokens)
+ * Models appear in GET /api/models as `chatgpt/<id>` while signed in.
+ */
+export interface CompleteChatGptSignInRequest {
+  callbackUrl: string;
+}
+
+// ---------- Claude subscription: the Claude Code CLI backend (phase 5) ----------
+
+/**
+ * A crew member with `backend: claude-code-cli` in crew.yaml answers through the unmodified
+ * official `claude` binary that the user signed in with their own Claude account. Shipmate never
+ * reads, stores or forwards that login (it only asks `claude auth status`), offers no Claude.ai
+ * sign-in of its own and does no keep-alive pinging (§12). Optional `cli: { model, allowedTools,
+ * permissionMode }` in crew.yaml; permissionMode defaults to `dontAsk` (tools not in
+ * allowedTools are refused, since nobody can answer the CLI's own prompts).
+ */
+export interface ClaudeCliStatusDto {
+  installed: boolean;
+  version: string | null;
+  /** From `claude auth status` (exit code and its logged-in flag) only. */
+  signedIn: boolean;
+  /** As the CLI reports it, e.g. "claude.ai" or "oauth_token"; null when unknown. */
+  authMethod: string | null;
+  /** CLAUDE_CONFIG_DIR, where the CLI keeps its own login (the image uses /data/claude). */
+  configDir: string;
+  /** Plain-text setup instructions (sign in once with `docker exec -it shipmate claude`). */
+  docs: string;
+}
+/** GET /api/claude-cli (admin) → { claudeCli: ClaudeCliStatusDto } */
 
 // ---------- WebSocket: /api/ws ----------
 

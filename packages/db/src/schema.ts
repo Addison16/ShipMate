@@ -30,6 +30,10 @@ export const users = pgTable("users", {
   monthlyCapCents: integer("monthly_cap_cents"),
   /** Linked Discord account (phase 3). */
   discordUserId: text("discord_user_id").unique(),
+  /** Linked Telegram account (phase 5). */
+  telegramUserId: text("telegram_user_id").unique(),
+  /** Linked Slack account in the connected workspace (phase 5). */
+  slackUserId: text("slack_user_id").unique(),
   createdAt: createdAt(),
 });
 
@@ -294,5 +298,21 @@ export const discordChannels = pgTable("discord_channels", {
   webhookId: text("webhook_id"),
   /** Vault ref of the webhook token. */
   webhookTokenRef: text("webhook_token_ref"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Telegram chats (groups or DMs) mapped to the crew member who answers there (phase 5). */
+export const telegramChats = pgTable("telegram_chats", {
+  chatId: text("chat_id").primaryKey(),
+  crewSlug: text("crew_slug").notNull(),
+  /** The chat's title (or the person's name for a DM) when it was mapped. */
+  title: text("title"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Which Slack channel each crew member speaks in (phase 5). */
+export const slackChannels = pgTable("slack_channels", {
+  crewSlug: text("crew_slug").primaryKey(),
+  channelId: text("channel_id").notNull().unique(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -15,6 +15,7 @@ import {
 } from "@shipmate/providers";
 import { eq, inArray } from "drizzle-orm";
 import { HttpError } from "../auth.js";
+import { ChatGptService } from "./chatgpt.js";
 
 type ProviderRow = typeof providers.$inferSelect;
 
@@ -36,7 +37,11 @@ export class ProviderService {
     private readonly extraProviders: string[] = [],
   ) {
     this.#binder = new ProviderBinder(runtime);
+    this.chatgpt = new ChatGptService(db, vault, runtime);
   }
+
+  /** Sign in with ChatGPT (phase 5): its tokens live in the vault, not in a providers row. */
+  readonly chatgpt: ChatGptService;
 
   kinds(): ProviderKindDto[] {
     return PROVIDER_KINDS.map((k) => ({
@@ -62,6 +67,13 @@ export class ProviderService {
     const kind = providerKind(input.kind);
     if (!kind) throw new HttpError(400, `unknown provider kind "${input.kind}"`);
     if ("comingSoon" in kind) throw new HttpError(400, `${kind.label} arrives in a later release`);
+    if (kind.kind === "openai-chatgpt")
+      throw new HttpError(400, "use Sign in with ChatGPT on the Providers page instead");
+    if (kind.kind === "claude-code-cli")
+      throw new HttpError(
+        400,
+        "sign in to Claude Code in the container and pick the backend per crew member",
+      );
     if (kind.auth === "api-key" && !input.apiKey)
       throw new HttpError(400, "an API key is required");
     const label = input.label?.trim() || defaultLabel(kind.kind);
@@ -152,6 +164,7 @@ export class ProviderService {
       });
     }
     await this.#binder.sync(records);
+    await this.chatgpt.boot();
     this.#configured = new Set([
       ...this.extraProviders,
       ...records
@@ -180,7 +193,9 @@ export class ProviderService {
    * choose to spend, so those do not count.
    */
   async available(): Promise<Model<Api>[]> {
-    return (await this.runtime.getAvailable()).filter((m) => this.#configured.has(m.provider));
+    return (await this.runtime.getAvailable()).filter(
+      (m) => this.#configured.has(m.provider) || this.chatgpt.configures(m.provider),
+    );
   }
 
   async #dto(id: string): Promise<ProviderDto> {

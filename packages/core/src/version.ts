@@ -1,1 +1,1 @@
-export const SHIPMATE_VERSION = "0.0.1";
+export const SHIPMATE_VERSION = "1.0.0";

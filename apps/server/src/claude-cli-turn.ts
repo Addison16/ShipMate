@@ -1,0 +1,225 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import type { Api, Model, Usage } from "@earendil-works/pi-ai";
+import type { ServerEvent } from "@shipmate/core";
+import {
+  type ClaudeCliEvent,
+  type CrewFolder,
+  MemoryStore,
+  runClaudeCli,
+  splitModelRef,
+} from "@shipmate/crew";
+import { conversations, type Db } from "@shipmate/db";
+import { eq } from "drizzle-orm";
+import { HttpError, type UserRow } from "./auth.js";
+import type { UsageContext } from "./services/usage.js";
+import { summarize } from "./summarize.js";
+
+type ConversationRow = typeof conversations.$inferSelect;
+
+/** Key under conversations.session_files that holds a crew member's CLI session id. */
+export const cliSessionKey = (slug: string) => `claude-cli:${slug}`;
+
+/** The folder the CLI works in, inside the crew folder but away from memory/ and sessions/. */
+export const CLI_WORKDIR = "cli-workspace";
+
+/** The Bridge's open reply bubble (structurally the same as its own Stream). */
+export interface CliStream {
+  id: string;
+  text: string;
+  tools: string[];
+}
+
+export interface CliTurnInput {
+  user: UserRow;
+  conv: ConversationRow;
+  folder: CrewFolder;
+  prompt: string;
+  stream: CliStream;
+  usage: UsageContext;
+  emit: (event: ServerEvent) => void;
+  /** The Bridge's usage writer: the turn waits for it before ending (cap checks stay exact). */
+  record: (ctx: UsageContext, model: Model<Api>, usage: Usage) => void;
+}
+
+/**
+ * Runs turns of `claude-code-cli` crew members for the Bridge (see packages/crew claude-cli.ts).
+ *
+ * Approvals: the CLI's own tool calls cannot be routed through Shipmate's approval cards, so the
+ * crew member's `cli.permissionMode` (default `dontAsk`) and `cli.allowedTools` decide what it may
+ * do; with the defaults, anything beyond reading files in its own folder is refused. Caps are
+ * checked by the Bridge before the turn, and the CLI's reported cost is recorded afterwards like
+ * any other turn. Shipyard workspaces are not offered to it (it would run outside the sandbox).
+ */
+export class ClaudeCliTurns {
+  #running = new Map<string, Set<AbortController>>();
+
+  constructor(private readonly db: Db) {}
+
+  /** Stop every CLI run in this conversation (kills the processes). */
+  abort(conversationId: string) {
+    for (const c of this.#running.get(conversationId) ?? []) c.abort();
+  }
+
+  isRunning(conversationId: string): boolean {
+    return (this.#running.get(conversationId)?.size ?? 0) > 0;
+  }
+
+  async turn(input: CliTurnInput): Promise<string> {
+    const { conv, folder, stream, emit } = input;
+    if (conv.projectId) {
+      throw new HttpError(
+        409,
+        `${folder.manifest.name} runs on the Claude Code CLI, which cannot work in Shipyard workspaces (it would run outside the sandbox). Pick a crew member on the pi backend for project work.`,
+      );
+    }
+    const cwd = join(folder.dir, CLI_WORKDIR);
+    mkdirSync(cwd, { recursive: true });
+    const key = cliSessionKey(folder.slug);
+    const resume = conv.sessionFiles[key];
+    const settings = folder.manifest.cli ?? {
+      allowedTools: [],
+      permissionMode: "dontAsk" as const,
+    };
+    const model = settings.model ?? cliModelFromRef(folder.manifest.model);
+
+    const controller = new AbortController();
+    const set = this.#running.get(conv.id) ?? new Set();
+    set.add(controller);
+    this.#running.set(conv.id, set);
+
+    let needBreak = false;
+    const onEvent = (e: ClaudeCliEvent) => {
+      switch (e.type) {
+        case "text": {
+          let text = e.text;
+          if (needBreak && stream.text && !stream.text.endsWith("\n\n")) {
+            text = `${stream.text.endsWith("\n") ? "\n" : "\n\n"}${text}`;
+          }
+          needBreak = false;
+          stream.text += text;
+          emit({ type: "delta", conversationId: conv.id, streamId: stream.id, text });
+          break;
+        }
+        case "tool_start":
+          needBreak = true;
+          stream.tools.push(e.name);
+          emit({
+            type: "tool",
+            conversationId: conv.id,
+            streamId: stream.id,
+            phase: "start",
+            toolCallId: e.id,
+            toolName: e.name,
+            summary: summarize(e.input),
+          });
+          break;
+        case "tool_end":
+          emit({
+            type: "tool",
+            conversationId: conv.id,
+            streamId: stream.id,
+            phase: "end",
+            toolCallId: e.id,
+            toolName: e.name,
+            summary: summarize(typeof e.output === "string" ? e.output : { content: e.output }),
+            isError: e.isError,
+          });
+          break;
+        case "init":
+          break;
+      }
+    };
+
+    try {
+      const result = await runClaudeCli({
+        cwd,
+        prompt: input.prompt,
+        appendSystemPrompt: this.#systemPrompt(input),
+        ...(resume ? { resume } : {}),
+        settings: { ...settings, ...(model ? { model } : {}) },
+        signal: controller.signal,
+        onEvent,
+      });
+
+      if (result.sessionId && result.sessionId !== resume) {
+        conv.sessionFiles = { ...conv.sessionFiles, [key]: result.sessionId };
+        await this.db
+          .update(conversations)
+          .set({ sessionFiles: conv.sessionFiles })
+          .where(eq(conversations.id, conv.id));
+      }
+      if (result.costUsd > 0 || result.usage.input > 0 || result.usage.output > 0) {
+        input.record(
+          input.usage,
+          cliModel(result.model ?? model ?? "default"),
+          cliUsage(result.usage, result.costUsd),
+        );
+      }
+      if (!result.aborted && result.isError) {
+        throw new Error(result.error ?? "the Claude Code CLI returned an error");
+      }
+      // Partial-message streaming is off on some CLI versions; fall back to the final text.
+      if (!stream.text.trim() && result.text) {
+        stream.text = result.text;
+        emit({ type: "delta", conversationId: conv.id, streamId: stream.id, text: result.text });
+      }
+      return result.text || stream.text.trim();
+    } finally {
+      set.delete(controller);
+      if (!set.size) this.#running.delete(conv.id);
+    }
+  }
+
+  #systemPrompt({ user, folder }: CliTurnInput): string {
+    const memory = new MemoryStore(folder.dir);
+    return [
+      folder.persona.trim(),
+      "",
+      "# Shipmate",
+      "",
+      `You are ${folder.manifest.name}, a crew member of a self-hosted Shipmate instance shared by several people.`,
+      `You are talking with ${user.displayName} (${user.role}). Today is ${new Date().toISOString().slice(0, 10)}.`,
+      "Shipmate's memory, skill and crew tools are not available in this session; the memory index below is for reference only.",
+      "",
+      memory.contextFor(user.id),
+    ].join("\n");
+  }
+}
+
+/** `claude-code/sonnet` or `anthropic/claude-…` in crew.yaml → the CLI's --model; else its default. */
+export function cliModelFromRef(ref: string): string | undefined {
+  const r = splitModelRef(ref);
+  if (!r) return undefined;
+  return r.provider === "claude-code" || r.provider === "anthropic" ? r.id : undefined;
+}
+
+/** Usage rows are keyed by model; CLI turns appear as `claude-code/<model>` on the cost page. */
+function cliModel(id: string): Model<Api> {
+  return {
+    id,
+    name: id,
+    api: "anthropic-messages",
+    provider: "claude-code",
+    baseUrl: "",
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 0,
+    maxTokens: 0,
+  } as unknown as Model<Api>;
+}
+
+function cliUsage(
+  u: { input: number; output: number; cacheRead: number; cacheWrite: number },
+  costUsd: number,
+): Usage {
+  return {
+    input: u.input,
+    output: u.output,
+    cacheRead: u.cacheRead,
+    cacheWrite: u.cacheWrite,
+    totalTokens: u.input + u.output + u.cacheRead + u.cacheWrite,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: costUsd },
+  };
+}

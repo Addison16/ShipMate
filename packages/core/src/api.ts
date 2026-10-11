@@ -5,9 +5,8 @@
  * All JSON. Timestamps are ISO strings. Auth is a `shipmate_session` http-only cookie set by
  * `/api/setup` and `/api/auth/login`. Errors are `{ error: string }` with a 4xx/5xx status.
  */
-import type { HouseholdFacts, PersonProfile, UserPreferences, UserRole } from "./user.js";
 import type { GitHubWatchEvent } from "./routine.js";
-import type { UserPreferences, UserRole } from "./user.js";
+import type { HouseholdFacts, PersonProfile, UserPreferences, UserRole } from "./user.js";
 
 // ---------- users and auth ----------
 
@@ -1234,6 +1233,6 @@ export type ServerEvent =
   /** A watch run started or finished; failures should surface as a notice. */
   | { type: "watch_run"; watchName: string; run: WatchRunDto }
   /** A list or its items changed (here, on another device, or by a crew member); refetch it. */
-  | { type: "list_changed"; listId: string; deleted?: boolean };
+  | { type: "list_changed"; listId: string; deleted?: boolean }
   /** An issue-to-PR job changed; sent to everyone (the Shipyard is shared). Refetch its list. */
   | { type: "shipyard_job"; projectId: string; jobId: string; status: ShipyardJobStatus };

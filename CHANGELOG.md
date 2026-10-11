@@ -26,7 +26,6 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   runs through a provider you already have (OpenAI or OpenAI-compatible), your own speech
   server (local Whisper and Kokoro; an optional `voice` service ships in docker-compose behind
   the `voice` profile), or the browser's built-in voice. Set it up in Settings → Voice.
-
 - **Light, Dark and Auto** appearance per user, saved to the account so it follows you to every
   device. Auto follows the device and switches live. Pick it in Settings or from the sidebar.
 - **Color themes** with a nautical feel: Harbor (teal, the default), Open Sea, Coral Reef,

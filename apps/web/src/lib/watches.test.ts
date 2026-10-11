@@ -6,9 +6,6 @@ import {
   describeInterval,
   describeTrigger,
   formatDuration,
-  describeInterval,
-  describeTrigger,
-  formatDuration,
   GITHUB_EVENTS,
 } from "./watches.js";
 
@@ -90,6 +87,9 @@ describe("dailyCron", () => {
     expect(dailyCron("6:45")).toBe("45 6 * * *");
     expect(dailyCron("24:00")).toBeNull();
     expect(dailyCron("7am")).toBeNull();
+  });
+});
+
 describe("GitHub triggers", () => {
   it("describe the events and the project", () => {
     expect(

@@ -95,6 +95,31 @@ describe.skipIf(!db)("Shipmate server", () => {
     expect(bad.statusCode).toBe(401);
   });
 
+  it("keeps appearance preferences per user", async () => {
+    const before = (await api("GET", "/api/auth/me")).json().user;
+    expect(before.preferences).toEqual({ themeMode: "auto", colorTheme: "harbor" });
+    expect(
+      (await api("PATCH", "/api/auth/preferences", { themeMode: "dark" }, "")).statusCode,
+    ).toBe(401);
+    const res = await api("PATCH", "/api/auth/preferences", { themeMode: "dark" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().user.preferences).toEqual({ themeMode: "dark", colorTheme: "harbor" });
+    const both = await api("PATCH", "/api/auth/preferences", { colorTheme: "coral-reef" });
+    expect(both.json().user.preferences).toEqual({ themeMode: "dark", colorTheme: "coral-reef" });
+    expect((await api("PATCH", "/api/auth/preferences", { colorTheme: "plaid" })).statusCode).toBe(
+      400,
+    );
+    // Another user's preferences are untouched.
+    const login = await api(
+      "POST",
+      "/api/auth/login",
+      { email: "kid@example.com", password: "password1" },
+      "",
+    );
+    const kid = (await api("GET", "/api/auth/me", undefined, cookieOf(login))).json().user;
+    expect(kid.preferences).toEqual({ themeMode: "auto", colorTheme: "harbor" });
+  });
+
   it("stores provider keys encrypted and never returns them", async () => {
     const res = await api("POST", "/api/providers", { kind: "anthropic", apiKey: "sk-ant-secret" });
     expect(res.statusCode).toBe(200);
@@ -209,6 +234,52 @@ describe.skipIf(!db)("Shipmate server", () => {
     expect(usage.byCrew.map((c: { slug: string }) => c.slug).sort()).toEqual(["captain", "galley"]);
     const conversations = (await api("GET", "/api/conversations")).json().conversations;
     expect(conversations[0].title).toBe("I need meal plans; I'm vegetarian");
+  });
+
+  it("lets a delegated crew member ask the Captain mid-task", async () => {
+    const conv = (await api("POST", "/api/conversations", {})).json().conversation;
+    const ws = await t.app.injectWS("/api/ws", { headers: { cookie: ownerCookie } });
+    const events: ServerEvent[] = [];
+    ws.on("message", (raw: Buffer) => events.push(JSON.parse(raw.toString())));
+    const idle = new Promise<void>((resolve) => {
+      const timer = setInterval(() => {
+        const last = events.filter((e) => e.type === "status").at(-1);
+        if (last && last.type === "status" && !last.busy) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 20);
+    });
+
+    t.faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("delegate", { crew: "galley", task: "Plan Friday" })]),
+      fauxAssistantMessage([
+        fauxToolCall("ask_captain", { question: "Friday is a party. Spicy or mild?" }),
+      ]),
+      // The Captain answers in its consult session while its main one waits on the delegate.
+      fauxAssistantMessage("Mild; there are kids coming."),
+      fauxAssistantMessage("Friday: mild bean chili."),
+      fauxAssistantMessage("Galley planned a mild chili."),
+    ]);
+    ws.send(JSON.stringify({ type: "send", conversationId: conv.id, text: "Plan Friday" }));
+    await idle;
+    ws.terminate();
+
+    const handoffs = events.flatMap((e) =>
+      e.type === "handoff" ? [`${e.from.slug}>${e.to.slug}`] : [],
+    );
+    expect(handoffs).toEqual(["captain>galley", "galley>captain"]);
+    const messages = (await api("GET", `/api/conversations/${conv.id}/messages`)).json().messages;
+    expect(
+      messages.map(
+        (m: { author: { name: string }; content: string }) => `${m.author.name}: ${m.content}`,
+      ),
+    ).toEqual([
+      "Addison: Plan Friday",
+      "Skipper: Mild; there are kids coming.",
+      "Galley: Friday: mild bean chili.",
+      "Skipper: Galley planned a mild chili.",
+    ]);
   });
 
   it("blocks sending once a monthly cap is reached", async () => {

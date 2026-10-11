@@ -1,10 +1,14 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CrewRegistry, CrewValidationError } from "./registry.js";
 
 const template = new URL("../../../templates/crew/captain", import.meta.url).pathname;
+const previousCaptain = new URL(
+  "../../../templates/crew/.previous/captain/1.0.0.md",
+  import.meta.url,
+).pathname;
 
 describe("CrewRegistry", () => {
   const registry = () => new CrewRegistry(mkdtempSync(join(tmpdir(), "crew-")));
@@ -19,6 +23,31 @@ describe("CrewRegistry", () => {
     expect(c.persona).toContain("You are Skipper, the Captain");
     // Seeding again is idempotent.
     expect(r.seedCaptain(template).manifest.name).toBe("Skipper");
+  });
+
+  it("upgrades an untouched stock Captain persona and keeps edited ones", () => {
+    // An install from 1.0.0: the old stock CREW.md, renamed at setup.
+    const old = mkdtempSync(join(tmpdir(), "tpl-"));
+    cpSync(template, old, { recursive: true });
+    writeFileSync(join(old, "CREW.md"), readFileSync(previousCaptain, "utf8"));
+    const r = registry();
+    r.seedCaptain(old, { name: "Skipper" });
+    const stock = {
+      current: readFileSync(join(template, "CREW.md"), "utf8"),
+      previous: [readFileSync(previousCaptain, "utf8")],
+    };
+
+    expect(r.upgradeStockPersona("captain", stock)).toBe(true);
+    const upgraded = r.get("captain").persona;
+    expect(upgraded).toMatch(/^# Skipper$/m);
+    expect(upgraded).toContain("You are Skipper, the Captain");
+    expect(upgraded).toContain("ask_captain");
+    // Already current: nothing to do.
+    expect(r.upgradeStockPersona("captain", stock)).toBe(false);
+
+    r.update("captain", { persona: `${upgraded}\nAlways answer in French.\n` });
+    expect(r.upgradeStockPersona("captain", { ...stock, previous: [upgraded] })).toBe(false);
+    expect(r.get("captain").persona).toContain("Always answer in French.");
   });
 
   it("creates, edits and validates crew members", () => {

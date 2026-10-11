@@ -31,7 +31,7 @@ export function ChatBridgesPage({ tab: tabParam }: { tab: string | null }) {
               "-mb-px border-b-2 px-3 py-2 text-sm font-medium whitespace-nowrap",
               focusRing,
               tab === t.id
-                ? "border-teal-700 text-teal-800 dark:border-teal-400 dark:text-teal-200"
+                ? "border-accent-700 text-accent-800 dark:border-accent-400 dark:text-accent-200"
                 : "border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100",
             )}
           >

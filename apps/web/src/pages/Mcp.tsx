@@ -211,7 +211,7 @@ function ServerCard({
             target="_blank"
             rel="noreferrer"
             className={cx(
-              "rounded text-xs text-teal-700 hover:underline dark:text-teal-300",
+              "rounded text-xs text-accent-700 hover:underline dark:text-accent-300",
               focusRing,
             )}
           >
@@ -448,7 +448,7 @@ function CrewAssign({
                     e.target.checked ? [...p, c.slug] : p.filter((x) => x !== c.slug),
                   )
                 }
-                className="size-4 accent-teal-700"
+                className="size-4 accent-accent-700"
               />
               {c.name}
             </label>

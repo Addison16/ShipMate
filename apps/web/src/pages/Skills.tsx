@@ -95,7 +95,7 @@ function SkillList() {
               <a
                 href={href(`/skills/${encodeURIComponent(s.id)}`)}
                 className={cx(
-                  "rounded font-mono text-sm font-medium text-teal-800 hover:underline dark:text-teal-300",
+                  "rounded font-mono text-sm font-medium text-accent-800 hover:underline dark:text-accent-300",
                   focusRing,
                 )}
               >
@@ -222,7 +222,7 @@ function NewSkill() {
     <Page>
       <a
         href={href("/skills")}
-        className="text-sm text-teal-700 hover:underline dark:text-teal-300"
+        className="text-sm text-accent-700 hover:underline dark:text-accent-300"
       >
         ← Skills
       </a>
@@ -353,7 +353,7 @@ function SkillDetail({ id }: { id: string }) {
     <Page wide>
       <a
         href={href("/skills")}
-        className="text-sm text-teal-700 hover:underline dark:text-teal-300"
+        className="text-sm text-accent-700 hover:underline dark:text-accent-300"
       >
         ← Skills
       </a>

@@ -140,7 +140,7 @@ function BackupSettingsCard() {
                         <a
                           href={backupDownloadUrl(b.name)}
                           download={b.name}
-                          className="mr-2 text-sm font-medium text-teal-700 hover:underline dark:text-teal-300"
+                          className="mr-2 text-sm font-medium text-accent-700 hover:underline dark:text-accent-300"
                         >
                           Download
                         </a>

@@ -1,3 +1,4 @@
+import { AppearanceSync } from "./appearance.js";
 import { AuthProvider, useAuth } from "./auth.js";
 import { Shell } from "./components/Shell.js";
 import { Button } from "./components/ui.js";
@@ -32,6 +33,7 @@ function Gate() {
 export function App() {
   return (
     <AuthProvider>
+      <AppearanceSync />
       <Gate />
     </AuthProvider>
   );

@@ -1,6 +1,8 @@
 import { type ReactNode, useEffect, useState } from "react";
+import { useUpdateAppearance } from "../appearance.js";
 import { ApprovalsProvider } from "../approvals.js";
 import { isAdmin, useAuth, useUser } from "../auth.js";
+import { THEME_MODES } from "../lib/theme.js";
 import { AuditPage } from "../pages/Audit.js";
 import { BridgePage } from "../pages/Bridge.js";
 import { ChatBridgesPage } from "../pages/ChatBridges.js";
@@ -17,6 +19,7 @@ import { WatchesPage } from "../pages/Watches.js";
 import { href, navigate, useRoute } from "../router.js";
 import { socket, useSocketState } from "../ws.js";
 import { ApprovalTray } from "./ApprovalTray.js";
+import { type IconName, NavIcon } from "./icons.js";
 import { Logo } from "./Logo.js";
 import { Toasts } from "./Toasts.js";
 import { cx, focusRing } from "./ui.js";
@@ -24,6 +27,7 @@ import { cx, focusRing } from "./ui.js";
 interface NavItem {
   path: string;
   label: string;
+  icon: IconName;
   adminOnly?: boolean;
 }
 
@@ -31,28 +35,28 @@ const NAV: Array<{ group: string | null; items: NavItem[] }> = [
   {
     group: null,
     items: [
-      { path: "bridge", label: "Bridge" },
-      { path: "watches", label: "Watches" },
-      { path: "shipyard", label: "Shipyard" },
+      { path: "bridge", label: "Bridge", icon: "bridge" },
+      { path: "watches", label: "Watches", icon: "watches" },
+      { path: "shipyard", label: "Shipyard", icon: "shipyard" },
     ],
   },
   {
     group: "Crew & tools",
     items: [
-      { path: "crew", label: "Crew" },
-      { path: "skills", label: "Skills" },
-      { path: "mcp", label: "MCP servers" },
+      { path: "crew", label: "Crew", icon: "crew" },
+      { path: "skills", label: "Skills", icon: "skills" },
+      { path: "mcp", label: "MCP servers", icon: "mcp" },
     ],
   },
   {
     group: "Manage",
     items: [
-      { path: "providers", label: "Providers" },
-      { path: "usage", label: "Cost" },
-      { path: "audit", label: "Audit" },
-      { path: "users", label: "Users", adminOnly: true },
-      { path: "bridges", label: "Chat bridges" },
-      { path: "settings", label: "Settings" },
+      { path: "providers", label: "Providers", icon: "providers" },
+      { path: "usage", label: "Cost", icon: "cost" },
+      { path: "audit", label: "Audit", icon: "audit" },
+      { path: "users", label: "Users", icon: "users", adminOnly: true },
+      { path: "bridges", label: "Chat bridges", icon: "bridges" },
+      { path: "settings", label: "Settings", icon: "settings" },
     ],
   },
 ];
@@ -82,11 +86,11 @@ function SocketDot() {
 function NavLinks({ current, onNavigate }: { current: string; onNavigate?: () => void }) {
   const user = useUser();
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {NAV.map((g) => (
         <div key={g.group ?? "main"}>
           {g.group && (
-            <p className="px-3 pb-1 text-[11px] font-semibold tracking-wider text-slate-500 uppercase dark:text-slate-400">
+            <p className="px-3 pb-1.5 text-[11px] font-semibold tracking-wider text-accent-700/80 uppercase dark:text-accent-300/80">
               {g.group}
             </p>
           )}
@@ -121,19 +125,65 @@ function NavList({
               onClick={onNavigate}
               aria-current={active ? "page" : undefined}
               className={cx(
-                "block rounded-md px-3 py-1.5 text-sm font-medium",
+                "group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 focusRing,
                 active
-                  ? "bg-teal-700/10 text-teal-800 dark:bg-teal-400/10 dark:text-teal-200"
-                  : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
+                  ? "bg-accent-600 text-white shadow-sm dark:bg-accent-500/20 dark:text-accent-100"
+                  : "text-slate-700 hover:bg-accent-50 hover:text-accent-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-accent-200",
               )}
             >
+              <span
+                className={cx(
+                  !active &&
+                    "text-slate-400 group-hover:text-accent-600 dark:text-slate-500 dark:group-hover:text-accent-300",
+                )}
+              >
+                <NavIcon name={n.icon} />
+              </span>
               {n.label}
             </a>
           </li>
         );
       })}
     </ul>
+  );
+}
+
+/** Light, Dark or Auto, one click away; color themes live in Settings. */
+function ModeToggle() {
+  const user = useUser();
+  const { update } = useUpdateAppearance();
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Appearance"
+      className="grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800"
+    >
+      {THEME_MODES.map((m) => {
+        const on = user.preferences.themeMode === m.id;
+        return (
+          // biome-ignore lint/a11y/useSemanticElements: a styled segmented control, not native radios
+          <button
+            key={m.id}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            title={m.id === "auto" ? "Auto (follow this device)" : m.label}
+            onClick={() => void update({ themeMode: m.id })}
+            className={cx(
+              "flex items-center justify-center gap-1 rounded-md py-1 text-xs font-medium transition-colors",
+              focusRing,
+              on
+                ? "bg-white text-accent-700 shadow-sm dark:bg-slate-950 dark:text-accent-300"
+                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100",
+            )}
+          >
+            <NavIcon name={m.id} size={14} />
+            {m.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -148,7 +198,8 @@ function UserBox() {
           {user.email} · {user.role}
         </p>
       </div>
-      <div className="flex items-center justify-between">
+      <ModeToggle />
+      <div className="mt-3 flex items-center justify-between">
         <SocketDot />
         <button
           type="button"
@@ -169,10 +220,15 @@ function Brand() {
   return (
     <a
       href={href("/bridge")}
-      className={cx("flex items-center gap-2 rounded text-teal-800 dark:text-teal-300", focusRing)}
+      className={cx(
+        "flex items-center gap-2.5 rounded-lg text-slate-900 dark:text-white",
+        focusRing,
+      )}
     >
-      <Logo />
-      <span className="font-semibold tracking-tight">Shipmate</span>
+      <span className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-accent-500 to-accent-700 text-white shadow-sm">
+        <Logo size={20} />
+      </span>
+      <span className="text-[17px] font-semibold tracking-tight">Shipmate</span>
     </a>
   );
 }
@@ -326,7 +382,7 @@ function NotFound() {
   return (
     <div className="p-8 text-sm text-slate-500">
       Nothing here.{" "}
-      <a className="text-teal-700 underline dark:text-teal-300" href={href("/bridge")}>
+      <a className="text-accent-700 underline dark:text-accent-300" href={href("/bridge")}>
         Back to the Bridge
       </a>
     </div>

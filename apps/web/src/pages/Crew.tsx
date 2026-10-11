@@ -2,6 +2,7 @@ import type { CrewDetailDto, CrewDto, MemoryEntryDto } from "@shipmate/core";
 import { type FormEvent, useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { isAdmin, useUser } from "../auth.js";
+import { Avatar } from "../components/Avatar.js";
 import { CrewBackendSelect } from "../components/ClaudeCliCard.js";
 import { ModelSelect } from "../components/ModelSelect.js";
 import {
@@ -67,7 +68,7 @@ function CrewList() {
           type="checkbox"
           checked={showRetired}
           onChange={(e) => setShowRetired(e.target.checked)}
-          className="size-4 accent-teal-700"
+          className="size-4 accent-accent-700"
         />
         <label htmlFor="show-retired">Show retired</label>
       </div>
@@ -79,18 +80,23 @@ function CrewList() {
             <a
               href={href(`/crew/${c.slug}`)}
               className={cx(
-                "block h-full rounded-lg border border-slate-200 bg-white p-4 hover:border-teal-600/50 hover:shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:hover:border-teal-400/50",
+                "block h-full rounded-xl border border-slate-200 bg-white p-4 transition hover:-translate-y-0.5 hover:border-accent-600/50 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:hover:border-accent-400/50",
                 focusRing,
               )}
             >
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold">{c.name}</span>
-                <StatusBadges crew={c} />
+              <div className="flex items-start gap-3">
+                <Avatar name={c.name} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold">{c.name}</span>
+                    <StatusBadges crew={c} />
+                  </div>
+                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{c.role}</p>
+                  <p className="mt-3 truncate font-mono text-xs text-slate-500 dark:text-slate-400">
+                    {c.model}
+                  </p>
+                </div>
               </div>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{c.role}</p>
-              <p className="mt-3 truncate font-mono text-xs text-slate-500 dark:text-slate-400">
-                {c.model}
-              </p>
             </a>
           </li>
         ))}
@@ -156,7 +162,10 @@ function NewCrew() {
 
   return (
     <Page>
-      <a href={href("/crew")} className="text-sm text-teal-700 hover:underline dark:text-teal-300">
+      <a
+        href={href("/crew")}
+        className="text-sm text-accent-700 hover:underline dark:text-accent-300"
+      >
         ← Crew
       </a>
       <PageHeader title="New crew member" />
@@ -257,7 +266,10 @@ function CrewDetail({ slug }: { slug: string }) {
 
   return (
     <Page wide>
-      <a href={href("/crew")} className="text-sm text-teal-700 hover:underline dark:text-teal-300">
+      <a
+        href={href("/crew")}
+        className="text-sm text-accent-700 hover:underline dark:text-accent-300"
+      >
         ← Crew
       </a>
       {detail.error && !crew && <ErrorText>{detail.error}</ErrorText>}
@@ -265,15 +277,18 @@ function CrewDetail({ slug }: { slug: string }) {
       {crew && (
         <>
           <header className="mt-2 mb-4 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-2xl font-semibold tracking-tight">{crew.name}</h1>
-                <StatusBadges crew={crew} />
+            <div className="flex items-start gap-4">
+              <Avatar name={crew.name} size="lg" />
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-2xl font-semibold tracking-tight">{crew.name}</h1>
+                  <StatusBadges crew={crew} />
+                </div>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{crew.role}</p>
+                <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">
+                  {crew.slug} · {crew.model}
+                </p>
               </div>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{crew.role}</p>
-              <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">
-                {crew.slug} · {crew.model}
-              </p>
             </div>
             <div className="flex flex-wrap gap-2">
               {admin && crew.status === "pending_review" && (
@@ -315,7 +330,7 @@ function CrewDetail({ slug }: { slug: string }) {
                   "-mb-px border-b-2 px-3 py-2 text-sm font-medium",
                   focusRing,
                   tab === t.id
-                    ? "border-teal-700 text-teal-800 dark:border-teal-400 dark:text-teal-200"
+                    ? "border-accent-700 text-accent-800 dark:border-accent-400 dark:text-accent-200"
                     : "border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100",
                 )}
               >

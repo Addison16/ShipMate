@@ -1,6 +1,12 @@
-import { cpSync, existsSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { CrewDetailDto, CrewDto, CrewManifest, CrewStatus } from "@shipmate/core";
+import {
+  CREW_FILES,
+  type CrewDetailDto,
+  type CrewDto,
+  type CrewManifest,
+  type CrewStatus,
+} from "@shipmate/core";
 import {
   CAPTAIN_SLUG,
   type CrewFolder,
@@ -52,6 +58,7 @@ export class CrewService {
     }
     // Starter crew beside the Captain; seeded active when missing.
     for (const slug of STARTER_CREW) this.#seedTemplate(slug);
+    for (const slug of [CAPTAIN_SLUG, ...STARTER_CREW]) this.#upgradeStockPersona(slug);
     for (const folder of this.registry.list()) await this.#mirror(folder);
   }
 
@@ -63,6 +70,20 @@ export class CrewService {
     cpSync(template, dir, { recursive: true });
     const seeded = loadCrewFolder(dir);
     writeCrewFolder(dir, seeded.manifest, seeded.persona);
+  }
+
+  /**
+   * Bring an untouched stock CREW.md up to the current template. Earlier stock versions live in
+   * templates/crew/.previous/<slug>/; a CREW.md anyone has edited is left alone.
+   */
+  #upgradeStockPersona(slug: string) {
+    const current = join(this.templatesDir, "crew", slug, CREW_FILES.persona);
+    const previousDir = join(this.templatesDir, "crew", ".previous", slug);
+    if (!existsSync(current) || !existsSync(previousDir)) return;
+    const previous = readdirSync(previousDir)
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => readFileSync(join(previousDir, f), "utf8"));
+    this.registry.upgradeStockPersona(slug, { current: readFileSync(current, "utf8"), previous });
   }
 
   async renameCaptain(name: string): Promise<void> {

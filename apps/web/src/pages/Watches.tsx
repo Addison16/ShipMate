@@ -136,7 +136,7 @@ function EnabledToggle({
         onClick={() => void toggle()}
         className={cx(
           "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60",
-          watch.enabled ? "bg-teal-700 dark:bg-teal-500" : "bg-slate-300 dark:bg-slate-600",
+          watch.enabled ? "bg-accent-700 dark:bg-accent-500" : "bg-slate-300 dark:bg-slate-600",
           focusRing,
         )}
       >
@@ -229,7 +229,7 @@ function WatchList() {
                       <a
                         href={href(`/watches/${w.id}`)}
                         className={cx(
-                          "rounded font-semibold text-teal-800 hover:underline dark:text-teal-300",
+                          "rounded font-semibold text-accent-800 hover:underline dark:text-accent-300",
                           focusRing,
                         )}
                       >
@@ -457,7 +457,7 @@ function WatchForm({
                   className={cx(
                     "rounded-full border px-2.5 py-0.5 text-xs",
                     f.expression.trim() === p.expression
-                      ? "border-teal-600 bg-teal-50 text-teal-800 dark:border-teal-400 dark:bg-teal-950/50 dark:text-teal-200"
+                      ? "border-accent-600 bg-accent-50 text-accent-800 dark:border-accent-400 dark:bg-accent-950/50 dark:text-accent-200"
                       : "border-slate-300 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800",
                     focusRing,
                   )}
@@ -528,7 +528,7 @@ function WatchForm({
                 value={v}
                 checked={f.session === v}
                 onChange={() => set("session", v)}
-                className="size-4 accent-teal-700"
+                className="size-4 accent-accent-700"
               />
               {label}
             </label>
@@ -550,7 +550,7 @@ function WatchForm({
           type="checkbox"
           checked={f.enabled}
           onChange={(e) => set("enabled", e.target.checked)}
-          className="size-4 accent-teal-700"
+          className="size-4 accent-accent-700"
         />
         Enabled
       </label>
@@ -573,7 +573,7 @@ function NewWatch() {
     <Page>
       <a
         href={href("/watches")}
-        className="text-sm text-teal-700 hover:underline dark:text-teal-300"
+        className="text-sm text-accent-700 hover:underline dark:text-accent-300"
       >
         ← Watches
       </a>
@@ -638,7 +638,7 @@ function WatchDetail({ id }: { id: string }) {
     <Page wide>
       <a
         href={href("/watches")}
-        className="text-sm text-teal-700 hover:underline dark:text-teal-300"
+        className="text-sm text-accent-700 hover:underline dark:text-accent-300"
       >
         ← Watches
       </a>
@@ -768,7 +768,7 @@ function RunHistory({
                   <a
                     href={href(`/watches/${watchId}/runs/${r.id}`)}
                     className={cx(
-                      "inline-block rounded text-sm font-medium text-teal-700 hover:underline dark:text-teal-300",
+                      "inline-block rounded text-sm font-medium text-accent-700 hover:underline dark:text-accent-300",
                       focusRing,
                     )}
                   >
@@ -808,7 +808,7 @@ function RunTranscript({ watchId, runId }: { watchId: string; runId: string }) {
     <Page>
       <a
         href={href(`/watches/${watchId}`)}
-        className="text-sm text-teal-700 hover:underline dark:text-teal-300"
+        className="text-sm text-accent-700 hover:underline dark:text-accent-300"
       >
         ← {data.data?.watch?.name ?? "Watch"}
       </a>

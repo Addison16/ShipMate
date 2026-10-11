@@ -5,7 +5,7 @@
  * All JSON. Timestamps are ISO strings. Auth is a `shipmate_session` http-only cookie set by
  * `/api/setup` and `/api/auth/login`. Errors are `{ error: string }` with a 4xx/5xx status.
  */
-import type { UserRole } from "./user.js";
+import type { UserPreferences, UserRole } from "./user.js";
 
 // ---------- users and auth ----------
 
@@ -22,6 +22,8 @@ export interface UserDto {
   telegramUserId: string | null;
   /** Linked Slack account (phase 5). */
   slackUserId: string | null;
+  /** Appearance settings for the web app; only shown to and changed by this user. */
+  preferences: UserPreferences;
   createdAt: string;
 }
 
@@ -40,6 +42,9 @@ export interface SetupRequest {
   /** Optional rename of the coordinator; defaults to "Captain". */
   captainName?: string;
 }
+
+/** PATCH /api/auth/preferences (signed in) → { user: UserDto }. Changes only the given fields. */
+export type UpdatePreferencesRequest = Partial<UserPreferences>;
 
 /** POST /api/auth/login → { user: UserDto }. POST /api/auth/logout → { ok: true }. */
 export interface LoginRequest {

@@ -14,7 +14,7 @@ export function ExternalLink({ href, children }: { href: string; children: React
       target="_blank"
       rel="noreferrer noopener"
       className={cx(
-        "rounded font-medium text-teal-800 underline underline-offset-2 dark:text-teal-300",
+        "rounded font-medium text-accent-800 underline underline-offset-2 dark:text-accent-300",
         focusRing,
       )}
     >
@@ -190,7 +190,7 @@ export function LinkAccountCard({
         <div className="space-y-3">
           {!configured && <Muted>{app} is not set up on this instance yet.</Muted>}
           {code && live ? (
-            <div className="space-y-2 rounded-md border border-teal-200 bg-teal-50 p-3 dark:border-teal-900 dark:bg-teal-950/50">
+            <div className="space-y-2 rounded-md border border-accent-200 bg-accent-50 p-3 dark:border-accent-900 dark:bg-accent-950/50">
               <p className="text-sm">
                 Your code:{" "}
                 <code className="rounded bg-white px-2 py-0.5 font-mono text-lg font-semibold tracking-widest dark:bg-slate-900">

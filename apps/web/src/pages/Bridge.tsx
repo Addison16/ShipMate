@@ -197,7 +197,7 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
                       "block rounded-md px-3 py-2",
                       focusRing,
                       c.id === conversationId
-                        ? "bg-teal-700/10 dark:bg-teal-400/10"
+                        ? "bg-accent-700/10 dark:bg-accent-400/10"
                         : "hover:bg-slate-100 dark:hover:bg-slate-800",
                     )}
                   >

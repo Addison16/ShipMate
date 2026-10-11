@@ -36,6 +36,7 @@ import type {
   StartFlowRequest,
   TelegramStatusDto,
   UpdateCrewRequest,
+  UpdatePreferencesRequest,
   UpdateProjectRequest,
   UpdateProviderRequest,
   UpdateUserRequest,
@@ -98,6 +99,8 @@ export const api = {
   me: () => request<MeResponse>("GET", "/api/auth/me"),
   setup: (body: SetupRequest) => request<{ user: UserDto }>("POST", "/api/setup", body),
   login: (body: LoginRequest) => request<{ user: UserDto }>("POST", "/api/auth/login", body),
+  updatePreferences: (body: UpdatePreferencesRequest) =>
+    request<{ user: UserDto }>("PATCH", "/api/auth/preferences", body),
   logout: () => request<Ok>("POST", "/api/auth/logout"),
 
   // users

@@ -329,7 +329,15 @@ Answers to these change the design. Defaults in bold are what I will build if un
 - **Q8 Names.** The first bot is "the Coordinator" in your message. Suggestions to fit the theme:
   Coordinator = **Captain**, bot files = **crew manifest**, group chat = **Bridge**, work section
   = **Shipyard**, routines = **Watches**. Keep, change, or drop any of these.
-- **Q9 License.** The repo is GPL-3.0 today. pi and most of the MCP ecosystem are MIT or
-  Apache-2.0. GPL is fine for a self-hosted app, but it will deter some contributors and any
-  company that wants to embed Shipmate. **Keep GPL-3.0 unless you want wider adoption, in which
-  case AGPL-3.0 (protects against hosted forks) or Apache-2.0 (most permissive).**
+- **Q9 License (answered 2026-10-11).** Addison wants source-available, self-hostable, and no
+  commercial use. The repo now uses the **PolyForm Noncommercial License 1.0.0** (SPDX
+  `PolyForm-Noncommercial-1.0.0`), replacing GPL-3.0. Notes that follow from that choice:
+  - It is not "open source" under the OSI definition, because it discriminates by field of use.
+    GitHub shows it as "Other", and the README should say "source-available, free for
+    noncommercial use" rather than "open source" to avoid arguments.
+  - Any use by a for-profit business, including a company self-hosting it internally, needs a
+    commercial license from Addison. That is a potential revenue path later, not a problem now.
+  - To keep that option, contributors should sign a lightweight CLA (or a DCO plus a copyright
+    assignment clause) so the project can grant commercial licenses or relicense later.
+  - Dependencies are unaffected: pi (MIT) and the MCP servers keep their own licenses, and the
+    PolyForm terms apply only to Shipmate's code.

@@ -10,8 +10,10 @@ import type { DiscordClientPort } from "./discord/port.js";
 import { DiscordService } from "./discord/service.js";
 import { ApprovalService } from "./services/approvals.js";
 import { AuditService } from "./services/audit.js";
+import { BackupService } from "./services/backups.js";
 import { CrewService } from "./services/crew.js";
 import { McpService } from "./services/mcp.js";
+import { type OidcDiscover, OidcService } from "./services/oidc.js";
 import { ProviderService } from "./services/providers.js";
 import { SettingsService } from "./services/settings.js";
 import { SkillService } from "./services/skills.js";
@@ -34,6 +36,8 @@ export interface Services {
   bridge: Bridge;
   discord: DiscordService;
   shipyard: ShipyardService;
+  oidc: OidcService;
+  backups: BackupService;
 }
 
 /**
@@ -48,6 +52,8 @@ export async function createServices(
     extraProviders?: string[];
     /** Stand-in for discord.js (tests). */
     discordPort?: DiscordClientPort;
+    /** Stand-in for OIDC discovery (tests). */
+    oidcDiscover?: OidcDiscover;
   } = {},
 ): Promise<Services> {
   const vault = new SecretVault(config.SHIPMATE_SECRET);
@@ -127,5 +133,20 @@ export async function createServices(
     bridge,
     discord,
     shipyard,
+    backups: new BackupService(
+      db,
+      settings,
+      audit,
+      config.dirs.root,
+      process.env.SHIPMATE_BACKUP_DIR || `${config.dirs.root}/backups`,
+    ),
+    oidc: new OidcService({
+      db,
+      settings,
+      vault,
+      audit,
+      baseUrl: config.SHIPMATE_URL,
+      discover: options.oidcDiscover,
+    }),
   };
 }

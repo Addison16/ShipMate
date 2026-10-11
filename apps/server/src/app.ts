@@ -13,10 +13,12 @@ import { HttpError, type UserRow } from "./auth.js";
 import type { Config } from "./config.js";
 import { approvalRoutes, DecisionSchema } from "./routes/approvals.js";
 import { authRoutes } from "./routes/auth.js";
+import { backupRoutes } from "./routes/backups.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { crewRoutes } from "./routes/crew.js";
 import { discordRoutes } from "./routes/discord.js";
 import { mcpRoutes } from "./routes/mcp.js";
+import { oidcRoutes } from "./routes/oidc.js";
 import { providerRoutes } from "./routes/providers.js";
 import { shipyardRoutes } from "./routes/shipyard.js";
 import { skillRoutes } from "./routes/skills.js";
@@ -32,6 +34,9 @@ const PUBLIC = new Set([
   "/api/auth/logout",
   "/api/setup",
   "/api/meta",
+  "/api/auth/oidc",
+  "/api/auth/oidc/start",
+  "/api/auth/oidc/callback",
 ]);
 /** Prefixes reachable without signing in; each route checks its own credential (a token). */
 const PUBLIC_PREFIXES = ["/api/hooks/"];
@@ -68,8 +73,10 @@ export async function buildApp(
   app.decorateRequest("user", null as unknown as UserRow);
   app.addHook("onReady", async () => {
     if (options.watches !== false) await services.watches.start();
+    await services.backups.start();
   });
   app.addHook("onClose", async () => {
+    await services.backups.stop();
     await services.watches.stop();
     services.approvals.close();
     await services.discord.stop();
@@ -126,6 +133,8 @@ export async function buildApp(
   await mcpRoutes(app, services);
   await shipyardRoutes(app, services);
   await discordRoutes(app, services);
+  await backupRoutes(app, services);
+  await oidcRoutes(app, services, { secureCookies: config.secureCookies });
 
   // The Bridge's live channel: streams crew replies and takes messages from the person.
   app.get("/api/ws", { websocket: true }, (socket, req) => {

@@ -167,6 +167,7 @@ export class WatchService {
         prompt: req.prompt,
         enabled: req.enabled ?? true,
         session: req.session ?? "fresh",
+        monthlyCapCents: req.monthlyCapCents ?? null,
         ownerId: user.id,
         webhookToken: randomBytes(24).toString("base64url"),
       })
@@ -193,6 +194,8 @@ export class WatchService {
       prompt: patch.prompt ?? w.prompt,
       enabled: patch.enabled ?? w.enabled,
       session: patch.session ?? (w.session as "fresh" | "continue"),
+      monthlyCapCents:
+        patch.monthlyCapCents !== undefined ? patch.monthlyCapCents : w.monthlyCapCents,
     };
     if (patch.crewSlug || patch.trigger)
       await this.#validate(user, next.crewSlug, next.trigger, id);
@@ -409,6 +412,7 @@ export class WatchService {
       session: w.session === "continue" ? "continue" : "fresh",
       owner: { id: w.ownerId, name: ownerName },
       // The URL is the webhook's credential, so only the owner sees it.
+      monthlyCapCents: w.monthlyCapCents ?? null,
       webhookUrl:
         trigger.kind === "webhook" && viewer.id === w.ownerId
           ? `${this.baseUrl.replace(/\/+$/, "")}/api/hooks/watches/${w.id}/${w.webhookToken}`

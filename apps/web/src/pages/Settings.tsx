@@ -1,7 +1,9 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { useAuth, useUser } from "../auth.js";
+import { BackupSettings } from "../components/BackupSettings.js";
 import { ModelSelect } from "../components/ModelSelect.js";
+import { OidcSettings } from "../components/OidcSettings.js";
 import { Badge, Button, Card, ErrorText, Page, PageHeader, TextField } from "../components/ui.js";
 import { useResource } from "../lib/useResource.js";
 
@@ -17,6 +19,8 @@ export function SettingsPage() {
       <PageHeader title="Settings" />
       <div className="space-y-6">
         <InstanceSettings />
+        <OidcSettings />
+        <BackupSettings />
         <MyAccount />
       </div>
     </Page>

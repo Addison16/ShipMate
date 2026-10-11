@@ -29,6 +29,8 @@ export const CrewManifest = z.object({
   allow: z.array(z.string().min(1)).default([]),
   /** Load skills this crew member writes without waiting for a person to approve them. */
   autoApproveSkills: z.boolean().default(false),
+  /** Monthly spend ceiling for this crew member in USD (all people together); null = none. */
+  monthlyCapUsd: z.number().positive().nullable().default(null),
   visibility: z.enum(["shared", "private"]).default("shared"),
   /** Only the coordinator (the Captain by default) has this set. */
   captain: z.boolean().default(false),

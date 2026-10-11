@@ -1,5 +1,6 @@
 import type { Db } from "@shipmate/db";
 import { settings } from "@shipmate/db";
+import { eq } from "drizzle-orm";
 
 export interface InstanceSettings {
   captainName: string;
@@ -37,5 +38,18 @@ export class SettingsService {
         .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: new Date() } });
     }
     return this.get();
+  }
+
+  /** A feature's settings stored as one JSON value under `key` (e.g. "oidc"), or null. */
+  async getJson<T>(key: string): Promise<T | null> {
+    const [row] = await this.db.select().from(settings).where(eq(settings.key, key)).limit(1);
+    return row ? (row.value as T) : null;
+  }
+
+  async setJson(key: string, value: unknown): Promise<void> {
+    await this.db
+      .insert(settings)
+      .values({ key, value })
+      .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: new Date() } });
   }
 }

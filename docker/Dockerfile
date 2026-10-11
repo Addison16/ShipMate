@@ -26,6 +26,9 @@ ENV PATH=/root/.local/bin:$PATH
 RUN npm install -g @anthropic-ai/claude-code
 COPY --from=build /out/server /app
 COPY --from=build /app/apps/web/dist /app/web
+# The shipmate CLI (backup, restore, doctor) reuses the server's node_modules.
+COPY --from=build /app/packages/cli/dist /app/cli
+RUN printf '#!/bin/sh\nexec node /app/cli/index.js "$@"\n' > /usr/local/bin/shipmate && chmod +x /usr/local/bin/shipmate
 COPY templates /app/templates
 ENV NODE_ENV=production PORT=3000 SHIPMATE_DATA_DIR=/data WEB_DIST=/app/web TEMPLATES_DIR=/app/templates CLAUDE_CONFIG_DIR=/data/claude
 VOLUME /data

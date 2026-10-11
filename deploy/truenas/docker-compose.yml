@@ -1,0 +1,45 @@
+# Shipmate for TrueNAS SCALE (Apps → Discover Apps → Custom App → Install via YAML).
+# Shipmate is source-available (PolyForm Noncommercial 1.0.0): free for noncommercial use.
+#
+# Before installing, create two datasets (e.g. tank/apps/shipmate/data and
+# tank/apps/shipmate/db) and change the host paths and passwords below.
+services:
+  shipmate:
+    image: ghcr.io/addison16/shipmate:latest
+    ports:
+      - "3000:3000"
+    environment:
+      # The address people open (https://... behind a reverse proxy).
+      SHIPMATE_URL: http://truenas.local:3000
+      DATABASE_URL: postgres://shipmate:CHANGE_ME@db:5432/shipmate
+      # Leave empty to generate once into /data/.secret. If set, keep it forever.
+      SHIPMATE_SECRET: ""
+      # Host path of the data dataset, so Shipyard sandboxes bind the right folder.
+      SHIPMATE_HOST_DATA_DIR: /mnt/tank/apps/shipmate/data
+      # Optional: where backups are written (default /data/backups).
+      # SHIPMATE_BACKUP_DIR: /backups
+    volumes:
+      - /mnt/tank/apps/shipmate/data:/data
+      # Optional: sandboxes for the Shipyard. Remove to keep the Shipyard off.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Optional: backups on another dataset (pair with SHIPMATE_BACKUP_DIR above).
+      # - /mnt/tank/backups/shipmate:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: shipmate
+      POSTGRES_PASSWORD: CHANGE_ME
+      POSTGRES_DB: shipmate
+    volumes:
+      - /mnt/tank/apps/shipmate/db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shipmate -d shipmate"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped

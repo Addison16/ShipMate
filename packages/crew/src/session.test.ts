@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
@@ -135,5 +135,51 @@ describe("createCrewSession", () => {
     await b.prompt("two");
     expect(b.session.messages.filter((m) => m.role === "user")).toHaveLength(2);
     b.dispose();
+  });
+
+  it("runs the shell through the workspace's operations and confines files to it", async () => {
+    const { root, runtime, faux, captain } = await setup();
+    const dir = mkdtempSync(join(tmpdir(), "ws-"));
+    const ran: Array<{ command: string; cwd: string }> = [];
+    faux.setResponses([
+      fauxAssistantMessage([
+        fauxToolCall("bash", { command: "echo sandboxed" }),
+        fauxToolCall("write", { path: join(captain.dir, "x.txt"), content: "no" }),
+        fauxToolCall("write", { path: "notes.txt", content: "yes" }),
+      ]),
+      fauxAssistantMessage("Done."),
+    ]);
+    const s = await createCrewSession({
+      crew: captain,
+      agentDir: root,
+      modelRuntime: runtime,
+      inMemory: true,
+      workspace: {
+        dir,
+        bash: {
+          exec: async (command, cwd, { onData }) => {
+            ran.push({ command, cwd });
+            onData(Buffer.from("sandboxed\n"));
+            return { exitCode: 0 };
+          },
+        },
+      },
+    });
+    const results: Array<{ name: string; error: boolean }> = [];
+    s.subscribe((e) => {
+      if (e.type === "tool_execution_end") results.push({ name: e.toolName, error: e.isError });
+    });
+    await s.prompt("go");
+    s.dispose();
+    expect(ran).toEqual([{ command: "echo sandboxed", cwd: dir }]);
+    expect(results).toHaveLength(3);
+    expect(results).toEqual(
+      expect.arrayContaining([
+        { name: "bash", error: false },
+        { name: "write", error: true },
+        { name: "write", error: false },
+      ]),
+    );
+    expect(existsSync(join(dir, "notes.txt"))).toBe(true);
   });
 });

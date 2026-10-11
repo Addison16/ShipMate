@@ -16,6 +16,8 @@ export interface UserDto {
   role: UserRole;
   /** Monthly cost cap in USD cents; null = no cap. */
   monthlyCapCents: number | null;
+  /** Linked Discord account (phase 3); messages from it are attributed to this person. */
+  discordUserId: string | null;
   createdAt: string;
 }
 
@@ -190,6 +192,10 @@ export interface ConversationDto {
   /** "bridge" talks to the Captain; "direct" talks to one crew member. */
   kind: "bridge" | "direct";
   crewSlug: string | null;
+  /** Where it lives: web, discord, watch. */
+  surface: string;
+  /** Shipyard project this conversation works in (phase 3); tools run in its workspace. */
+  projectId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -438,6 +444,163 @@ export interface CreateCustomMcpRequest {
   /** Env var names the server needs; values are set afterwards via /secrets. */
   secrets?: Array<{ env: string; label?: string; required?: boolean }>;
 }
+
+// ---------- Discord bridge (phase 3) ----------
+
+export interface DiscordChannelDto {
+  crewSlug: string;
+  crewName: string;
+  /** Null until synced or bound. */
+  channelId: string | null;
+  channelName: string | null;
+  /** A webhook exists, so this crew member posts under its own name and avatar. */
+  webhook: boolean;
+}
+export interface DiscordStatusDto {
+  /** A bot token is stored. */
+  configured: boolean;
+  /** The bot is connected to Discord's gateway right now. */
+  connected: boolean;
+  applicationId: string | null;
+  guildId: string | null;
+  guildName: string | null;
+  /** Last connection or sync problem, in plain words. */
+  error: string | null;
+  /** Add-the-bot-to-a-server link, once the application id is known. */
+  inviteUrl: string | null;
+  channels: DiscordChannelDto[];
+}
+/**
+ * One Discord application per instance; each active crew member gets a channel (in a
+ * "Shipmate" category) and posts through that channel's webhook with its own name and avatar.
+ * A person links their Discord account once; messages from unlinked accounts are not run.
+ *
+ * GET /api/discord → { discord: DiscordStatusDto } (any signed-in user; secrets never returned)
+ * PUT /api/discord (owner) { botToken?: string, guildId?: string } → { discord } (reconnects)
+ * DELETE /api/discord (owner) → { ok: true } (disconnects and forgets the token)
+ * POST /api/discord/sync (admin) → { discord } (creates missing channels and webhooks)
+ * PUT /api/discord/channels/:slug (admin) { channelId: string | null } → { discord }
+ *   (bind a crew member to an existing channel, or null to unbind)
+ * POST /api/discord/link → DiscordLinkCode (the caller types it in Discord to link)
+ * DELETE /api/discord/link → { ok: true } (unlink the caller)
+ */
+export interface DiscordLinkCode {
+  code: string;
+  expiresAt: string;
+  /** What to type in Discord, e.g. "/shipmate link 123456". */
+  instructions: string;
+}
+
+// ---------- Shipyard (phase 3) ----------
+
+export interface ShipyardStatusDto {
+  /** False when the Docker socket is missing: projects can be listed but no code runs. */
+  available: boolean;
+  /** Why not, in plain words. */
+  reason: string | null;
+  /** Default sandbox image for new projects. */
+  sandboxImage: string;
+}
+export type ProjectProvider = "github" | "local";
+export interface ProjectDto {
+  id: string;
+  slug: string;
+  name: string;
+  provider: ProjectProvider;
+  /** "owner/name" for GitHub; null for a local project. */
+  repo: string | null;
+  defaultBranch: string | null;
+  /** The crew member who works on it (default: shipwright). */
+  crewSlug: string;
+  /** A GitHub token is stored for this project (never returned). */
+  hasToken: boolean;
+  workspace: {
+    cloned: boolean;
+    branch: string | null;
+    /** Uncommitted changes; null when unknown. */
+    dirty: boolean | null;
+  };
+  sandbox: { status: "none" | "running" | "stopped" | "unavailable"; image: string };
+  /** GitHub webhook to configure on the repo (owner/admin only; contains no secret). */
+  webhookUrl: string | null;
+  /** The webhook secret to paste into GitHub (owner/admin only). */
+  webhookSecret: string | null;
+  createdBy: { id: string; name: string } | null;
+  createdAt: string;
+}
+export interface CreateProjectRequest {
+  name: string;
+  slug?: string;
+  provider: ProjectProvider;
+  /** "owner/name", required for github. */
+  repo?: string;
+  /** Fine-grained PAT with contents, pull requests and issues access. */
+  token?: string;
+  crewSlug?: string;
+  defaultBranch?: string;
+  sandboxImage?: string;
+}
+/** `token: ""` clears the stored token. */
+export type UpdateProjectRequest = Partial<Omit<CreateProjectRequest, "provider">>;
+export interface PullRequestDto {
+  number: number;
+  title: string;
+  state: "open" | "closed" | "merged";
+  draft: boolean;
+  url: string;
+  branch: string;
+  author: string;
+  /** Combined CI state of the head commit; null when unknown. */
+  checks: "pending" | "success" | "failure" | null;
+  updatedAt: string;
+}
+export interface IssueDto {
+  number: number;
+  title: string;
+  state: "open" | "closed";
+  url: string;
+  labels: string[];
+  author: string;
+  updatedAt: string;
+}
+export interface ProjectEventDto {
+  id: string;
+  /** GitHub event name, e.g. pull_request, check_suite, issue_comment. */
+  kind: string;
+  summary: string;
+  /** The conversation it was routed to, when a crew member is following that PR. */
+  conversationId: string | null;
+  createdAt: string;
+}
+export type ShipyardFlow = "plan" | "fix_issue" | "review_pr" | "triage" | "keep_ci_green";
+export interface StartFlowRequest {
+  flow: ShipyardFlow;
+  /** Issue number (fix_issue) or PR number (review_pr, keep_ci_green). */
+  target?: number;
+  /** Extra instructions from the person, e.g. the feature to plan. */
+  notes?: string;
+}
+/**
+ * The Shipyard: crew members work on code in per-project workspaces (/data/workspaces/<slug>);
+ * shell commands run in a per-project sandbox container started through the Docker socket,
+ * with the workspace mounted and none of Shipmate's secrets. Pushing and GitHub calls happen
+ * outside the sandbox through Shipmate tools, behind approval gates.
+ *
+ * GET /api/shipyard → { status: ShipyardStatusDto, projects: ProjectDto[] }
+ * POST /api/shipyard/projects (admin) CreateProjectRequest → { project }
+ * GET /api/shipyard/projects/:id → { project }
+ * PATCH /api/shipyard/projects/:id (admin) UpdateProjectRequest → { project }
+ * DELETE /api/shipyard/projects/:id (admin) → { ok: true } (removes sandbox; keeps the folder)
+ * POST /api/shipyard/projects/:id/clone (admin) → { project } (clone, or fetch if cloned)
+ * POST /api/shipyard/projects/:id/sandbox (admin) { action: "start" | "stop" | "reset" } → { project }
+ * GET /api/shipyard/projects/:id/pulls?state=open|closed|all → { pulls: PullRequestDto[] }
+ * GET /api/shipyard/projects/:id/issues?state=open|closed|all → { issues: IssueDto[] }
+ * GET /api/shipyard/projects/:id/events?limit=n → { events: ProjectEventDto[] }
+ * POST /api/shipyard/projects/:id/flows StartFlowRequest → { conversationId } (a direct
+ *   conversation with the project's crew member, started with the flow's prompt)
+ * POST /api/shipyard/projects/:id/conversations → { conversation } (an empty one, for chat)
+ * POST /api/hooks/github/:projectId (public; X-Hub-Signature-256 checked) → { ok: true }
+ */
 
 // ---------- WebSocket: /api/ws ----------
 

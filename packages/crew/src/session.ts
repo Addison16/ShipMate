@@ -3,7 +3,9 @@ import type { Api, Model } from "@earendil-works/pi-ai";
 import {
   type AgentSession,
   type AgentSessionEvent,
+  type BashOperations,
   createAgentSession,
+  createBashToolDefinition,
   createMcpExtension,
   DefaultResourceLoader,
   type InlineExtension,
@@ -47,6 +49,11 @@ export interface CreateCrewSessionOptions {
   approvals?: () => ApprovalHost;
   /** Instance- and user-wide skill folders to load besides the crew's own (readable, not writable). */
   skillPaths?: string[];
+  /**
+   * Work in a project workspace instead of the crew folder: file tools are confined to `dir`,
+   * and the shell runs through `bash` (a sandbox container), never on the Shipmate host.
+   */
+  workspace?: { dir: string; bash: BashOperations };
 }
 
 export interface CrewSession {
@@ -91,10 +98,16 @@ export async function createCrewSession(options: CreateCrewSessionOptions): Prom
 
   const extensionFactories: InlineExtension[] = [];
   const skillPaths = options.skillPaths ?? [];
+  const workspace = options.workspace;
+  const cwd = workspace?.dir ?? crew.dir;
   if (options.guard !== false) {
     extensionFactories.push({
       name: "shipmate-guard",
-      factory: guardExtension({ root: crew.dir, readable: skillPaths }),
+      factory: guardExtension({
+        root: cwd,
+        // In a workspace the crew member can still read its own folder (skills, prompts).
+        readable: workspace ? [crew.dir, ...skillPaths] : skillPaths,
+      }),
     });
   }
   if (options.approvals) {
@@ -120,7 +133,7 @@ export async function createCrewSession(options: CreateCrewSessionOptions): Prom
   }
 
   const resourceLoader = new DefaultResourceLoader({
-    cwd: crew.dir,
+    cwd,
     agentDir,
     additionalSkillPaths: [join(crew.dir, CREW_FILES.skillsDir), ...skillPaths],
     additionalPromptTemplatePaths: [join(crew.dir, CREW_FILES.promptsDir)],
@@ -138,14 +151,20 @@ export async function createCrewSession(options: CreateCrewSessionOptions): Prom
 
   const sessionDir = join(crew.dir, CREW_FILES.sessionsDir);
   const sessionManager = options.inMemory
-    ? SessionManager.inMemory(crew.dir)
+    ? SessionManager.inMemory(cwd)
     : options.sessionFile
-      ? SessionManager.open(options.sessionFile, sessionDir, crew.dir)
+      ? SessionManager.open(options.sessionFile, sessionDir, cwd)
       : options.continueRecent
-        ? SessionManager.continueRecent(crew.dir, sessionDir)
-        : SessionManager.create(crew.dir, sessionDir);
+        ? SessionManager.continueRecent(cwd, sessionDir)
+        : SessionManager.create(cwd, sessionDir);
 
-  const customTools = options.customTools ?? [];
+  const customTools = [
+    ...(options.customTools ?? []),
+    // Replaces pi's built-in bash, so commands go to the sandbox.
+    ...(workspace
+      ? [createBashToolDefinition(cwd, { operations: workspace.bash }) as unknown as ToolDefinition]
+      : []),
+  ];
   // An explicit tool list is an allowlist, so Shipmate's own tools and MCP tools are added to it.
   const tools = crew.manifest.tools.length
     ? [
@@ -156,7 +175,7 @@ export async function createCrewSession(options: CreateCrewSessionOptions): Prom
     : undefined;
 
   const { session } = await createAgentSession({
-    cwd: crew.dir,
+    cwd,
     agentDir,
     modelRuntime,
     model,

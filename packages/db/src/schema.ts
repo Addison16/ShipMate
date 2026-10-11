@@ -1,5 +1,6 @@
 import { relations, sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   index,
@@ -27,6 +28,8 @@ export const users = pgTable("users", {
   role: userRole("role").notNull().default("member"),
   /** Monthly cost cap in USD cents; null = no cap. */
   monthlyCapCents: integer("monthly_cap_cents"),
+  /** Linked Discord account (phase 3). */
+  discordUserId: text("discord_user_id").unique(),
   createdAt: createdAt(),
 });
 
@@ -64,6 +67,10 @@ export const conversations = pgTable(
     externalId: text("external_id"),
     /** For "direct" conversations: the crew member being talked to. */
     crewMemberId: uuid("crew_member_id").references(() => crewMembers.id, { onDelete: "set null" }),
+    /** Shipyard project whose workspace this conversation works in. */
+    projectId: uuid("project_id").references((): AnyPgColumn => projects.id, {
+      onDelete: "set null",
+    }),
     /** pi session file per crew member slug, so a conversation resumes with full context. */
     sessionFiles: jsonb("session_files").$type<Record<string, string>>().notNull().default({}),
     createdAt: createdAt(),
@@ -233,4 +240,57 @@ export const mcpServers = pgTable("mcp_servers", {
   spec: jsonb("spec"),
   custom: boolean("custom").notNull().default(false),
   installedAt: timestamp("installed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------- phase 3: Shipyard and Discord ----------
+
+/** A software (or plain-folder) project the crew works on in /data/workspaces/<slug>. */
+export const projects = pgTable("projects", {
+  id: id(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  /** github | local */
+  provider: text("provider").notNull(),
+  /** "owner/name" for GitHub. */
+  repo: text("repo"),
+  defaultBranch: text("default_branch"),
+  crewSlug: text("crew_slug").notNull().default("shipwright"),
+  /** Vault ref of the GitHub token, when one is stored. */
+  tokenRef: text("token_ref"),
+  /** Shared secret GitHub signs webhook deliveries with. */
+  webhookSecret: text("webhook_secret").notNull(),
+  sandboxImage: text("sandbox_image"),
+  createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+});
+
+/** GitHub webhook deliveries, kept for the project timeline and routed to conversations. */
+export const projectEvents = pgTable(
+  "project_events",
+  {
+    id: id(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    /** X-GitHub-Delivery, so redeliveries are ignored. */
+    deliveryId: text("delivery_id").unique(),
+    summary: text("summary").notNull(),
+    payload: jsonb("payload"),
+    conversationId: uuid("conversation_id").references(() => conversations.id, {
+      onDelete: "set null",
+    }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("project_events_project_idx").on(t.projectId, t.createdAt)],
+);
+
+/** Which Discord channel (and webhook) each crew member speaks through. */
+export const discordChannels = pgTable("discord_channels", {
+  crewSlug: text("crew_slug").primaryKey(),
+  channelId: text("channel_id").notNull(),
+  webhookId: text("webhook_id"),
+  /** Vault ref of the webhook token. */
+  webhookTokenRef: text("webhook_token_ref"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

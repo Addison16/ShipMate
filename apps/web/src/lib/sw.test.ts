@@ -70,6 +70,7 @@ describe("service worker notifications", () => {
     expect(notificationFor(null).title).toBe("Shipmate");
     expect(notificationFor({ url: "https://evil.example/" }).options.data.url).toBe("/");
     expect(notificationFor({ url: "//evil.example/" }).options.data.url).toBe("/");
+    expect(notificationFor({ url: "/\\evil.example/" }).options.data.url).toBe("/");
     expect(notificationFor({ url: "/#/watches" }).options.data.url).toBe("/#/watches");
   });
 });

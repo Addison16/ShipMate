@@ -124,7 +124,13 @@ self.notificationFor = notificationFor;
 
 /** Only paths in this app; anything else opens the Bridge. */
 function safeUrl(url) {
-  return typeof url === "string" && url.startsWith("/") && !url.startsWith("//") ? url : "/";
+  // The URL parser reads "/\evil.example" as "//evil.example", so backslashes are refused too.
+  return typeof url === "string" &&
+    url.startsWith("/") &&
+    !url.startsWith("//") &&
+    !url.includes("\\")
+    ? url
+    : "/";
 }
 self.safeUrl = safeUrl;
 

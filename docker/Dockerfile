@@ -10,7 +10,7 @@ COPY apps ./apps
 COPY packages ./packages
 RUN pnpm install --frozen-lockfile
 RUN pnpm -r build
-RUN pnpm --filter @shipmate/server --prod deploy /out/server
+RUN pnpm --filter @shipmate/server --prod deploy --legacy /out/server
 
 FROM base AS runtime
 # git for the Shipyard, python3/pipx for uvx-based MCP servers, docker CLI (no daemon) for sandboxes.

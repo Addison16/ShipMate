@@ -17,6 +17,7 @@ import { type OidcDiscover, OidcService } from "./services/oidc.js";
 import { ProviderService } from "./services/providers.js";
 import { SettingsService } from "./services/settings.js";
 import { SkillService } from "./services/skills.js";
+import { StarterService } from "./services/starters.js";
 import { UsageService } from "./services/usage.js";
 import { WatchService } from "./services/watches.js";
 import { ShipyardService } from "./shipyard/service.js";
@@ -46,6 +47,7 @@ export interface Services {
   shipyard: ShipyardService;
   oidc: OidcService;
   backups: BackupService;
+  starters: StarterService;
 }
 
 /**
@@ -163,6 +165,7 @@ export async function createServices(
     telegram,
     slack,
     shipyard,
+    starters: new StarterService(config.TEMPLATES_DIR, crew, settings, mcp, watches),
     backups: new BackupService(
       db,
       settings,

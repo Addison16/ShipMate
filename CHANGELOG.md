@@ -19,6 +19,10 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 - **`ask_captain`**: every crew member except the Captain can check with the Captain mid-task
   instead of guessing, so crew can run on cheaper models with the Captain's judgment on call.
   The question and answer show in the conversation like a hand-off.
+- **Starter crew**: first-run setup (and **Crew → Add starter crew** later) offers ready-made
+  crew members: Galley (meals and groceries), Purser (bills), Navigator (calendar, travel and
+  weather), Tutor and Health Log. Each comes with its persona, the catalog MCP servers it needs
+  and a starter watch that is created paused, and uses the default model from Settings.
 
 ## 1.0.0 — 2026-10-11
 

@@ -15,6 +15,8 @@ import type {
   CrewDto,
   DiscordLinkCode,
   DiscordStatusDto,
+  InstallStartersRequest,
+  InstallStartersResponse,
   IssueDto,
   LoginRequest,
   McpServerDto,
@@ -33,6 +35,7 @@ import type {
   SkillDetailDto,
   SkillDto,
   SlackStatusDto,
+  StarterCrewDto,
   StartFlowRequest,
   TelegramStatusDto,
   UpdateCrewRequest,
@@ -138,6 +141,9 @@ export const api = {
     ),
   deleteMemory: (slug: string, scope: "shared" | "user", name: string) =>
     request<Ok>("DELETE", `/api/crew/${enc(slug)}/memory/${enc(scope)}/${enc(name)}`),
+  listStarters: () => request<{ starters: StarterCrewDto[] }>("GET", "/api/crew/starters"),
+  installStarters: (body: InstallStartersRequest) =>
+    request<InstallStartersResponse>("POST", "/api/crew/starters", body),
 
   // conversations
   listConversations: () =>

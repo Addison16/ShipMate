@@ -847,6 +847,42 @@ export interface ClaudeCliStatusDto {
 }
 /** GET /api/claude-cli (admin) → { claudeCli: ClaudeCliStatusDto } */
 
+// ---------- starter crew (everyday life) ----------
+
+/** A ready-made crew member from templates/crew/<slug> with its opt-in starter watch. */
+export interface StarterCrewDto {
+  slug: string;
+  name: string;
+  role: string;
+  /** One line for the picker. */
+  blurb: string;
+  /** MCP servers from the catalog it is set up with. */
+  mcp: string[];
+  /** The watch it comes with; created paused, so nothing runs until someone turns it on. */
+  watch: { name: string; cron: string; prompt: string } | null;
+  /** A crew member with this slug is already aboard (or retired). */
+  installed: boolean;
+}
+/**
+ * GET /api/crew/starters → { starters: StarterCrewDto[] }
+ * POST /api/crew/starters (admin) InstallStartersRequest → InstallStartersResponse. Crew get the
+ *   instance's default model; catalog MCP servers they use are installed when the caller is the
+ *   owner; starter watches are created paused and owned by the caller.
+ */
+export interface InstallStartersRequest {
+  slugs: string[];
+  /** Create each one's starter watch, paused (default true). */
+  watches?: boolean;
+  /** IANA timezone for the starter watches' schedules, e.g. the browser's. */
+  timezone?: string;
+}
+export interface InstallStartersResponse {
+  crew: CrewDto[];
+  watches: WatchDto[];
+  /** Plain-language follow-ups, e.g. an MCP server that still needs a key. */
+  notes: string[];
+}
+
 // ---------- WebSocket: /api/ws ----------
 
 export type ClientEvent =

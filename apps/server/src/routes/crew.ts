@@ -4,6 +4,7 @@ import { type MemoryEntry, parseManifestYaml } from "@shipmate/crew";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { HttpError, requireRole } from "../auth.js";
+import { InstallStartersSchema } from "../services/starters.js";
 import type { Services } from "../services.js";
 
 const toMemoryDto = (e: MemoryEntry): MemoryEntryDto => ({
@@ -18,6 +19,14 @@ export async function crewRoutes(app: FastifyInstance, s: Services) {
   app.get<{ Querystring: { all?: string } }>("/api/crew", async (req) => ({
     crew: await s.crew.list(req.query.all === "1", req.user),
   }));
+
+  app.get("/api/crew/starters", async () => ({ starters: s.starters.list() }));
+
+  app.post("/api/crew/starters", async (req) => {
+    requireRole(req.user, "admin");
+    const body = InstallStartersSchema.parse(req.body);
+    return s.starters.install(req.user, body);
+  });
 
   app.get<{ Params: { slug: string } }>("/api/crew/:slug", async (req) => {
     await s.crew.assertVisible(req.params.slug, req.user);

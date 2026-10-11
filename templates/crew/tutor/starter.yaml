@@ -1,0 +1,9 @@
+blurb: Explains, quizzes and coaches homework, picking up where the last session ended.
+watch:
+  name: Weekly review quiz
+  cron: "0 16 * * 5"
+  prompt: |
+    From what you remember about what this person studied this week and where they struggled,
+    write a short review quiz: five questions, easiest first, with the answers at the end under
+    a "Answers" heading. If you have nothing remembered yet, suggest how to start a study
+    session with you instead.

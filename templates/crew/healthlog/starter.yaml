@@ -1,0 +1,8 @@
+blurb: A private log of symptoms, medication, sleep and exercise, with weekly trends.
+watch:
+  name: Weekly health summary
+  cron: "0 19 * * 0"
+  prompt: |
+    Read this person's private health log for the past seven days. Reply with a short summary:
+    what was logged, anything that changed or repeats, and anything worth raising with a doctor.
+    If the log is empty, reply with one friendly line on how to start logging.

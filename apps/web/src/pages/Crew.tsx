@@ -5,6 +5,7 @@ import { isAdmin, useUser } from "../auth.js";
 import { Avatar } from "../components/Avatar.js";
 import { CrewBackendSelect } from "../components/ClaudeCliCard.js";
 import { ModelSelect } from "../components/ModelSelect.js";
+import { StarterCrewPicker } from "../components/StarterCrewPicker.js";
 import {
   Badge,
   Button,
@@ -26,6 +27,7 @@ import { useServerEvents } from "../ws.js";
 
 export function CrewPage({ slug }: { slug: string | null }) {
   if (slug === "new") return <NewCrew />;
+  if (slug === "starters") return <StarterCrew />;
   if (slug) return <CrewDetail key={slug} slug={slug} />;
   return <CrewList />;
 }
@@ -56,9 +58,12 @@ function CrewList() {
         description="Each crew member is a folder with a persona, a manifest and its own memory."
         actions={
           isAdmin(user) && (
-            <Button variant="primary" onClick={() => navigate("/crew/new")}>
-              New crew member
-            </Button>
+            <>
+              <Button onClick={() => navigate("/crew/starters")}>Add starter crew</Button>
+              <Button variant="primary" onClick={() => navigate("/crew/new")}>
+                New crew member
+              </Button>
+            </>
           )
         }
       />
@@ -218,6 +223,50 @@ function NewCrew() {
             <Button onClick={() => navigate("/crew")}>Cancel</Button>
           </div>
         </form>
+      </Card>
+    </Page>
+  );
+}
+
+function StarterCrew() {
+  const user = useUser();
+  const [notes, setNotes] = useState<string[] | null>(null);
+  if (!isAdmin(user)) {
+    return (
+      <Page>
+        <Muted>Only owners and admins can bring crew aboard.</Muted>
+      </Page>
+    );
+  }
+  return (
+    <Page>
+      <a
+        href={href("/crew")}
+        className="text-sm text-accent-700 hover:underline dark:text-accent-300"
+      >
+        ← Crew
+      </a>
+      <PageHeader
+        title="Starter crew"
+        description="Ready-made crew members with a persona, the MCP servers they need and a starter watch. They use the default model from Settings."
+      />
+      <Card>
+        {notes ? (
+          <div className="space-y-3">
+            <p className="text-sm">The new crew members are aboard.</p>
+            {notes.map((n) => (
+              <Notice key={n}>{n}</Notice>
+            ))}
+            <div className="flex gap-2">
+              <Button variant="primary" onClick={() => navigate("/crew")}>
+                See the crew
+              </Button>
+              <Button onClick={() => navigate("/watches")}>Watches</Button>
+            </div>
+          </div>
+        ) : (
+          <StarterCrewPicker onDone={(r) => setNotes(r.notes)} />
+        )}
       </Card>
     </Page>
   );

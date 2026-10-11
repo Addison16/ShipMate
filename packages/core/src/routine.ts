@@ -24,3 +24,16 @@ export const RoutineSpec = z.object({
   session: z.enum(["fresh", "continue"]).default("fresh"),
 });
 export type RoutineSpec = z.infer<typeof RoutineSpec>;
+
+/** GitHub events a watch can run on (a "github" trigger on a Shipyard project). */
+export const GITHUB_WATCH_EVENTS = [
+  "issues.opened",
+  "issues.labeled",
+  "issue_comment",
+  "pull_request.opened",
+  "pull_request.merged",
+  "pull_request_review",
+  "ci.failed",
+  "push",
+] as const;
+export type GitHubWatchEvent = (typeof GITHUB_WATCH_EVENTS)[number];

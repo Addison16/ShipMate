@@ -22,6 +22,7 @@ const SHIPMATE_CONSEQUENTIAL = new Set([
   "git_push",
   "open_pull_request",
   "comment_on_github",
+  "submit_pull_request_review",
 ]);
 /** MCP tool names that send, publish, buy, delete, push or otherwise act on the world. */
 const ACTING_VERB =

@@ -66,6 +66,18 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   approvals, spend caps and anything that looks like a key are left out. **Crew → Import** reads
   such a file or an https link (public hosts only, 512 KB at most), shows a preview with
   warnings, and brings the crew member aboard awaiting review, with its skills pending approval.
+- **Issue-to-PR jobs**: assign an issue to the Shipwright from a project's Issues tab (or let a
+  label or GitHub assignee start one). It works the issue on a branch, opens a draft pull
+  request, follows CI and pushes fixes for failures up to a limit, then marks the pull request
+  ready for review. Each job has a status card on the project page: working, PR open, CI
+  running, CI red (attempt n), review, needs you, ready for review, gave up.
+- **The Bosun**, a starter reviewer crew member. Turn it on per project and it reviews each job's
+  pull request once CI is green, posting its review on GitHub; the Shipwright addresses blocking
+  findings before the pull request goes to people.
+- **GitHub webhooks drive the Shipyard**: signed deliveries start jobs from labelled or assigned
+  issues, move jobs on CI results, route comments to the conversation, and run watches with the
+  new "When something happens on GitHub" trigger. Projects without a webhook are polled. Project
+  settings show the last delivery and can make a new secret.
 - **Shipyard sandboxes without the Docker socket**: point the Shipyard at rootless Podman's
   socket, or at a Docker or Podman host elsewhere over TCP with TLS client certificates, from
   **Settings → Shipyard sandbox** (owner) or with `DOCKER_HOST`, `DOCKER_TLS_VERIFY` and

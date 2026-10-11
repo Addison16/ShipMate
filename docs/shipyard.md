@@ -4,10 +4,81 @@ The Shipyard is where crew members work on software projects: GitHub repositorie
 folders, each with a workspace under `/data/workspaces/<slug>` and a sandbox container that runs
 every shell command. This page covers setting it up.
 
+- [Issue-to-PR jobs](#issue-to-pr-jobs)
+- [A reviewer before you: the Bosun](#a-reviewer-before-you-the-bosun)
+- [GitHub webhooks](#github-webhooks)
 - [Sandboxes](#sandboxes)
 - [Sandboxes without the Docker socket](#sandboxes-without-the-docker-socket)
   - [Rootless Podman on the same machine](#rootless-podman-on-the-same-machine)
   - [A remote Docker or Podman host](#a-remote-docker-or-podman-host)
+
+## Issue-to-PR jobs
+
+On a GitHub project's **Issues** tab, **Assign to Shipwright** (or whoever owns the project)
+starts a job:
+
+1. The crew member works the issue on a branch in the sandbox and opens a **draft** pull request
+   with its usual tools. Pushing and opening pull requests ask the person who assigned the job
+   for approval, unless they chose "Always allow".
+2. Shipmate follows the pull request's CI. When it fails, the crew member gets the failing checks
+   and pushes a fix, up to the project's **fix attempts** (3 by default); after that the job
+   gives up and leaves it to you.
+3. When CI is green, the project's reviewer (if any) reviews it; blocking findings go back to be
+   fixed and CI runs again.
+4. Then the pull request is marked **ready for review** for people to merge.
+
+Each job has a status card on the project page: *Working*, *PR open*, *CI running*, *CI red
+(attempt n of m)*, *Review by Bosun*, *Addressing review*, *Needs you*, *Ready for review*, *Gave
+up*, *Merged*, *Closed* or *Cancelled*, with the pull request, the branch and a line on what is
+happening. *Needs you* means the crew member stopped (it asked a question, or did not push a
+fix): answer in its conversation, or press **Try again**. Only the person who assigned a job
+sees its conversation; anyone can see the card. A job runs in the
+assigner's name like any conversation, and its usage counts toward their cap.
+
+Jobs can also start on their own, under the project's **Settings → Issue-to-PR jobs**: when an
+issue gets a label (for example `shipwright`) or is assigned to a GitHub user. Automatic jobs run
+as the admin who saved the trigger. With a webhook they start as soon as GitHub tells
+Shipmate; without one, Shipmate polls every minute and picks each matching issue up once.
+
+Issue text is treated as data, never as instructions, but anyone who can label or assign issues
+can start a job: keep triggers to repositories where that is people you trust.
+
+## A reviewer before you: the Bosun
+
+The Bosun is a starter crew member whose only job is reviewing diffs. Pick it (or any other
+crew member) as a project's **Reviewer** under **Settings → Issue-to-PR jobs**. When a job's CI is
+green, the reviewer reads the pull request and posts one review on GitHub with a verdict;
+findings are marked `[blocking]` or `[nit]`. Blocking findings go back to the Shipwright, who
+fixes them (or explains why not) before the pull request is marked ready. After two rounds the
+pull request goes to people anyway, with a note on the card to read the last review.
+
+The reviewer gets read-only tools in the workspace and GitHub's read and review tools; it cannot
+push or open pull requests. Its reviews are posted as comments (GitHub does not let an account
+approve its own pull request) and start with "Bosun's review: looks good to merge" or "changes
+requested". Turn review off by choosing "No crew review".
+
+## GitHub webhooks
+
+Every GitHub project has a payload URL and a secret under **Settings → GitHub webhook**. Add them
+to the repository (**Settings → Webhooks → Add webhook**, content type `application/json`) and
+tick Issues, Issue comments, Pull requests, Pull request reviews, Pull request review comments,
+Check suites, Check runs, Workflow runs, Statuses and Pushes.
+
+Each delivery is checked against the project's secret (`X-Hub-Signature-256`, constant-time) and
+refused without it; redeliveries are ignored. **New secret** replaces the secret at once. Then:
+
+- **Issues** labelled or assigned to the project's trigger start jobs.
+- **CI results** (check suites and runs, workflow runs, statuses) move jobs along: a failure goes
+  back to be fixed, green goes to review or ready.
+- **Comments and reviews** on a pull request the crew opened reach the conversation that opened
+  it, so the crew member can answer or make the change. Shipmate's own comments are ignored.
+- **Watches** with a "When something happens on GitHub" trigger run on the events they name
+  (an issue is opened or labelled, a comment, a pull request opened or merged, a review, CI
+  fails, a push), in the project's workspace, with what happened added to the prompt.
+
+GitHub has to reach Shipmate's address. Without a webhook (no public address, or not set up
+yet), Shipmate polls GitHub every minute for jobs and their CI instead; the card shows "not set
+up: polling" until the first delivery arrives. Watches need the webhook.
 
 ## Sandboxes
 

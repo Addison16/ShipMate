@@ -1,7 +1,9 @@
 import type {
   CreateWatchRequest,
   CrewDto,
+  GitHubWatchEvent,
   MessageDto,
+  ProjectDto,
   WatchDto,
   WatchRunDto,
   WatchTemplateDto,
@@ -39,6 +41,8 @@ import {
   dailyCron,
   describeTrigger,
   formatDuration,
+  GITHUB_EVENT_LABELS,
+  GITHUB_EVENTS,
   RUN_STATUS_LABEL,
   runTone,
 } from "../lib/watches.js";
@@ -190,6 +194,7 @@ function RunNow({ watch, onRun }: { watch: WatchDto; onRun?: (run: WatchRunDto) 
 }
 
 function WatchList() {
+  const projects = useGitHubProjects();
   const user = useUser();
   const watches = useWatches();
   const crew = useCrew();
@@ -242,7 +247,7 @@ function WatchList() {
                       {!w.enabled && <Badge>paused</Badge>}
                     </div>
                     <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
-                      {crewName(w.crewSlug)} · {describeTrigger(w.trigger, all)}
+                      {crewName(w.crewSlug)} · {describeTrigger(w.trigger, all, projects)}
                     </p>
                     <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                       <div className="flex items-center gap-1.5">
@@ -391,6 +396,8 @@ interface FormState {
   timezone: string;
   everyMinutes: string;
   afterId: string;
+  projectId: string;
+  events: GitHubWatchEvent[];
   prompt: string;
   session: "fresh" | "continue";
   enabled: boolean;
@@ -411,6 +418,8 @@ function toForm(w: WatchDto | null, crew: CrewDto[]): FormState {
         : (Intl.DateTimeFormat().resolvedOptions().timeZone ?? ""),
     everyMinutes: t?.kind === "interval" ? String(t.everyMinutes) : "30",
     afterId: t?.kind === "after" ? t.routineId : "",
+    projectId: t?.kind === "github" ? t.projectId : "",
+    events: t?.kind === "github" ? t.events : ["issues.opened"],
     prompt: w?.prompt ?? "",
     session: w?.session ?? "fresh",
     enabled: w?.enabled ?? true,
@@ -436,9 +445,72 @@ function toTrigger(f: FormState): WatchTrigger | string {
     case "after":
       if (!f.afterId) return "Pick the watch this one runs after.";
       return { kind: "after", routineId: f.afterId };
+    case "github":
+      if (!f.projectId) return "Pick the Shipyard project to watch.";
+      if (!f.events.length) return "Pick at least one GitHub event.";
+      return { kind: "github", projectId: f.projectId, events: f.events };
     default:
       return "Pick a trigger.";
   }
+}
+
+/** GitHub projects in the Shipyard, for GitHub triggers and their descriptions. */
+function useGitHubProjects(): ProjectDto[] {
+  const shipyard = useResource(() => api.getShipyard().then((r) => r.projects));
+  return (shipyard.data ?? []).filter((p) => p.provider === "github");
+}
+
+function GitHubTriggerFields({
+  projectId,
+  events,
+  onProject,
+  onEvents,
+}: {
+  projectId: string;
+  events: GitHubWatchEvent[];
+  onProject: (id: string) => void;
+  onEvents: (events: GitHubWatchEvent[]) => void;
+}) {
+  const projects = useGitHubProjects();
+  return (
+    <>
+      <SelectField
+        label="Project"
+        required
+        value={projectId}
+        onChange={(e) => onProject(e.target.value)}
+        hint="The run works in this project's workspace. Its GitHub webhook must be set up (Shipyard → project → Settings)."
+      >
+        <option value="">Pick a project…</option>
+        {projects.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name} ({p.repo})
+          </option>
+        ))}
+      </SelectField>
+      <fieldset>
+        <legend className="mb-1 text-sm font-medium">Runs when</legend>
+        <div className="grid gap-1 sm:grid-cols-2">
+          {GITHUB_EVENTS.map((e) => (
+            <label key={e} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={events.includes(e)}
+                onChange={(ev) =>
+                  onEvents(ev.target.checked ? [...events, e] : events.filter((x) => x !== e))
+                }
+                className="size-4 accent-accent-700"
+              />
+              {GITHUB_EVENT_LABELS[e]}
+            </label>
+          ))}
+        </div>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          What happened is added to the prompt, marked as text from GitHub.
+        </p>
+      </fieldset>
+    </>
+  );
 }
 
 function WatchForm({
@@ -533,6 +605,7 @@ function WatchForm({
           <option value="interval">Every few minutes</option>
           <option value="webhook">When a webhook is called</option>
           <option value="after">After another watch finishes</option>
+          <option value="github">When something happens on GitHub</option>
         </SelectField>
         {f.kind === "cron" && (
           <>
@@ -592,6 +665,14 @@ function WatchForm({
               ? "The webhook URL is shown below the form."
               : "The webhook URL appears after you save. Any text POSTed to it is added to the prompt."}
           </Muted>
+        )}
+        {f.kind === "github" && (
+          <GitHubTriggerFields
+            projectId={f.projectId}
+            events={f.events}
+            onProject={(id) => set("projectId", id)}
+            onEvents={(e) => set("events", e)}
+          />
         )}
         {f.kind === "after" && (
           <SelectField
@@ -713,6 +794,7 @@ function WebhookCopyField({ label, value }: { label: string; value: string }) {
 }
 
 function WatchDetail({ id }: { id: string }) {
+  const projects = useGitHubProjects();
   const user = useUser();
   const watches = useWatches();
   const crew = useCrew();
@@ -761,7 +843,7 @@ function WatchDetail({ id }: { id: string }) {
                 {!watch.enabled && <Badge>paused</Badge>}
               </div>
               <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                {crewName(watch.crewSlug)} · {describeTrigger(watch.trigger, all)}
+                {crewName(watch.crewSlug)} · {describeTrigger(watch.trigger, all, projects)}
                 {watch.enabled && watch.nextRunAt && <> · next {formatWhen(watch.nextRunAt)}</>}
               </p>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">

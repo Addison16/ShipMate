@@ -56,8 +56,12 @@ describe.skipIf(!db)("Shipmate server", () => {
     );
     expect(again.statusCode).toBe(409);
     const crew = (await api("GET", "/api/crew")).json().crew;
-    // The Captain plus the Shipwright, the Shipyard's default coder.
-    expect(crew.map((c: { slug: string }) => c.slug).sort()).toEqual(["captain", "shipwright"]);
+    // The Captain plus the Shipwright (the Shipyard's default coder) and the Bosun (its reviewer).
+    expect(crew.map((c: { slug: string }) => c.slug).sort()).toEqual([
+      "bosun",
+      "captain",
+      "shipwright",
+    ]);
     expect(crew.find((c: { slug: string }) => c.slug === "captain")).toMatchObject({
       slug: "captain",
       name: "Skipper",

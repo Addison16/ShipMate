@@ -23,8 +23,11 @@ import { atLeast, HttpError, type UserRow } from "../auth.js";
 
 type CrewRow = typeof crewMembers.$inferSelect;
 
-/** Template crew seeded on boot besides the Captain (the Shipwright codes in the Shipyard). */
-const STARTER_CREW = ["shipwright"];
+/**
+ * Template crew seeded on boot besides the Captain: the Shipwright codes in the Shipyard, the
+ * Bosun reviews its pull requests where a project asks for it.
+ */
+const STARTER_CREW = ["shipwright", "bosun"];
 
 /**
  * The crew: folders on disk are the source of truth for what a crew member is; the database

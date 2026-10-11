@@ -277,7 +277,80 @@ export const projects = pgTable("projects", {
   sandboxImage: text("sandbox_image"),
   createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: createdAt(),
+  /** Crew member who reviews issue-to-PR jobs' pull requests before people see them; null = none. */
+  reviewerSlug: text("reviewer_slug"),
+  /** Issues given this label on GitHub become jobs automatically. */
+  triggerLabel: text("trigger_label"),
+  /** Issues assigned to this GitHub login become jobs automatically. */
+  triggerAssignee: text("trigger_assignee"),
+  /** Who automatic jobs run as (their approvals and usage): the admin who set the trigger. */
+  triggerUserId: uuid("trigger_user_id").references(() => users.id, { onDelete: "set null" }),
+  /** How many times a job may push fixes for failing CI before it gives up. */
+  maxFixAttempts: integer("max_fix_attempts").notNull().default(3),
+  /** Last signed webhook delivery; polling covers projects that have never had one. */
+  webhookLastDeliveryAt: timestamp("webhook_last_delivery_at", { withTimezone: true }),
 });
+
+/** Job statuses that still hold the issue (one active job per issue). */
+export const ACTIVE_JOB_STATUSES = [
+  "working",
+  "pr_open",
+  "ci_running",
+  "ci_failed",
+  "reviewing",
+  "addressing_review",
+  "needs_input",
+  "ready",
+] as const;
+
+/** Issue-to-PR jobs: a crew member works an issue into a draft PR, then follows its CI. */
+export const shipyardJobs = pgTable(
+  "shipyard_jobs",
+  {
+    id: id(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    issueNumber: integer("issue_number").notNull(),
+    issueTitle: text("issue_title").notNull(),
+    /** Who assigned it: the conversation, approvals and usage are theirs. */
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    crewSlug: text("crew_slug").notNull(),
+    conversationId: uuid("conversation_id").references(() => conversations.id, {
+      onDelete: "set null",
+    }),
+    /** ShipyardJobStatus from @shipmate/core. */
+    status: text("status").notNull().default("working"),
+    /** manual | label | assignee */
+    source: text("source").notNull().default("manual"),
+    branch: text("branch"),
+    prNumber: integer("pr_number"),
+    prUrl: text("pr_url"),
+    headSha: text("head_sha"),
+    /** Fix attempts for failing CI so far, and the limit. */
+    attempts: integer("attempts").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(3),
+    reviewRounds: integer("review_rounds").notNull().default(0),
+    /** approve | changes_requested, from the reviewer's last review. */
+    reviewVerdict: text("review_verdict"),
+    /** The reviewer's last review text, handed to the crew member addressing it. */
+    reviewNotes: text("review_notes"),
+    /** One line about the current state (failing checks, why it stopped). */
+    detail: text("detail"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("shipyard_jobs_project_idx").on(t.projectId, t.createdAt),
+    uniqueIndex("shipyard_jobs_active_idx")
+      .on(t.projectId, t.issueNumber)
+      .where(
+        sql`${t.status} in ('working', 'pr_open', 'ci_running', 'ci_failed', 'reviewing', 'addressing_review', 'needs_input', 'ready')`,
+      ),
+  ],
+);
 
 /** GitHub webhook deliveries, kept for the project timeline and routed to conversations. */
 export const projectEvents = pgTable(

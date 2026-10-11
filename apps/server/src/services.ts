@@ -147,6 +147,8 @@ export async function createServices(
     publicUrl: config.SHIPMATE_URL,
     githubApi: process.env.SHIPMATE_GITHUB_API || undefined,
     githubWeb: process.env.SHIPMATE_GITHUB_URL || undefined,
+    watches,
+    isLeader: () => watches.isLeader,
   });
   bridge.attachWorkspaces(shipyard);
   const push = new PushService({

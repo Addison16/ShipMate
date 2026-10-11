@@ -18,7 +18,14 @@ const Create = z.object({
   defaultBranch: z.string().trim().optional(),
   sandboxImage: z.string().trim().optional(),
 });
-const Update = Create.omit({ provider: true }).partial();
+const Update = Create.omit({ provider: true })
+  .partial()
+  .extend({
+    reviewerSlug: z.string().nullable().optional(),
+    triggerLabel: z.string().max(50).optional(),
+    triggerAssignee: z.string().max(50).optional(),
+    maxFixAttempts: z.number().int().min(0).max(10).optional(),
+  });
 const StateQuery = z.object({ state: z.enum(["open", "closed", "all"]).default("open") });
 const Flow = z.object({
   flow: z.enum(["plan", "fix_issue", "review_pr", "triage", "keep_ci_green"]),
@@ -130,6 +137,29 @@ export async function shipyardRoutes(app: FastifyInstance, s: Services) {
       ...(body.target !== undefined ? { target: body.target } : {}),
       ...(body.notes !== undefined ? { notes: body.notes } : {}),
     });
+  });
+
+  // Issue-to-PR jobs: anyone can assign an issue (it runs as them, like a flow).
+  app.get<Id>("/api/shipyard/projects/:id/jobs", async (req) => ({
+    jobs: await y.jobs.list(req.user, req.params.id),
+  }));
+
+  app.post<Id>("/api/shipyard/projects/:id/jobs", async (req) => {
+    const { issue } = z.object({ issue: z.number().int().positive() }).parse(req.body);
+    return { job: await y.jobs.assign(req.user, req.params.id, issue) };
+  });
+
+  app.post<{ Params: { jobId: string } }>("/api/shipyard/jobs/:jobId/cancel", async (req) => ({
+    job: await y.jobs.cancel(req.user, req.params.jobId),
+  }));
+
+  app.post<{ Params: { jobId: string } }>("/api/shipyard/jobs/:jobId/retry", async (req) => ({
+    job: await y.jobs.retry(req.user, req.params.jobId),
+  }));
+
+  app.post<Id>("/api/shipyard/projects/:id/webhook-secret", async (req) => {
+    requireRole(req.user, "admin");
+    return { project: await y.rotateWebhookSecret(req.user, req.params.id) };
   });
 
   app.post<Id>("/api/shipyard/projects/:id/conversations", async (req) => ({

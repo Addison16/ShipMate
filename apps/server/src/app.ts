@@ -91,7 +91,11 @@ export async function buildApp(
   app.decorateRequest("user", null as unknown as UserRow);
   let fileSweep: NodeJS.Timeout | undefined;
   app.addHook("onReady", async () => {
-    if (options.watches !== false) await services.watches.start();
+    if (options.watches !== false) {
+      await services.watches.start();
+      // Issue-to-PR jobs poll GitHub where no webhook is set up (tests drive them by hand).
+      await services.shipyard.jobs.start();
+    }
     await services.backups.start();
     // Files of conversations or people deleted while the server was down (or by a restore), and
     // uploads nobody sent; then hourly, so abandoned uploads don't pile up.
@@ -106,6 +110,7 @@ export async function buildApp(
     clearInterval(fileSweep);
     await services.backups.stop();
     await services.watches.stop();
+    services.shipyard.jobs.stop();
     services.approvals.close();
     await services.discord.stop();
     await services.telegram.stop();

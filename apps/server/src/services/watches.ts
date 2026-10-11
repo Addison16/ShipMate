@@ -1,18 +1,28 @@
 import { randomBytes } from "node:crypto";
-import type {
-  CreateWatchRequest,
-  ServerEvent,
-  WatchDto,
-  WatchRunDto,
-  WatchTrigger,
+import {
+  type CreateWatchRequest,
+  GITHUB_WATCH_EVENTS,
+  type ServerEvent,
+  type WatchDto,
+  type WatchRunDto,
+  type WatchTrigger,
 } from "@shipmate/core";
-import { conversations, type Db, usageEvents, users, watches, watchRuns } from "@shipmate/db";
+import {
+  conversations,
+  type Db,
+  projects,
+  usageEvents,
+  users,
+  watches,
+  watchRuns,
+} from "@shipmate/db";
 import { Cron } from "croner";
 import { desc, eq, inArray, sql } from "drizzle-orm";
 import type postgres from "postgres";
 import { z } from "zod";
 import { atLeast, HttpError, type UserRow } from "../auth.js";
 import type { Bridge } from "../bridge.js";
+import { eventText, githubEventKeys } from "../shipyard/webhook.js";
 import type { AuditService } from "./audit.js";
 import type { CrewService } from "./crew.js";
 
@@ -35,6 +45,11 @@ export const WatchTriggerSchema = z.discriminatedUnion("kind", [
   }),
   z.object({ kind: z.literal("webhook") }),
   z.object({ kind: z.literal("after"), routineId: z.string().uuid() }),
+  z.object({
+    kind: z.literal("github"),
+    projectId: z.string().uuid(),
+    events: z.array(z.enum(GITHUB_WATCH_EVENTS)).min(1).max(GITHUB_WATCH_EVENTS.length),
+  }),
 ]);
 
 /** Arbitrary but fixed key so only one Shipmate process schedules watches (§7). */
@@ -243,6 +258,28 @@ export class WatchService {
     return this.run(id, "webhook", body);
   }
 
+  /**
+   * A signed GitHub delivery for a Shipyard project: run every enabled watch whose "github"
+   * trigger names that project and one of the events it counts as.
+   */
+  async onGitHubEvent(projectId: string, kind: string, payload: unknown): Promise<void> {
+    const keys = githubEventKeys(kind, payload);
+    if (!keys.length) return;
+    const due = (await this.db.select().from(watches)).filter((w) => {
+      const t = w.trigger as WatchTrigger;
+      return (
+        w.enabled &&
+        t.kind === "github" &&
+        t.projectId === projectId &&
+        t.events.some((e) => keys.includes(e))
+      );
+    });
+    if (!due.length) return;
+    const [project] = await this.db.select().from(projects).where(eq(projects.id, projectId));
+    const text = eventText(kind, payload, project?.repo ?? null);
+    for (const w of due) void this.run(w.id, "github", text).catch(() => {});
+  }
+
   // ---------- running ----------
 
   /** Start a run now. Resolves with the run as soon as it starts; it finishes in the background. */
@@ -273,6 +310,11 @@ export class WatchService {
           kind: "direct",
           surface: "watch",
           crewMemberId: crewRow.id,
+          // A GitHub-triggered run works in that project's workspace.
+          projectId:
+            (w.trigger as WatchTrigger).kind === "github"
+              ? (w.trigger as Extract<WatchTrigger, { kind: "github" }>).projectId
+              : null,
           title: `${w.name} (${new Date().toISOString().slice(0, 16).replace("T", " ")})`,
           sessionFiles:
             w.session === "continue" && w.sessionFile ? { [w.crewSlug]: w.sessionFile } : {},
@@ -297,7 +339,7 @@ export class WatchService {
     this.emit(owner.id, { type: "watch_run", watchName: w.name, run: started });
 
     const prompt = extra?.trim()
-      ? `${w.prompt}\n\n---\nWebhook payload:\n${extra.slice(0, 20_000)}`
+      ? `${w.prompt}\n\n---\n${cause === "github" ? "" : "Webhook payload:\n"}${extra.slice(0, 20_000)}`
       : w.prompt;
     void this.#execute(w, owner, conversationId, runId, prompt);
     return started;
@@ -364,6 +406,12 @@ export class WatchService {
       } catch (err) {
         throw new HttpError(400, `cron: ${(err as Error).message}`);
       }
+    }
+    if (trigger.kind === "github") {
+      const [p] = await this.db.select().from(projects).where(eq(projects.id, trigger.projectId));
+      if (!p) throw new HttpError(400, "the Shipyard project for this trigger does not exist");
+      if (p.provider !== "github")
+        throw new HttpError(400, "GitHub triggers need a GitHub project");
     }
     if (trigger.kind === "after") {
       if (trigger.routineId === selfId) throw new HttpError(400, "a watch cannot follow itself");

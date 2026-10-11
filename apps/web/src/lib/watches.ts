@@ -1,4 +1,23 @@
-import type { WatchDto, WatchRunDto, WatchTrigger } from "@shipmate/core";
+import type {
+  GitHubWatchEvent,
+  ProjectDto,
+  WatchDto,
+  WatchRunDto,
+  WatchTrigger,
+} from "@shipmate/core";
+
+/** GitHub events a watch can run on, in plain words (every event the server accepts). */
+export const GITHUB_EVENT_LABELS: Record<GitHubWatchEvent, string> = {
+  "issues.opened": "an issue is opened",
+  "issues.labeled": "an issue is labelled",
+  issue_comment: "someone comments on an issue or PR",
+  "pull_request.opened": "a pull request is opened",
+  "pull_request.merged": "a pull request is merged",
+  pull_request_review: "a pull request is reviewed",
+  "ci.failed": "CI fails",
+  push: "commits are pushed",
+};
+export const GITHUB_EVENTS = Object.keys(GITHUB_EVENT_LABELS) as GitHubWatchEvent[];
 
 export const CRON_PRESETS: Array<{ expression: string; label: string }> = [
   { expression: "0 7 * * 1-5", label: "Weekday mornings at 07:00" },
@@ -15,10 +34,14 @@ export function describeInterval(minutes: number): string {
   return `Every ${minutes} minutes`;
 }
 
-/** A trigger in plain words. `watches` resolves the name for an "after" trigger. */
+/**
+ * A trigger in plain words. `watches` resolves the name for an "after" trigger, `projects` the
+ * project of a GitHub one.
+ */
 export function describeTrigger(
   trigger: WatchTrigger,
   watches: Array<Pick<WatchDto, "id" | "name">> = [],
+  projects: Array<Pick<ProjectDto, "id" | "name">> = [],
 ): string {
   switch (trigger.kind) {
     case "cron": {
@@ -33,6 +56,11 @@ export function describeTrigger(
     case "after": {
       const other = watches.find((w) => w.id === trigger.routineId);
       return `After ${other ? other.name : "another watch"}`;
+    }
+    case "github": {
+      const project = projects.find((p) => p.id === trigger.projectId);
+      const what = trigger.events.map((e) => GITHUB_EVENT_LABELS[e] ?? e).join(", or ");
+      return `When ${what} (${project ? project.name : "a Shipyard project"})`;
     }
     default:
       return "Unknown trigger";

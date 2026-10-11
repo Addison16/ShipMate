@@ -6,6 +6,10 @@ import {
   describeInterval,
   describeTrigger,
   formatDuration,
+  describeInterval,
+  describeTrigger,
+  formatDuration,
+  GITHUB_EVENTS,
 } from "./watches.js";
 
 function watch(id: string, trigger: WatchTrigger): WatchDto {
@@ -86,5 +90,18 @@ describe("dailyCron", () => {
     expect(dailyCron("6:45")).toBe("45 6 * * *");
     expect(dailyCron("24:00")).toBeNull();
     expect(dailyCron("7am")).toBeNull();
+describe("GitHub triggers", () => {
+  it("describe the events and the project", () => {
+    expect(
+      describeTrigger(
+        { kind: "github", projectId: "p1", events: ["issues.opened", "ci.failed"] },
+        [],
+        [{ id: "p1", name: "Acme" }],
+      ),
+    ).toBe("When an issue is opened, or CI fails (Acme)");
+    expect(describeTrigger({ kind: "github", projectId: "x", events: ["push"] })).toBe(
+      "When commits are pushed (a Shipyard project)",
+    );
+    expect(GITHUB_EVENTS).toContain("pull_request.merged");
   });
 });

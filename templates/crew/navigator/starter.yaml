@@ -1,0 +1,9 @@
+blurb: Reads the calendar, plans days and trips, and checks the weather.
+watch:
+  name: Tomorrow at a glance
+  cron: "0 20 * * 0-4"
+  prompt: |
+    Look at tomorrow: the events on the calendar (if the calendar is connected) and the weather
+    forecast for the household's home location. Reply with tomorrow's plan in time order, any
+    clashes or early starts, and what the weather means for it (umbrella, coat, leave early).
+    If the calendar is not connected, give the weather and say the calendar is not set up.

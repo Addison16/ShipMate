@@ -87,3 +87,13 @@ export function afterCandidates(watches: WatchDto[], selfId: string | null): Wat
   };
   return watches.filter((w) => w.id !== selfId && !dependsOnSelf(w));
 }
+
+/** "07:30" → "30 7 * * *" (every day at that time); null for anything that is not HH:MM. */
+export function dailyCron(time: string): string | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return `${min} ${h} * * *`;
+}

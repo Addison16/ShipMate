@@ -4,8 +4,10 @@ import type {
   AuditEventDto,
   BridgeLinkCode,
   ConversationDto,
+  ConversationSearchResultDto,
   CreateCrewRequest,
   CreateCustomMcpRequest,
+  CreateListRequest,
   CreateProjectRequest,
   CreateProviderRequest,
   CreateSkillRequest,
@@ -13,15 +15,24 @@ import type {
   CreateWatchRequest,
   CrewDetailDto,
   CrewDto,
+  CrewImportPreviewDto,
+  CrewImportRequest,
   DiscordLinkCode,
   DiscordStatusDto,
+  HouseholdDto,
+  InstallStartersRequest,
+  InstallStartersResponse,
   IssueDto,
+  ListDetailDto,
+  ListDto,
+  ListKind,
   LoginRequest,
   McpServerDto,
   MemoryEntryDto,
   MeResponse,
   MessageDto,
   ModelOption,
+  ProfileDto,
   ProjectDto,
   ProjectEventDto,
   ProviderDto,
@@ -33,10 +44,14 @@ import type {
   SkillDetailDto,
   SkillDto,
   SlackStatusDto,
+  StarterCrewDto,
   StartFlowRequest,
   TelegramStatusDto,
   UpdateCrewRequest,
+  UpdateHouseholdRequest,
+  UpdateListItemRequest,
   UpdatePreferencesRequest,
+  UpdateProfileRequest,
   UpdateProjectRequest,
   UpdateProviderRequest,
   UpdateUserRequest,
@@ -45,6 +60,7 @@ import type {
   UserDto,
   WatchDto,
   WatchRunDto,
+  WatchTemplateDto,
 } from "@shipmate/core";
 
 /** An HTTP error from the server; `message` is the server's `{ error }` text when present. */
@@ -138,6 +154,13 @@ export const api = {
     ),
   deleteMemory: (slug: string, scope: "shared" | "user", name: string) =>
     request<Ok>("DELETE", `/api/crew/${enc(slug)}/memory/${enc(scope)}/${enc(name)}`),
+  previewCrewImport: (body: { text: string } | { url: string }) =>
+    request<{ preview: CrewImportPreviewDto }>("POST", "/api/crew/import/preview", body),
+  importCrew: (body: CrewImportRequest) =>
+    request<{ crew: CrewDetailDto }>("POST", "/api/crew/import", body),
+  listStarters: () => request<{ starters: StarterCrewDto[] }>("GET", "/api/crew/starters"),
+  installStarters: (body: InstallStartersRequest) =>
+    request<InstallStartersResponse>("POST", "/api/crew/starters", body),
 
   // conversations
   listConversations: () =>
@@ -149,8 +172,42 @@ export const api = {
       title,
     }),
   deleteConversation: (id: string) => request<Ok>("DELETE", `/api/conversations/${enc(id)}`),
+  pinConversation: (id: string, pinned: boolean) =>
+    request<{ conversation: ConversationDto }>("PATCH", `/api/conversations/${enc(id)}`, {
+      pinned,
+    }),
+  searchConversations: (q: string) =>
+    request<{ results: ConversationSearchResultDto[] }>(
+      "GET",
+      `/api/conversations/search?q=${enc(q)}`,
+    ),
   listMessages: (id: string) =>
     request<{ messages: MessageDto[] }>("GET", `/api/conversations/${enc(id)}/messages`),
+
+  // lists
+  listLists: () => request<{ lists: ListDto[] }>("GET", "/api/lists"),
+  createList: (body: CreateListRequest) =>
+    request<{ list: ListDetailDto }>("POST", "/api/lists", body),
+  getList: (id: string) => request<{ list: ListDetailDto }>("GET", `/api/lists/${enc(id)}`),
+  updateList: (id: string, body: { name?: string; kind?: ListKind }) =>
+    request<{ list: ListDetailDto }>("PATCH", `/api/lists/${enc(id)}`, body),
+  deleteList: (id: string) => request<Ok>("DELETE", `/api/lists/${enc(id)}`),
+  addListItem: (id: string, body: { text: string; dueOn?: string | null; note?: string | null }) =>
+    request<{ list: ListDetailDto }>("POST", `/api/lists/${enc(id)}/items`, body),
+  updateListItem: (id: string, itemId: string, body: UpdateListItemRequest) =>
+    request<{ list: ListDetailDto }>("PATCH", `/api/lists/${enc(id)}/items/${enc(itemId)}`, body),
+  deleteListItem: (id: string, itemId: string) =>
+    request<{ list: ListDetailDto }>("DELETE", `/api/lists/${enc(id)}/items/${enc(itemId)}`),
+  clearListChecked: (id: string) =>
+    request<{ list: ListDetailDto }>("POST", `/api/lists/${enc(id)}/clear`),
+
+  // household profiles
+  getProfile: () =>
+    request<{ profile: ProfileDto; household: HouseholdDto }>("GET", "/api/profile"),
+  updateProfile: (body: UpdateProfileRequest) =>
+    request<{ profile: ProfileDto }>("PUT", "/api/profile", body),
+  updateHousehold: (body: UpdateHouseholdRequest) =>
+    request<{ household: HouseholdDto }>("PUT", "/api/household", body),
 
   // usage
   usage: (month: string, scope: "me" | "all") =>
@@ -188,6 +245,7 @@ export const api = {
 
   // watches
   listWatches: () => request<{ watches: WatchDto[] }>("GET", "/api/watches"),
+  watchTemplates: () => request<{ templates: WatchTemplateDto[] }>("GET", "/api/watches/templates"),
   createWatch: (body: CreateWatchRequest) =>
     request<{ watch: WatchDto }>("POST", "/api/watches", body),
   updateWatch: (id: string, body: UpdateWatchRequest) =>

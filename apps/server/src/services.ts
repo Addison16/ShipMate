@@ -8,17 +8,23 @@ import type { Config } from "./config.js";
 import { DiscordJsPort } from "./discord/discordjs.js";
 import type { DiscordClientPort } from "./discord/port.js";
 import { DiscordService } from "./discord/service.js";
+import { EverydayTools } from "./everyday.js";
 import { ApprovalService } from "./services/approvals.js";
 import { AuditService } from "./services/audit.js";
 import { BackupService } from "./services/backups.js";
 import { CrewService } from "./services/crew.js";
+import { CrewBundleService } from "./services/crew-bundles.js";
+import { ListService } from "./services/lists.js";
 import { McpService } from "./services/mcp.js";
 import { type OidcDiscover, OidcService } from "./services/oidc.js";
+import { ProfileService } from "./services/profiles.js";
 import { ProviderService } from "./services/providers.js";
 import { SettingsService } from "./services/settings.js";
 import { SkillService } from "./services/skills.js";
+import { StarterService } from "./services/starters.js";
 import { UsageService } from "./services/usage.js";
 import { WatchService } from "./services/watches.js";
+import { WeatherService } from "./services/weather.js";
 import { ShipyardService } from "./shipyard/service.js";
 import type { SlackPort } from "./slack/port.js";
 import { SlackService } from "./slack/service.js";
@@ -46,6 +52,10 @@ export interface Services {
   shipyard: ShipyardService;
   oidc: OidcService;
   backups: BackupService;
+  starters: StarterService;
+  lists: ListService;
+  profiles: ProfileService;
+  crewBundles: CrewBundleService;
 }
 
 /**
@@ -65,6 +75,8 @@ export async function createServices(
     slackPort?: SlackPort;
     /** Stand-in for OIDC discovery (tests). */
     oidcDiscover?: OidcDiscover;
+    /** Stand-in for Open-Meteo (tests). */
+    weather?: WeatherService;
   } = {},
 ): Promise<Services> {
   const vault = new SecretVault(config.SHIPMATE_SECRET);
@@ -85,6 +97,10 @@ export async function createServices(
   let bridge: Bridge | undefined;
   const emit = (userId: string, event: ServerEvent) => bridge?.emit(userId, event);
   const approvals = new ApprovalService(emit);
+  // Shared lists go to everyone's open web apps; private ones only to their owner.
+  const lists = new ListService(db, (ownerId, event) =>
+    ownerId ? bridge?.emit(ownerId, event) : bridge?.broadcast(event),
+  );
   bridge = new Bridge({
     db,
     crew,
@@ -99,6 +115,10 @@ export async function createServices(
   });
   const watches = new WatchService(db, db.$client, crew, bridge, audit, emit, config.SHIPMATE_URL);
   bridge.attachWatches(watches);
+  const profiles = new ProfileService(db, settings);
+  bridge.attachEveryday(
+    new EverydayTools({ db, lists, profiles, weather: options.weather ?? new WeatherService() }),
+  );
   const shipyard = new ShipyardService({
     db,
     vault,
@@ -163,6 +183,10 @@ export async function createServices(
     telegram,
     slack,
     shipyard,
+    lists,
+    profiles,
+    crewBundles: new CrewBundleService({ crew, settings, providers, mcp, skills }),
+    starters: new StarterService(config.TEMPLATES_DIR, crew, settings, mcp, watches),
     backups: new BackupService(
       db,
       settings,

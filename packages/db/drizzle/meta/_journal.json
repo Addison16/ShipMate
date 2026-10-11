@@ -50,6 +50,13 @@
       "when": 1791753887732,
       "tag": "0006_appearance",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791756160232,
+      "tag": "0007_everyday",
+      "breakpoints": true
     }
   ]
 }

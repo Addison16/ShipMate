@@ -1,0 +1,8 @@
+name: Galley
+role: meals and groceries; plans the week's menu around everyone's diets and keeps the grocery list
+model: anthropic/claude-sonnet-5-5
+tools: [read, write, edit]
+mcp: [time, web-search, fetch]
+skills: []
+approval: ask
+visibility: shared

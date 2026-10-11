@@ -1,4 +1,4 @@
-import type { ConversationDto, CrewDto } from "@shipmate/core";
+import type { ConversationDto, ConversationSearchResultDto, CrewDto } from "@shipmate/core";
 import {
   type FormEvent,
   type KeyboardEvent,
@@ -17,6 +17,7 @@ import { ApprovalCard } from "../components/ApprovalCard.js";
 import { TimelineView } from "../components/Timeline.js";
 import { Badge, Button, cx, ErrorText, focusRing } from "../components/ui.js";
 import { formatTime } from "../lib/format.js";
+import { splitHighlights } from "../lib/search.js";
 import { surfaceLabel } from "../lib/shipyard.js";
 import { initialTimeline, timelineReducer } from "../lib/timeline.js";
 import { useResource } from "../lib/useResource.js";
@@ -83,6 +84,7 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const search = useConversationSearch();
 
   useServerEvents((ev) => {
     if (ev.type === "crew_changed") void crew.reload();
@@ -101,7 +103,10 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
 
   const crewList = crew.data ?? [];
   const noModels = models.data !== null && !models.data.some((m) => m.available);
-  const current = conversations.data?.find((c) => c.id === conversationId) ?? null;
+  const current =
+    conversations.data?.find((c) => c.id === conversationId) ??
+    search.results?.find((r) => r.conversation.id === conversationId)?.conversation ??
+    null;
   const projectNames = useProjectNames(
     conversations.data?.some((c) => c.projectId !== null) ?? false,
   );
@@ -179,45 +184,76 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
               </div>
             )}
             <ErrorText>{createError}</ErrorText>
+            <div className="relative">
+              <label htmlFor="conv-search" className="sr-only">
+                Search conversations
+              </label>
+              <input
+                id="conv-search"
+                type="search"
+                value={search.query}
+                onChange={(e) => search.setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") search.setQuery("");
+                }}
+                placeholder="Search conversations"
+                className={cx(
+                  "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900",
+                  focusRing,
+                )}
+              />
+            </div>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
-            {conversations.error && <ErrorText>{conversations.error}</ErrorText>}
-            {conversations.data?.length === 0 && (
-              <p className="p-3 text-sm text-slate-500 dark:text-slate-400">
-                No conversations yet. Start one above.
-              </p>
-            )}
-            <ul className="space-y-0.5">
-              {conversations.data?.map((c) => (
-                <li key={c.id}>
-                  <a
-                    href={href(`/bridge/${c.id}`)}
-                    aria-current={c.id === conversationId ? "page" : undefined}
-                    className={cx(
-                      "block rounded-md px-3 py-2",
-                      focusRing,
-                      c.id === conversationId
-                        ? "bg-accent-700/10 dark:bg-accent-400/10"
-                        : "hover:bg-slate-100 dark:hover:bg-slate-800",
-                    )}
-                  >
-                    <span className="flex items-baseline justify-between gap-2">
-                      <span className="truncate text-sm font-medium">
-                        {conversationTitle(c, crewList)}
+          {search.active ? (
+            <SearchResults
+              search={search}
+              conversationId={conversationId}
+              crewList={crewList}
+              projectNames={projectNames}
+            />
+          ) : (
+            <div className="min-h-0 flex-1 overflow-y-auto p-2">
+              {conversations.error && <ErrorText>{conversations.error}</ErrorText>}
+              {conversations.data?.length === 0 && (
+                <p className="p-3 text-sm text-slate-500 dark:text-slate-400">
+                  No conversations yet. Start one above.
+                </p>
+              )}
+              <ul className="space-y-0.5">
+                {conversations.data?.map((c, i, all) => (
+                  <li key={c.id}>
+                    {c.pinned && i === 0 && <ListLabel>Pinned</ListLabel>}
+                    {!c.pinned && i > 0 && all[i - 1]?.pinned && <ListLabel>Recent</ListLabel>}
+                    <a
+                      href={href(`/bridge/${c.id}`)}
+                      aria-current={c.id === conversationId ? "page" : undefined}
+                      className={cx(
+                        "block rounded-md px-3 py-2",
+                        focusRing,
+                        c.id === conversationId
+                          ? "bg-accent-700/10 dark:bg-accent-400/10"
+                          : "hover:bg-slate-100 dark:hover:bg-slate-800",
+                      )}
+                    >
+                      <span className="flex items-baseline justify-between gap-2">
+                        <span className="flex min-w-0 items-center gap-1 text-sm font-medium">
+                          {c.pinned && <PinGlyph />}
+                          <span className="truncate">{conversationTitle(c, crewList)}</span>
+                        </span>
+                        <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+                          {formatTime(c.updatedAt)}
+                        </span>
                       </span>
-                      <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
-                        {formatTime(c.updatedAt)}
+                      <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                        {c.kind === "bridge" ? "Bridge" : "Direct"}
+                        <ConversationTags c={c} projectNames={projectNames} />
                       </span>
-                    </span>
-                    <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-                      {c.kind === "bridge" ? "Bridge" : "Direct"}
-                      <ConversationTags c={c} projectNames={projectNames} />
-                    </span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </aside>
 
         <section
@@ -239,6 +275,7 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
                   (conversations.data ?? []).map((x) => (x.id === c.id ? c : x)),
                 )
               }
+              onPinned={() => void conversations.reload()}
               onDeleted={() => {
                 conversations.setData(
                   (conversations.data ?? []).filter((x) => x.id !== conversationId),
@@ -269,6 +306,7 @@ function Thread({
   title,
   tags,
   onRenamed,
+  onPinned,
   onDeleted,
 }: {
   conversationId: string;
@@ -276,6 +314,7 @@ function Thread({
   title: string;
   tags: ReactNode;
   onRenamed: (c: ConversationDto) => void;
+  onPinned: () => void;
   onDeleted: () => void;
 }) {
   const user = useUser();
@@ -374,6 +413,16 @@ function Thread({
     }
   }
 
+  async function togglePin() {
+    if (!conversation) return;
+    try {
+      await api.pinConversation(conversationId, !conversation.pinned);
+      onPinned();
+    } catch (err) {
+      setSendError(errorMessage(err));
+    }
+  }
+
   async function remove() {
     if (!window.confirm("Delete this conversation? This cannot be undone.")) return;
     try {
@@ -427,6 +476,14 @@ function Thread({
             </div>
             {conversation && (
               <>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-pressed={conversation.pinned}
+                  onClick={() => void togglePin()}
+                >
+                  {conversation.pinned ? "Unpin" : "Pin"}
+                </Button>
                 <Button
                   size="sm"
                   variant="ghost"
@@ -523,6 +580,181 @@ function Thread({
           </p>
         </div>
       </form>
+    </>
+  );
+}
+
+function ListLabel({ children }: { children: ReactNode }) {
+  return (
+    <p className="px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wider text-slate-500 uppercase dark:text-slate-400">
+      {children}
+    </p>
+  );
+}
+
+function PinGlyph() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-label="Pinned"
+      role="img"
+      className="shrink-0 text-accent-700 dark:text-accent-300"
+    >
+      <path d="M15 3l6 6-3 1-3.5 3.5L15 18l-2 2-4-4-5 5-1-1 5-5-4-4 2-2 4.5.5L13 6z" />
+    </svg>
+  );
+}
+
+interface ConversationSearch {
+  query: string;
+  setQuery: (q: string) => void;
+  /** Showing results instead of the conversation list. */
+  active: boolean;
+  results: ConversationSearchResultDto[] | null;
+  loading: boolean;
+  error: string | null;
+}
+
+/** Search as you type (debounced); two characters or more. */
+function useConversationSearch(): ConversationSearch {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<ConversationSearchResultDto[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const q = query.trim();
+  const active = q.length >= 2;
+
+  useEffect(() => {
+    if (!active) {
+      setResults(null);
+      setError(null);
+      return;
+    }
+    let stale = false;
+    setLoading(true);
+    const timer = setTimeout(() => {
+      api
+        .searchConversations(q)
+        .then((r) => {
+          if (!stale) {
+            setResults(r.results);
+            setError(null);
+          }
+        })
+        .catch((err) => {
+          if (!stale) setError(errorMessage(err));
+        })
+        .finally(() => {
+          if (!stale) setLoading(false);
+        });
+    }, 250);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [q, active]);
+
+  return { query, setQuery, active, results, loading, error };
+}
+
+function SearchResults({
+  search,
+  conversationId,
+  crewList,
+  projectNames,
+}: {
+  search: ConversationSearch;
+  conversationId: string | null;
+  crewList: CrewDto[];
+  projectNames: Map<string, string>;
+}) {
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto p-2" aria-live="polite">
+      <div className="flex items-center justify-between px-3 py-1 text-xs text-slate-500 dark:text-slate-400">
+        <span>
+          {search.loading && !search.results
+            ? "Searching…"
+            : `${search.results?.length ?? 0} conversation${search.results?.length === 1 ? "" : "s"}`}
+        </span>
+        <button
+          type="button"
+          onClick={() => search.setQuery("")}
+          className={cx("rounded px-1 hover:text-slate-800 dark:hover:text-slate-100", focusRing)}
+        >
+          Clear
+        </button>
+      </div>
+      <ErrorText>{search.error}</ErrorText>
+      {search.results?.length === 0 && (
+        <p className="p-3 text-sm text-slate-500 dark:text-slate-400">
+          No matches. Try other words, or "an exact phrase".
+        </p>
+      )}
+      <ul className="space-y-0.5">
+        {search.results?.map((r) => (
+          <li key={r.conversation.id}>
+            <a
+              href={href(`/bridge/${r.conversation.id}`)}
+              aria-current={r.conversation.id === conversationId ? "page" : undefined}
+              className={cx(
+                "block rounded-md px-3 py-2",
+                focusRing,
+                r.conversation.id === conversationId
+                  ? "bg-accent-700/10 dark:bg-accent-400/10"
+                  : "hover:bg-slate-100 dark:hover:bg-slate-800",
+              )}
+            >
+              <span className="flex items-baseline justify-between gap-2">
+                <span className="flex min-w-0 items-center gap-1 text-sm font-medium">
+                  {r.conversation.pinned && <PinGlyph />}
+                  <span className="truncate">{conversationTitle(r.conversation, crewList)}</span>
+                </span>
+                <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+                  {formatTime(r.conversation.updatedAt)}
+                </span>
+              </span>
+              <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                <ConversationTags c={r.conversation} projectNames={projectNames} />
+              </span>
+              {r.matches.map((m) => (
+                <span
+                  key={m.messageId}
+                  className="mt-1 line-clamp-3 block text-xs text-slate-600 dark:text-slate-300"
+                >
+                  <span className="font-medium">{m.author}: </span>
+                  <Snippet text={m.snippet} />
+                </span>
+              ))}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** A search snippet with matched words highlighted; plain text only, never HTML. */
+function Snippet({ text }: { text: string }) {
+  let offset = 0;
+  return (
+    <>
+      {splitHighlights(text).map((part) => {
+        const key = offset;
+        offset += part.text.length;
+        return part.mark ? (
+          <mark
+            key={key}
+            className="rounded bg-amber-200/70 px-0.5 text-inherit dark:bg-amber-500/30"
+          >
+            {part.text}
+          </mark>
+        ) : (
+          <span key={key}>{part.text}</span>
+        );
+      })}
     </>
   );
 }

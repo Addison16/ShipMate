@@ -1,8 +1,10 @@
+import type { InstallStartersResponse, UserDto } from "@shipmate/core";
 import { type FormEvent, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { useAuth } from "../auth.js";
 import { AuthLayout } from "../components/AuthLayout.js";
-import { Button, ErrorText, TextField } from "../components/ui.js";
+import { StarterCrewPicker } from "../components/StarterCrewPicker.js";
+import { Button, ErrorText, Notice, TextField } from "../components/ui.js";
 import { navigate } from "../router.js";
 
 export function SetupPage() {
@@ -14,6 +16,56 @@ export function SetupPage() {
   const [captainName, setCaptainName] = useState("Captain");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Step 2: the owner account exists (and is signed in); offer starter crew before going aboard.
+  const [owner, setOwner] = useState<UserDto | null>(null);
+  const [result, setResult] = useState<InstallStartersResponse | null>(null);
+
+  function goAboard() {
+    if (!owner) return;
+    navigate("/bridge");
+    setUser(owner);
+  }
+
+  if (owner && result) {
+    return (
+      <AuthLayout title="Crew aboard" subtitle="Your starter crew is ready.">
+        <div className="space-y-4">
+          <ul className="list-disc space-y-1 pl-5 text-sm">
+            {result.crew.map((c) => (
+              <li key={c.slug}>
+                <strong>{c.name}</strong>: {c.role}
+              </li>
+            ))}
+          </ul>
+          {result.notes.map((n) => (
+            <Notice key={n}>{n}</Notice>
+          ))}
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Next, add a model provider under Providers so the crew can answer.
+          </p>
+          <Button variant="primary" className="w-full" onClick={goAboard}>
+            Go to the Bridge
+          </Button>
+        </div>
+      </AuthLayout>
+    );
+  }
+
+  if (owner) {
+    return (
+      <AuthLayout
+        title="Pick a starter crew"
+        subtitle="Ready-made crew members, each with a persona and the tools they need. You can edit, add or retire crew any time on the Crew page."
+      >
+        <StarterCrewPicker
+          doneLabel="Bring aboard"
+          onDone={setResult}
+          skipLabel="Skip for now"
+          onSkip={goAboard}
+        />
+      </AuthLayout>
+    );
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -31,8 +83,7 @@ export function SetupPage() {
         password,
         ...(name && name !== "Captain" ? { captainName: name } : {}),
       });
-      navigate("/bridge");
-      setUser(user);
+      setOwner(user);
     } catch (err) {
       setError(errorMessage(err));
     } finally {

@@ -3,6 +3,7 @@ import {
   type AnyPgColumn,
   bigint,
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -79,6 +80,8 @@ export const conversations = pgTable(
     }),
     /** pi session file per crew member slug, so a conversation resumes with full context. */
     sessionFiles: jsonb("session_files").$type<Record<string, string>>().notNull().default({}),
+    /** Pinned to the top of the person's list; null = not pinned. */
+    pinnedAt: timestamp("pinned_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -101,7 +104,11 @@ export const messages = pgTable(
     meta: jsonb("meta"),
     createdAt: createdAt(),
   },
-  (t) => [index("messages_conversation_idx").on(t.conversationId, t.createdAt)],
+  (t) => [
+    index("messages_conversation_idx").on(t.conversationId, t.createdAt),
+    // Conversation search; queries must use the same expression to hit it.
+    index("messages_content_search_idx").using("gin", sql`to_tsvector('english', ${t.content})`),
+  ],
 );
 
 export const providers = pgTable("providers", {
@@ -316,5 +323,63 @@ export const telegramChats = pgTable("telegram_chats", {
 export const slackChannels = pgTable("slack_channels", {
   crewSlug: text("crew_slug").primaryKey(),
   channelId: text("channel_id").notNull().unique(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------- everyday life: shared lists and household profiles ----------
+
+/** Grocery, to-do, packing and bill lists the household and the crew keep together. */
+export const lists = pgTable(
+  "lists",
+  {
+    id: id(),
+    name: text("name").notNull(),
+    /** grocery | todo | packing | bills | other */
+    kind: text("kind").notNull().default("todo"),
+    /** Null = shared with everyone on the instance; set = private to that person. */
+    ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }),
+    createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("lists_owner_idx").on(t.ownerId)],
+);
+
+export const listItems = pgTable(
+  "list_items",
+  {
+    id: id(),
+    listId: uuid("list_id")
+      .notNull()
+      .references(() => lists.id, { onDelete: "cascade" }),
+    text: text("text").notNull(),
+    checked: boolean("checked").notNull().default(false),
+    position: integer("position").notNull().default(0),
+    /** Optional due date (bills, to-dos), YYYY-MM-DD. */
+    dueOn: date("due_on", { mode: "string" }),
+    note: text("note"),
+    /** Who added it: a person, or the person a crew member was working for. */
+    createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
+    /** Slug of the crew member that added it, when one did. */
+    createdByCrew: text("created_by_crew"),
+    checkedAt: timestamp("checked_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("list_items_list_idx").on(t.listId, t.position)],
+);
+
+/**
+ * Per-person facts every crew member can use (diet, budget, timezone, schedules), so nobody
+ * repeats themselves to each bot. Household-wide facts live in settings under "household".
+ */
+export const userProfiles = pgTable("user_profiles", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  /** HouseholdProfile fields from @shipmate/core. */
+  profile: jsonb("profile").notNull().default({}),
+  /** Crew working for other people in the household may read it too (e.g. meal planning). */
+  shared: boolean("shared").notNull().default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

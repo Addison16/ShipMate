@@ -4,7 +4,9 @@ import { api, errorMessage } from "../api.js";
 import { isAdmin, useUser } from "../auth.js";
 import { Avatar } from "../components/Avatar.js";
 import { CrewBackendSelect } from "../components/ClaudeCliCard.js";
+import { ExportCrewButton, ImportCrewPage } from "../components/CrewBundle.js";
 import { ModelSelect } from "../components/ModelSelect.js";
+import { StarterCrewPicker } from "../components/StarterCrewPicker.js";
 import {
   Badge,
   Button,
@@ -26,6 +28,8 @@ import { useServerEvents } from "../ws.js";
 
 export function CrewPage({ slug }: { slug: string | null }) {
   if (slug === "new") return <NewCrew />;
+  if (slug === "starters") return <StarterCrew />;
+  if (slug === "import") return <ImportCrew />;
   if (slug) return <CrewDetail key={slug} slug={slug} />;
   return <CrewList />;
 }
@@ -56,9 +60,13 @@ function CrewList() {
         description="Each crew member is a folder with a persona, a manifest and its own memory."
         actions={
           isAdmin(user) && (
-            <Button variant="primary" onClick={() => navigate("/crew/new")}>
-              New crew member
-            </Button>
+            <>
+              <Button onClick={() => navigate("/crew/import")}>Import</Button>
+              <Button onClick={() => navigate("/crew/starters")}>Add starter crew</Button>
+              <Button variant="primary" onClick={() => navigate("/crew/new")}>
+                New crew member
+              </Button>
+            </>
           )
         }
       />
@@ -223,6 +231,62 @@ function NewCrew() {
   );
 }
 
+function ImportCrew() {
+  const user = useUser();
+  if (!isAdmin(user)) {
+    return (
+      <Page>
+        <Muted>Only owners and admins can import crew members.</Muted>
+      </Page>
+    );
+  }
+  return <ImportCrewPage />;
+}
+
+function StarterCrew() {
+  const user = useUser();
+  const [notes, setNotes] = useState<string[] | null>(null);
+  if (!isAdmin(user)) {
+    return (
+      <Page>
+        <Muted>Only owners and admins can bring crew aboard.</Muted>
+      </Page>
+    );
+  }
+  return (
+    <Page>
+      <a
+        href={href("/crew")}
+        className="text-sm text-accent-700 hover:underline dark:text-accent-300"
+      >
+        ← Crew
+      </a>
+      <PageHeader
+        title="Starter crew"
+        description="Ready-made crew members with a persona, the MCP servers they need and a starter watch. They use the default model from Settings."
+      />
+      <Card>
+        {notes ? (
+          <div className="space-y-3">
+            <p className="text-sm">The new crew members are aboard.</p>
+            {notes.map((n) => (
+              <Notice key={n}>{n}</Notice>
+            ))}
+            <div className="flex gap-2">
+              <Button variant="primary" onClick={() => navigate("/crew")}>
+                See the crew
+              </Button>
+              <Button onClick={() => navigate("/watches")}>Watches</Button>
+            </div>
+          </div>
+        ) : (
+          <StarterCrewPicker onDone={(r) => setNotes(r.notes)} />
+        )}
+      </Card>
+    </Page>
+  );
+}
+
 type Tab = "persona" | "manifest" | "memory";
 
 function CrewDetail({ slug }: { slug: string }) {
@@ -290,7 +354,8 @@ function CrewDetail({ slug }: { slug: string }) {
                 </p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-start gap-2">
+              <ExportCrewButton slug={crew.slug} />
               {admin && crew.status === "pending_review" && (
                 <Button variant="primary" onClick={() => void approve()}>
                   Approve
@@ -306,8 +371,8 @@ function CrewDetail({ slug }: { slug: string }) {
           {crew.status === "pending_review" && (
             <div className="mb-4">
               <Notice>
-                This crew member was recruited by the coordinator and is waiting for review. Read
-                the persona and manifest, then approve it to put it to work.
+                This crew member is waiting for review (recruited by the coordinator, or imported).
+                Read the persona and manifest, then approve it to put it to work.
               </Notice>
             </div>
           )}

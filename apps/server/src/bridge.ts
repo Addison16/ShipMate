@@ -5,7 +5,13 @@ import type {
   BashOperations,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import type { ConversationDto, MessageDto, ServerEvent } from "@shipmate/core";
+import {
+  type ConversationDto,
+  type ConversationSearchResultDto,
+  type MessageDto,
+  SEARCH_MARK,
+  type ServerEvent,
+} from "@shipmate/core";
 import {
   type ActingUser,
   type ApprovalHost,
@@ -24,9 +30,10 @@ import {
   splitModelRef,
 } from "@shipmate/crew";
 import { conversations, crewMembers, type Db, messages, users, watches } from "@shipmate/db";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, sql } from "drizzle-orm";
 import { HttpError, type UserRow } from "./auth.js";
 import { ClaudeCliTurns } from "./claude-cli-turn.js";
+import type { EverydayTools } from "./everyday.js";
 import type { ApprovalService } from "./services/approvals.js";
 import type { AuditService } from "./services/audit.js";
 import type { CrewService } from "./services/crew.js";
@@ -121,6 +128,7 @@ export class Bridge {
   #runs = new Map<string, Run>();
   #watches: WatchService | undefined;
   #workspaces: WorkspaceProvider | undefined;
+  #everyday: EverydayTools | undefined;
   /** Turns of `backend: claude-code-cli` crew members (the official `claude` binary). */
   #cli: ClaudeCliTurns;
 
@@ -137,6 +145,11 @@ export class Bridge {
 
   attachWatches(watches: WatchService) {
     this.#watches = watches;
+  }
+
+  /** Lists and other everyday-life tools every crew member gets. */
+  attachEveryday(everyday: EverydayTools) {
+    this.#everyday = everyday;
   }
 
   // ---------- sockets ----------
@@ -167,8 +180,98 @@ export class Bridge {
       .from(conversations)
       .leftJoin(crewMembers, eq(crewMembers.id, conversations.crewMemberId))
       .where(and(eq(conversations.userId, userId), eq(conversations.surface, "web")))
-      .orderBy(desc(conversations.updatedAt));
+      .orderBy(sql`${conversations.pinnedAt} desc nulls last`, desc(conversations.updatedAt));
     return rows.map((r) => toConversationDto(r.c, r.slug));
+  }
+
+  /**
+   * Full-text search over one person's own conversations (every surface): message content via
+   * the messages_content_search_idx index, plus titles. Best match first.
+   */
+  async searchConversations(
+    user: UserRow,
+    query: string,
+    limit = 20,
+  ): Promise<ConversationSearchResultDto[]> {
+    const q = query.trim().slice(0, 200);
+    if (!q) return [];
+    const tsquery = sql`websearch_to_tsquery('english', ${q})`;
+    const vector = sql`to_tsvector('english', ${messages.content})`;
+    const rank = sql<number>`ts_rank(${vector}, ${tsquery})`;
+    const options = `StartSel=${SEARCH_MARK.start}, StopSel=${SEARCH_MARK.end}, MaxWords=24, MinWords=8, MaxFragments=2, FragmentDelimiter=" … "`;
+    const hits = await this.deps.db
+      .select({
+        id: messages.id,
+        conversationId: messages.conversationId,
+        createdAt: messages.createdAt,
+        userName: users.displayName,
+        crewName: crewMembers.name,
+        snippet: sql<string>`ts_headline('english', ${messages.content}, ${tsquery}, ${options})`,
+        rank,
+      })
+      .from(messages)
+      .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+      .leftJoin(users, eq(users.id, messages.userId))
+      .leftJoin(crewMembers, eq(crewMembers.id, messages.crewMemberId))
+      .where(and(eq(conversations.userId, user.id), sql`${vector} @@ ${tsquery}`))
+      .orderBy(desc(rank), desc(messages.createdAt))
+      .limit(300);
+    const pattern = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    const titled = await this.deps.db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(and(eq(conversations.userId, user.id), ilike(conversations.title, pattern)))
+      .orderBy(desc(conversations.updatedAt))
+      .limit(limit);
+
+    // Conversations in order of their best message (titles count as a strong match).
+    const byConv = new Map<string, { score: number; title: boolean; hits: typeof hits }>();
+    for (const t of titled) byConv.set(t.id, { score: 1, title: true, hits: [] });
+    for (const h of hits) {
+      const entry = byConv.get(h.conversationId) ?? { score: 0, title: false, hits: [] };
+      entry.score = Math.max(entry.score, Number(h.rank));
+      if (entry.hits.length < 3) entry.hits.push(h);
+      byConv.set(h.conversationId, entry);
+    }
+    const ids = [...byConv.entries()]
+      .sort((a, b) => b[1].score - a[1].score)
+      .slice(0, limit)
+      .map(([id]) => id);
+    if (!ids.length) return [];
+    const convRows = await this.deps.db
+      .select({ c: conversations, slug: crewMembers.slug })
+      .from(conversations)
+      .leftJoin(crewMembers, eq(crewMembers.id, conversations.crewMemberId))
+      .where(inArray(conversations.id, ids));
+    const convs = new Map(convRows.map((r) => [r.c.id, toConversationDto(r.c, r.slug)]));
+    return ids.flatMap((id) => {
+      const conversation = convs.get(id);
+      const entry = byConv.get(id);
+      if (!conversation || !entry) return [];
+      return [
+        {
+          conversation,
+          titleMatch: entry.title,
+          matches: entry.hits.map((h) => ({
+            messageId: h.id,
+            snippet: h.snippet,
+            author: h.userName ?? h.crewName ?? "Shipmate",
+            createdAt: h.createdAt.toISOString(),
+          })),
+        },
+      ];
+    });
+  }
+
+  async pinConversation(user: UserRow, id: string, pinned: boolean): Promise<ConversationDto> {
+    await this.conversation(user, id);
+    const [c] = await this.deps.db
+      .update(conversations)
+      .set({ pinnedAt: pinned ? new Date() : null })
+      .where(eq(conversations.id, id))
+      .returning();
+    if (!c) throw new HttpError(404, "conversation not found");
+    return toConversationDto(c, await this.#slugOf(c.crewMemberId));
   }
 
   async createConversation(
@@ -802,6 +905,7 @@ export class Bridge {
               { askCaptain: (q, signal) => current().crew.askCaptain(q, signal) },
               captainName,
             )),
+        ...(this.#everyday?.tools(user, folder) ?? []),
         ...(workspace?.tools ?? []),
       ],
       ...(workspace ? { workspace: { dir: workspace.dir, bash: workspace.bash } } : {}),
@@ -810,6 +914,7 @@ export class Bridge {
       approvals: () => current().approvals,
       appendSystemPrompt: [
         await this.#context(user, folder, memory, isCaptain, skipped),
+        ...(this.#everyday ? [await this.#everyday.context(user)] : []),
         ...(consultFor
           ? [
               `## Answering the crew\n\nIn this session you only answer questions from crew members who are mid-task. You cannot delegate or change the crew here; if the answer needs that, say so and ${user.displayName} or you can do it on the Bridge.`,
@@ -1020,6 +1125,7 @@ function toConversationDto(c: ConversationRow, slug: string | null): Conversatio
     crewSlug: slug,
     surface: c.surface,
     projectId: c.projectId,
+    pinned: c.pinnedAt !== null,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   };

@@ -19,6 +19,32 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 - **`ask_captain`**: every crew member except the Captain can check with the Captain mid-task
   instead of guessing, so crew can run on cheaper models with the Captain's judgment on call.
   The question and answer show in the conversation like a hand-off.
+- **Starter crew**: first-run setup (and **Crew → Add starter crew** later) offers ready-made
+  crew members: Galley (meals and groceries), Purser (bills), Navigator (calendar, travel and
+  weather), Tutor and Health Log. Each comes with its persona, the catalog MCP servers it needs
+  and a starter watch that is created paused, and uses the default model from Settings.
+- **Lists**: grocery, to-do, packing and bill lists as real objects with their own page and
+  checkboxes, shared with the household or private. Crew read and update them with list tools
+  (`show_lists`, `read_list`, `add_to_list`, `check_list_items`, `remove_from_list`,
+  `create_list`) instead of keeping them in memory, and changes show up live in every open app.
+- **Household profiles**: each person keeps their diet, budget, timezone, schedule and notes in
+  Settings, and owners and admins keep household facts (home location, who lives here, kids'
+  schedules). Every crew member gets them in a compact context section with the person's local
+  time, plus `read_profiles` for the full text. A profile can be shared with the household so
+  crew planning for everyone (meals, say) can read it; it is private by default.
+- **Daily briefing**: a one-click watch on the Watches page that sends a morning summary: the
+  weather, today's calendar (when the Navigator's calendar is connected; skipped otherwise),
+  bills and to-dos due soon, and what the crew did overnight. Every crew member now has
+  `get_weather` (Open-Meteo, no key needed; defaults to the household's home location),
+  `due_soon` and `recent_activity`.
+- **Conversation search and pinning**: a search box on the Bridge finds words and phrases across
+  all of your own conversations (web, chat bridges and watch runs) with highlighted excerpts,
+  using Postgres full-text search. Pin conversations to keep them at the top.
+- **Share crew members**: **Export** on a crew member's page downloads one
+  `.shipmate-crew.json` file with its crew.yaml, CREW.md and skills. Memory, sessions, granted
+  approvals, spend caps and anything that looks like a key are left out. **Crew → Import** reads
+  such a file or an https link (public hosts only, 512 KB at most), shows a preview with
+  warnings, and brings the crew member aboard awaiting review, with its skills pending approval.
 
 ## 1.0.0 — 2026-10-11
 

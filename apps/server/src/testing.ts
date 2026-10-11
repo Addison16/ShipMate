@@ -8,6 +8,7 @@ import postgres from "postgres";
 import { buildApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import type { DiscordClientPort } from "./discord/port.js";
+import type { WeatherService } from "./services/weather.js";
 import type { SlackPort } from "./slack/port.js";
 import type { TelegramPort } from "./telegram/port.js";
 
@@ -38,6 +39,7 @@ export async function testApp(
     discordPort?: DiscordClientPort;
     telegramPort?: TelegramPort;
     slackPort?: SlackPort;
+    weather?: WeatherService;
   } = {},
 ) {
   await resetDatabase(url);
@@ -62,6 +64,7 @@ export async function testApp(
     ...(options.discordPort ? { discordPort: options.discordPort } : {}),
     ...(options.telegramPort ? { telegramPort: options.telegramPort } : {}),
     ...(options.slackPort ? { slackPort: options.slackPort } : {}),
+    ...(options.weather ? { weather: options.weather } : {}),
   });
   await app.ready();
   return { app, faux, config };

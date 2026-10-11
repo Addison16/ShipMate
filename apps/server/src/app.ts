@@ -18,8 +18,10 @@ import { claudeCliRoutes } from "./routes/claude-cli.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { crewRoutes } from "./routes/crew.js";
 import { discordRoutes } from "./routes/discord.js";
+import { listRoutes } from "./routes/lists.js";
 import { mcpRoutes } from "./routes/mcp.js";
 import { oidcRoutes } from "./routes/oidc.js";
+import { profileRoutes } from "./routes/profiles.js";
 import { providerRoutes } from "./routes/providers.js";
 import { shipyardRoutes } from "./routes/shipyard.js";
 import { skillRoutes } from "./routes/skills.js";
@@ -67,6 +69,8 @@ export async function buildApp(
     /** Stand-ins for the Telegram Bot API and Slack (tests). */
     telegramPort?: import("./telegram/port.js").TelegramPort;
     slackPort?: import("./slack/port.js").SlackPort;
+    /** Stand-in for Open-Meteo (tests). */
+    weather?: import("./services/weather.js").WeatherService;
   } = {},
 ) {
   const app = Fastify({
@@ -141,7 +145,9 @@ export async function buildApp(
   await skillRoutes(app, services);
   await approvalRoutes(app, services);
   await watchRoutes(app, services);
+  await listRoutes(app, services);
   await mcpRoutes(app, services);
+  await profileRoutes(app, services);
   await shipyardRoutes(app, services);
   await discordRoutes(app, services);
   await telegramRoutes(app, services);

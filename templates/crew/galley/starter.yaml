@@ -1,0 +1,10 @@
+blurb: Plans the week's meals around everyone's diets and keeps the grocery list.
+watch:
+  name: Weekly meal plan
+  cron: "0 17 * * 0"
+  prompt: |
+    Plan dinners for the coming week (Monday to Sunday) for the household. Read the household
+    profiles first and respect every diet, allergy and budget in them. Use quick meals on busy
+    evenings from people's schedules. Then add the ingredients that are missing to the shared
+    grocery list (create a "Groceries" list if there is none), without duplicating items already
+    on it. Reply with the plan as a short day-by-day list and say what you added to the list.

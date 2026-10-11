@@ -5,7 +5,7 @@
  * All JSON. Timestamps are ISO strings. Auth is a `shipmate_session` http-only cookie set by
  * `/api/setup` and `/api/auth/login`. Errors are `{ error: string }` with a 4xx/5xx status.
  */
-import type { UserPreferences, UserRole } from "./user.js";
+import type { HouseholdFacts, PersonProfile, UserPreferences, UserRole } from "./user.js";
 
 // ---------- users and auth ----------
 
@@ -205,6 +205,8 @@ export interface ConversationDto {
   surface: string;
   /** Shipyard project this conversation works in (phase 3); tools run in its workspace. */
   projectId: string | null;
+  /** Pinned conversations come first in the list. */
+  pinned: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -225,9 +227,27 @@ export interface MessageDto {
   createdAt: string;
 }
 
-/** GET /api/conversations → { conversations: ConversationDto[] } newest first */
+/** GET /api/conversations → { conversations: ConversationDto[] } pinned first, then newest first */
 /** POST /api/conversations { kind?, crewSlug? } → { conversation } */
-/** PATCH /api/conversations/:id { title } → { conversation } */
+/** PATCH /api/conversations/:id { title?, pinned? } → { conversation } */
+/**
+ * GET /api/conversations/search?q=<words>&limit=<n> → { results: ConversationSearchResultDto[] }
+ * Full-text search over the caller's own conversations (every surface), best match first.
+ * `q` takes web-search syntax: words, "exact phrases", -excluded, or.
+ */
+export interface ConversationSearchResultDto {
+  conversation: ConversationDto;
+  /** The title contains the search text. */
+  titleMatch: boolean;
+  /** Up to three matching messages, best first. */
+  matches: Array<{
+    messageId: string;
+    /** A short excerpt; matched words are wrapped in SEARCH_MARK (search.ts). */
+    snippet: string;
+    author: string;
+    createdAt: string;
+  }>;
+}
 /** DELETE /api/conversations/:id → { ok: true } */
 /** GET /api/conversations/:id/messages → { messages: MessageDto[] } oldest first */
 
@@ -417,6 +437,18 @@ export interface CreateWatchRequest {
   monthlyCapCents?: number | null;
 }
 export type UpdateWatchRequest = Partial<CreateWatchRequest>;
+/** A ready-made watch the Watches page offers with one click, e.g. the daily briefing. */
+export interface WatchTemplateDto {
+  id: string;
+  name: string;
+  description: string;
+  /** Suggested crew member: the best fit aboard and visible to the caller. */
+  crewSlug: string;
+  /** Suggested schedule; the page lets the person change the time. */
+  cron: string;
+  prompt: string;
+}
+/** GET /api/watches/templates → { templates: WatchTemplateDto[] } */
 
 // ---------- MCP servers (phase 2) ----------
 
@@ -847,6 +879,181 @@ export interface ClaudeCliStatusDto {
 }
 /** GET /api/claude-cli (admin) → { claudeCli: ClaudeCliStatusDto } */
 
+// ---------- starter crew (everyday life) ----------
+
+/** A ready-made crew member from templates/crew/<slug> with its opt-in starter watch. */
+export interface StarterCrewDto {
+  slug: string;
+  name: string;
+  role: string;
+  /** One line for the picker. */
+  blurb: string;
+  /** MCP servers from the catalog it is set up with. */
+  mcp: string[];
+  /** The watch it comes with; created paused, so nothing runs until someone turns it on. */
+  watch: { name: string; cron: string; prompt: string } | null;
+  /** A crew member with this slug is already aboard (or retired). */
+  installed: boolean;
+}
+/**
+ * GET /api/crew/starters → { starters: StarterCrewDto[] }
+ * POST /api/crew/starters (admin) InstallStartersRequest → InstallStartersResponse. Crew get the
+ *   instance's default model; catalog MCP servers they use are installed when the caller is the
+ *   owner; starter watches are created paused and owned by the caller.
+ */
+export interface InstallStartersRequest {
+  slugs: string[];
+  /** Create each one's starter watch, paused (default true). */
+  watches?: boolean;
+  /** IANA timezone for the starter watches' schedules, e.g. the browser's. */
+  timezone?: string;
+}
+export interface InstallStartersResponse {
+  crew: CrewDto[];
+  watches: WatchDto[];
+  /** Plain-language follow-ups, e.g. an MCP server that still needs a key. */
+  notes: string[];
+}
+
+// ---------- shared lists (everyday life) ----------
+
+export type ListKind = "grocery" | "todo" | "packing" | "bills" | "other";
+
+export interface ListItemDto {
+  id: string;
+  text: string;
+  checked: boolean;
+  /** YYYY-MM-DD, e.g. when a bill is due; null when not set. */
+  dueOn: string | null;
+  note: string | null;
+  position: number;
+  /** Who added it: a person's name, or "Galley for Addison" when a crew member did. */
+  addedBy: string | null;
+  checkedAt: string | null;
+  createdAt: string;
+}
+export interface ListDto {
+  id: string;
+  name: string;
+  kind: ListKind;
+  /** Shared lists are for everyone on the instance; private ones only for their owner. */
+  shared: boolean;
+  owner: { id: string; name: string } | null;
+  /** Who made it; they (or an admin) may delete a shared list. */
+  createdById: string | null;
+  /** Items not checked off yet, and all items. */
+  openCount: number;
+  itemCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface ListDetailDto extends ListDto {
+  /** Unchecked first, each in list order. */
+  items: ListItemDto[];
+}
+/**
+ * Lists are real objects the household and the crew both read and write; crew use the
+ * show_lists, read_list, add_to_list, check_list_items, remove_from_list and create_list tools,
+ * on behalf of the person they are working for. Changes arrive live as `list_changed` events.
+ *
+ * GET /api/lists → { lists: ListDto[] } (shared lists and the caller's private ones)
+ * POST /api/lists CreateListRequest → { list: ListDetailDto }
+ * GET /api/lists/:id → { list }   PATCH /api/lists/:id { name?, kind? } → { list }
+ * DELETE /api/lists/:id → { ok: true } (a shared list: its creator or an admin)
+ * POST /api/lists/:id/items { text, dueOn?, note? } → { list }
+ * PATCH /api/lists/:id/items/:itemId UpdateListItemRequest → { list }
+ * DELETE /api/lists/:id/items/:itemId → { list }
+ * POST /api/lists/:id/clear → { list } (removes checked items)
+ */
+export interface CreateListRequest {
+  name: string;
+  kind?: ListKind;
+  /** Default true; false makes it private to the caller. */
+  shared?: boolean;
+}
+export interface UpdateListItemRequest {
+  text?: string;
+  checked?: boolean;
+  dueOn?: string | null;
+  note?: string | null;
+  position?: number;
+}
+
+// ---------- household profiles (everyday life) ----------
+
+export interface ProfileDto extends PersonProfile {
+  /**
+   * Crew working for other people in the household may read it too (e.g. the Galley planning
+   * dinner for everyone). Off by default; the person's own crew always see it.
+   */
+  shared: boolean;
+  updatedAt: string | null;
+}
+export interface HouseholdDto extends HouseholdFacts {
+  updatedAt: string | null;
+}
+/**
+ * Every crew member gets the household facts and the profile of the person it is working for in
+ * its context (compactly), and `read_profiles` for the full text including shared profiles.
+ *
+ * GET /api/profile → { profile: ProfileDto, household: HouseholdDto } (the caller's own)
+ * PUT /api/profile Partial<PersonProfile & { shared }> → { profile }
+ * PUT /api/household (owner, admin) Partial<HouseholdFacts> → { household }
+ */
+export type UpdateProfileRequest = Partial<PersonProfile> & { shared?: boolean };
+export type UpdateHouseholdRequest = Partial<HouseholdFacts>;
+
+// ---------- crew import and export (everyday life) ----------
+
+/**
+ * One crew member as a single shareable file (`<slug>.shipmate-crew.json`): crew.yaml, CREW.md
+ * and its active skills. Never memory, sessions, approvals ("allow"), spend caps or secrets.
+ */
+export interface CrewBundle {
+  format: "shipmate-crew";
+  version: 1;
+  /** Suggested slug; the importer may pick another. */
+  slug: string;
+  /** crew.yaml text. */
+  manifest: string;
+  /** CREW.md text. */
+  persona: string;
+  /** Each skill's SKILL.md (only the SKILL.md file; extra skill files are not shared). */
+  skills: Array<{ name: string; content: string }>;
+  exportedAt?: string;
+}
+export interface CrewImportPreviewDto {
+  /** The cleaned bundle to send back with POST /api/crew/import. */
+  bundle: CrewBundle;
+  name: string;
+  role: string;
+  /** The model it will get here (its own when available, else the default). */
+  model: string;
+  /** The bundle asked for a model this instance cannot use, so the default replaces it. */
+  modelReplaced: string | null;
+  backend: "pi" | "claude-code-cli";
+  tools: string[];
+  mcp: Array<{ id: string; known: boolean; installed: boolean }>;
+  skills: Array<{ name: string; description: string }>;
+  persona: string;
+  /** A free slug: the bundle's, or with a number added when that one is taken. */
+  slug: string;
+  /** Things to look at before importing, in plain words. */
+  warnings: string[];
+}
+/**
+ * GET /api/crew/:slug/export → the CrewBundle as a JSON download. Header
+ *   X-Shipmate-Redacted: <n> counts values that looked like keys or tokens and were replaced.
+ * POST /api/crew/import/preview (admin) { text } | { url } → { preview: CrewImportPreviewDto }
+ *   `text` is the file's contents; `url` must be https on a public host (at most 512 KB).
+ * POST /api/crew/import (admin) { bundle, slug } → { crew: CrewDetailDto } (pending review; its
+ *   skills wait for approval on the Skills page)
+ */
+export interface CrewImportRequest {
+  bundle: CrewBundle;
+  slug: string;
+}
+
 // ---------- WebSocket: /api/ws ----------
 
 export type ClientEvent =
@@ -898,4 +1105,6 @@ export type ServerEvent =
   /** Skill list changed (created, approved, deleted); refetch /api/skills. */
   | { type: "skills_changed" }
   /** A watch run started or finished; failures should surface as a notice. */
-  | { type: "watch_run"; watchName: string; run: WatchRunDto };
+  | { type: "watch_run"; watchName: string; run: WatchRunDto }
+  /** A list or its items changed (here, on another device, or by a crew member); refetch it. */
+  | { type: "list_changed"; listId: string; deleted?: boolean };

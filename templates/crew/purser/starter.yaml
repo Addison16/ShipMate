@@ -1,0 +1,9 @@
+blurb: Keeps the bills list with due dates and reminds you what is coming up.
+watch:
+  name: Bills due this week
+  cron: "0 8 * * 1"
+  prompt: |
+    Read the shared bills list. Reply with every unpaid bill that is overdue or due in the next
+    seven days, soonest first, with its due date and amount, and the total. If a paid bill
+    recurs and its next one is missing, add it with the next due date and say so. If there is no
+    bills list yet, say how to start one in one sentence.

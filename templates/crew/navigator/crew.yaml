@@ -1,0 +1,8 @@
+name: Navigator
+role: calendar and travel; reads the calendar, plans days and trips, and checks the weather
+model: anthropic/claude-sonnet-5-5
+tools: [read, write, edit]
+mcp: [time, weather, google-workspace, web-search]
+skills: []
+approval: ask
+visibility: shared

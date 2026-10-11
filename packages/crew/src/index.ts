@@ -21,6 +21,13 @@ export {
   claudeConfigDir,
   runClaudeCli,
 } from "./claude-cli.js";
+export {
+  formatItems,
+  type ListHost,
+  type ListItemSummary,
+  type ListSummary,
+  listTools,
+} from "./everyday.js";
 export { type CrewFolder, loadCrewFolder, writeCrewFolder } from "./folder.js";
 export { type GuardOptions, guardExtension, isInside } from "./guard.js";
 export { type MemoryEntry, type MemoryScope, MemoryStore } from "./memory.js";

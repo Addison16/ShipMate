@@ -883,6 +883,70 @@ export interface InstallStartersResponse {
   notes: string[];
 }
 
+// ---------- shared lists (everyday life) ----------
+
+export type ListKind = "grocery" | "todo" | "packing" | "bills" | "other";
+
+export interface ListItemDto {
+  id: string;
+  text: string;
+  checked: boolean;
+  /** YYYY-MM-DD, e.g. when a bill is due; null when not set. */
+  dueOn: string | null;
+  note: string | null;
+  position: number;
+  /** Who added it: a person's name, or "Galley for Addison" when a crew member did. */
+  addedBy: string | null;
+  checkedAt: string | null;
+  createdAt: string;
+}
+export interface ListDto {
+  id: string;
+  name: string;
+  kind: ListKind;
+  /** Shared lists are for everyone on the instance; private ones only for their owner. */
+  shared: boolean;
+  owner: { id: string; name: string } | null;
+  /** Who made it; they (or an admin) may delete a shared list. */
+  createdById: string | null;
+  /** Items not checked off yet, and all items. */
+  openCount: number;
+  itemCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface ListDetailDto extends ListDto {
+  /** Unchecked first, each in list order. */
+  items: ListItemDto[];
+}
+/**
+ * Lists are real objects the household and the crew both read and write; crew use the
+ * show_lists, read_list, add_to_list, check_list_items, remove_from_list and create_list tools,
+ * on behalf of the person they are working for. Changes arrive live as `list_changed` events.
+ *
+ * GET /api/lists → { lists: ListDto[] } (shared lists and the caller's private ones)
+ * POST /api/lists CreateListRequest → { list: ListDetailDto }
+ * GET /api/lists/:id → { list }   PATCH /api/lists/:id { name?, kind? } → { list }
+ * DELETE /api/lists/:id → { ok: true } (a shared list: its creator or an admin)
+ * POST /api/lists/:id/items { text, dueOn?, note? } → { list }
+ * PATCH /api/lists/:id/items/:itemId UpdateListItemRequest → { list }
+ * DELETE /api/lists/:id/items/:itemId → { list }
+ * POST /api/lists/:id/clear → { list } (removes checked items)
+ */
+export interface CreateListRequest {
+  name: string;
+  kind?: ListKind;
+  /** Default true; false makes it private to the caller. */
+  shared?: boolean;
+}
+export interface UpdateListItemRequest {
+  text?: string;
+  checked?: boolean;
+  dueOn?: string | null;
+  note?: string | null;
+  position?: number;
+}
+
 // ---------- WebSocket: /api/ws ----------
 
 export type ClientEvent =
@@ -934,4 +998,6 @@ export type ServerEvent =
   /** Skill list changed (created, approved, deleted); refetch /api/skills. */
   | { type: "skills_changed" }
   /** A watch run started or finished; failures should surface as a notice. */
-  | { type: "watch_run"; watchName: string; run: WatchRunDto };
+  | { type: "watch_run"; watchName: string; run: WatchRunDto }
+  /** A list or its items changed (here, on another device, or by a crew member); refetch it. */
+  | { type: "list_changed"; listId: string; deleted?: boolean };

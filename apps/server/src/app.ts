@@ -18,6 +18,7 @@ import { claudeCliRoutes } from "./routes/claude-cli.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { crewRoutes } from "./routes/crew.js";
 import { discordRoutes } from "./routes/discord.js";
+import { listRoutes } from "./routes/lists.js";
 import { mcpRoutes } from "./routes/mcp.js";
 import { oidcRoutes } from "./routes/oidc.js";
 import { providerRoutes } from "./routes/providers.js";
@@ -141,6 +142,7 @@ export async function buildApp(
   await skillRoutes(app, services);
   await approvalRoutes(app, services);
   await watchRoutes(app, services);
+  await listRoutes(app, services);
   await mcpRoutes(app, services);
   await shipyardRoutes(app, services);
   await discordRoutes(app, services);

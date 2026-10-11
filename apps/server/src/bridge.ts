@@ -27,6 +27,7 @@ import { conversations, crewMembers, type Db, messages, users, watches } from "@
 import { and, asc, desc, eq } from "drizzle-orm";
 import { HttpError, type UserRow } from "./auth.js";
 import { ClaudeCliTurns } from "./claude-cli-turn.js";
+import type { EverydayTools } from "./everyday.js";
 import type { ApprovalService } from "./services/approvals.js";
 import type { AuditService } from "./services/audit.js";
 import type { CrewService } from "./services/crew.js";
@@ -121,6 +122,7 @@ export class Bridge {
   #runs = new Map<string, Run>();
   #watches: WatchService | undefined;
   #workspaces: WorkspaceProvider | undefined;
+  #everyday: EverydayTools | undefined;
   /** Turns of `backend: claude-code-cli` crew members (the official `claude` binary). */
   #cli: ClaudeCliTurns;
 
@@ -137,6 +139,11 @@ export class Bridge {
 
   attachWatches(watches: WatchService) {
     this.#watches = watches;
+  }
+
+  /** Lists and other everyday-life tools every crew member gets. */
+  attachEveryday(everyday: EverydayTools) {
+    this.#everyday = everyday;
   }
 
   // ---------- sockets ----------
@@ -802,6 +809,7 @@ export class Bridge {
               { askCaptain: (q, signal) => current().crew.askCaptain(q, signal) },
               captainName,
             )),
+        ...(this.#everyday?.tools(user, folder) ?? []),
         ...(workspace?.tools ?? []),
       ],
       ...(workspace ? { workspace: { dir: workspace.dir, bash: workspace.bash } } : {}),

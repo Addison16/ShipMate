@@ -6,6 +6,7 @@ import type {
   ConversationDto,
   CreateCrewRequest,
   CreateCustomMcpRequest,
+  CreateListRequest,
   CreateProjectRequest,
   CreateProviderRequest,
   CreateSkillRequest,
@@ -18,6 +19,9 @@ import type {
   InstallStartersRequest,
   InstallStartersResponse,
   IssueDto,
+  ListDetailDto,
+  ListDto,
+  ListKind,
   LoginRequest,
   McpServerDto,
   MemoryEntryDto,
@@ -39,6 +43,7 @@ import type {
   StartFlowRequest,
   TelegramStatusDto,
   UpdateCrewRequest,
+  UpdateListItemRequest,
   UpdatePreferencesRequest,
   UpdateProjectRequest,
   UpdateProviderRequest,
@@ -157,6 +162,23 @@ export const api = {
   deleteConversation: (id: string) => request<Ok>("DELETE", `/api/conversations/${enc(id)}`),
   listMessages: (id: string) =>
     request<{ messages: MessageDto[] }>("GET", `/api/conversations/${enc(id)}/messages`),
+
+  // lists
+  listLists: () => request<{ lists: ListDto[] }>("GET", "/api/lists"),
+  createList: (body: CreateListRequest) =>
+    request<{ list: ListDetailDto }>("POST", "/api/lists", body),
+  getList: (id: string) => request<{ list: ListDetailDto }>("GET", `/api/lists/${enc(id)}`),
+  updateList: (id: string, body: { name?: string; kind?: ListKind }) =>
+    request<{ list: ListDetailDto }>("PATCH", `/api/lists/${enc(id)}`, body),
+  deleteList: (id: string) => request<Ok>("DELETE", `/api/lists/${enc(id)}`),
+  addListItem: (id: string, body: { text: string; dueOn?: string | null; note?: string | null }) =>
+    request<{ list: ListDetailDto }>("POST", `/api/lists/${enc(id)}/items`, body),
+  updateListItem: (id: string, itemId: string, body: UpdateListItemRequest) =>
+    request<{ list: ListDetailDto }>("PATCH", `/api/lists/${enc(id)}/items/${enc(itemId)}`, body),
+  deleteListItem: (id: string, itemId: string) =>
+    request<{ list: ListDetailDto }>("DELETE", `/api/lists/${enc(id)}/items/${enc(itemId)}`),
+  clearListChecked: (id: string) =>
+    request<{ list: ListDetailDto }>("POST", `/api/lists/${enc(id)}/clear`),
 
   // usage
   usage: (month: string, scope: "me" | "all") =>

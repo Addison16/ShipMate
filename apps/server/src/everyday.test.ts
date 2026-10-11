@@ -1,11 +1,13 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import type { ServerEvent } from "@shipmate/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TEST_DATABASE_URL, testApp } from "./testing.js";
 
 const db = TEST_DATABASE_URL;
 
-describe.skipIf(!db)("Everyday life: starter crew", () => {
+describe.skipIf(!db)("Everyday life", () => {
   let t: Awaited<ReturnType<typeof testApp>>;
   let ownerCookie = "";
   let memberCookie = "";
@@ -23,6 +25,26 @@ describe.skipIf(!db)("Everyday life: starter crew", () => {
       ...(body !== undefined ? { payload: body as object } : {}),
       headers: { cookie },
     });
+
+  const until = async (check: () => Promise<boolean> | boolean, ms = 5000) => {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      if (await check()) return;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    throw new Error("timed out");
+  };
+
+  /** Run one Bridge turn as the owner and wait for it to finish. */
+  const turn = async (conversationId: string, message: string, cookie = ownerCookie) => {
+    const ws = await t.app.injectWS("/api/ws", { headers: { cookie } });
+    const events: ServerEvent[] = [];
+    ws.on("message", (raw: Buffer) => events.push(JSON.parse(raw.toString()) as ServerEvent));
+    ws.send(JSON.stringify({ type: "send", conversationId, text: message }));
+    await until(() => events.some((e) => e.type === "status" && !e.busy));
+    ws.terminate();
+    return events;
+  };
 
   beforeAll(async () => {
     t = await testApp(db as string);
@@ -103,5 +125,93 @@ describe.skipIf(!db)("Everyday life: starter crew", () => {
     expect(again.notes[0]).toMatch(/already aboard/);
     const listed = (await api("GET", "/api/crew/starters")).json().starters;
     expect(listed.find((s: { slug: string }) => s.slug === "galley").installed).toBe(true);
+  });
+
+  it("keeps shared and private lists with checkboxes", async () => {
+    const shared = (await api("POST", "/api/lists", { name: "Groceries", kind: "grocery" })).json()
+      .list;
+    expect(shared).toMatchObject({ shared: true, owner: null, itemCount: 0 });
+    const mine = (
+      await api("POST", "/api/lists", { name: "Gifts", kind: "todo", shared: false })
+    ).json().list;
+    expect(mine.owner.name).toBe("Addison");
+
+    // The member sees the shared list, not the owner's private one (not even its id).
+    const theirs = (await api("GET", "/api/lists", undefined, memberCookie)).json().lists;
+    expect(theirs.map((l: { name: string }) => l.name)).toEqual(["Groceries"]);
+    expect((await api("GET", `/api/lists/${mine.id}`, undefined, memberCookie)).statusCode).toBe(
+      404,
+    );
+
+    // Anyone can add to and check off a shared list.
+    let list = (
+      await api("POST", `/api/lists/${shared.id}/items`, { text: "Milk" }, memberCookie)
+    ).json().list;
+    list = (await api("POST", `/api/lists/${shared.id}/items`, { text: "milk " })).json().list;
+    expect(list.items).toHaveLength(1);
+    expect(list.items[0].addedBy).toBe("Kid");
+    list = (await api("POST", `/api/lists/${shared.id}/items`, { text: "Eggs" })).json().list;
+    const milk = list.items.find((i: { text: string }) => i.text === "Milk");
+    list = (
+      await api("PATCH", `/api/lists/${shared.id}/items/${milk.id}`, { checked: true })
+    ).json().list;
+    expect(list.items.map((i: { text: string; checked: boolean }) => [i.text, i.checked])).toEqual([
+      ["Eggs", false],
+      ["Milk", true],
+    ]);
+    expect(list.openCount).toBe(1);
+    expect(
+      (await api("POST", `/api/lists/${shared.id}/items`, { text: "Bill", dueOn: "2026-02-30" }))
+        .statusCode,
+    ).toBe(400);
+    list = (await api("POST", `/api/lists/${shared.id}/clear`)).json().list;
+    expect(list.items.map((i: { text: string }) => i.text)).toEqual(["Eggs"]);
+
+    // Only its creator or an admin deletes a shared list.
+    const kids = (
+      await api("POST", "/api/lists", { name: "Chores", kind: "todo" }, memberCookie)
+    ).json().list;
+    expect(
+      (await api("DELETE", `/api/lists/${shared.id}`, undefined, memberCookie)).statusCode,
+    ).toBe(403);
+    expect((await api("DELETE", `/api/lists/${kids.id}`)).statusCode).toBe(200);
+  });
+
+  it("lets crew read and write lists through tools, live to the web app", async () => {
+    const conv = (await api("POST", "/api/conversations", {})).json().conversation;
+    t.faux.setResponses([
+      fauxAssistantMessage([
+        fauxToolCall("add_to_list", {
+          list: "groceries",
+          items: [{ text: "2 onions" }, { text: "Eggs" }, { text: "Rice", note: "basmati" }],
+        }),
+      ]),
+      fauxAssistantMessage([
+        fauxToolCall("check_list_items", { list: "Groceries", items: ["onion"] }),
+      ]),
+      fauxAssistantMessage([
+        fauxToolCall("read_list", { list: "Groceries", includeChecked: true }),
+      ]),
+      fauxAssistantMessage("Added and checked."),
+    ]);
+    const events = await turn(conv.id, "add onions, eggs and rice, then check off the onions");
+    expect(events.some((e) => e.type === "list_changed")).toBe(true);
+    const tools = events.filter((e) => e.type === "tool" && e.phase === "end");
+    expect(tools.map((e) => (e.type === "tool" ? e.summary : ""))).toEqual([
+      expect.stringContaining("Already on the list: Eggs"),
+      expect.stringContaining("checked off 2 onions"),
+      expect.stringContaining("[x] 2 onions"),
+    ]);
+    const lists = (await api("GET", "/api/lists")).json().lists;
+    const groceries = (
+      await api(
+        "GET",
+        `/api/lists/${lists.find((l: { name: string }) => l.name === "Groceries").id}`,
+      )
+    ).json().list;
+    expect(groceries.items.find((i: { text: string }) => i.text === "Rice")).toMatchObject({
+      note: "basmati",
+      addedBy: "Captain for Addison",
+    });
   });
 });

@@ -23,6 +23,10 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   crew members: Galley (meals and groceries), Purser (bills), Navigator (calendar, travel and
   weather), Tutor and Health Log. Each comes with its persona, the catalog MCP servers it needs
   and a starter watch that is created paused, and uses the default model from Settings.
+- **Lists**: grocery, to-do, packing and bill lists as real objects with their own page and
+  checkboxes, shared with the household or private. Crew read and update them with list tools
+  (`show_lists`, `read_list`, `add_to_list`, `check_list_items`, `remove_from_list`,
+  `create_list`) instead of keeping them in memory, and changes show up live in every open app.
 
 ## 1.0.0 — 2026-10-11
 

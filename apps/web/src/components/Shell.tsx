@@ -8,6 +8,7 @@ import { BridgePage } from "../pages/Bridge.js";
 import { ChatBridgesPage } from "../pages/ChatBridges.js";
 import { CrewPage } from "../pages/Crew.js";
 import { DiscordPage } from "../pages/Discord.js";
+import { ListsPage } from "../pages/Lists.js";
 import { McpPage } from "../pages/Mcp.js";
 import { ProvidersPage } from "../pages/Providers.js";
 import { SettingsPage } from "../pages/Settings.js";
@@ -36,6 +37,7 @@ const NAV: Array<{ group: string | null; items: NavItem[] }> = [
     group: null,
     items: [
       { path: "bridge", label: "Bridge", icon: "bridge" },
+      { path: "lists", label: "Lists", icon: "lists" },
       { path: "watches", label: "Watches", icon: "watches" },
       { path: "shipyard", label: "Shipyard", icon: "shipyard" },
     ],
@@ -265,6 +267,9 @@ export function Shell() {
       break;
     case "crew":
       page = <CrewPage slug={route[1] ?? null} />;
+      break;
+    case "lists":
+      page = <ListsPage listId={route[1] ?? null} />;
       break;
     case "watches":
       page = (

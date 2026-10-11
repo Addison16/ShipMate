@@ -23,6 +23,7 @@ function Icon({ children, size = 18 }: { children: ReactNode; size?: number }) {
 export type IconName =
   | "bridge"
   | "watches"
+  | "lists"
   | "shipyard"
   | "crew"
   | "skills"
@@ -46,6 +47,13 @@ const paths: Record<IconName, ReactNode> = {
     <>
       <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16z" />
       <path d="M10 20.5a2 2 0 0 0 4 0" />
+    </>
+  ),
+  // Checklist.
+  lists: (
+    <>
+      <path d="M4 6.5l1.5 1.5L8 5.5M4 12.5l1.5 1.5L8 11.5M4.5 18h3" />
+      <path d="M11 7h9M11 13h9M11 18h9" />
     </>
   ),
   // Code brackets for the work section.

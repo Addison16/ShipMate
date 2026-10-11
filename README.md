@@ -13,6 +13,8 @@ Version 1.0. See [CHANGELOG.md](CHANGELOG.md) for what is in it and
   Replies stream in; hand-offs and tool calls are visible.
 - **Crew**: every bot is a folder (`crew.yaml` + `CREW.md`) you can edit in the UI or on disk,
   with its own memory, tools, MCP servers and cost ceiling.
+- **Lists**: groceries, to-dos, packing and bills with checkboxes, shared with the household or
+  private, kept up to date by you and the crew alike.
 - **Skills and Watches**: reusable skills made by you or by the crew (with approval), and
   watches that run on a schedule, a webhook or after another watch.
 - **Shipyard**: GitHub or local projects worked in sandboxed containers, with PR flows and

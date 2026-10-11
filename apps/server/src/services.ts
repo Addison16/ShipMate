@@ -8,10 +8,12 @@ import type { Config } from "./config.js";
 import { DiscordJsPort } from "./discord/discordjs.js";
 import type { DiscordClientPort } from "./discord/port.js";
 import { DiscordService } from "./discord/service.js";
+import { EverydayTools } from "./everyday.js";
 import { ApprovalService } from "./services/approvals.js";
 import { AuditService } from "./services/audit.js";
 import { BackupService } from "./services/backups.js";
 import { CrewService } from "./services/crew.js";
+import { ListService } from "./services/lists.js";
 import { McpService } from "./services/mcp.js";
 import { type OidcDiscover, OidcService } from "./services/oidc.js";
 import { ProviderService } from "./services/providers.js";
@@ -48,6 +50,7 @@ export interface Services {
   oidc: OidcService;
   backups: BackupService;
   starters: StarterService;
+  lists: ListService;
 }
 
 /**
@@ -87,6 +90,10 @@ export async function createServices(
   let bridge: Bridge | undefined;
   const emit = (userId: string, event: ServerEvent) => bridge?.emit(userId, event);
   const approvals = new ApprovalService(emit);
+  // Shared lists go to everyone's open web apps; private ones only to their owner.
+  const lists = new ListService(db, (ownerId, event) =>
+    ownerId ? bridge?.emit(ownerId, event) : bridge?.broadcast(event),
+  );
   bridge = new Bridge({
     db,
     crew,
@@ -101,6 +108,7 @@ export async function createServices(
   });
   const watches = new WatchService(db, db.$client, crew, bridge, audit, emit, config.SHIPMATE_URL);
   bridge.attachWatches(watches);
+  bridge.attachEveryday(new EverydayTools({ lists }));
   const shipyard = new ShipyardService({
     db,
     vault,
@@ -165,6 +173,7 @@ export async function createServices(
     telegram,
     slack,
     shipyard,
+    lists,
     starters: new StarterService(config.TEMPLATES_DIR, crew, settings, mcp, watches),
     backups: new BackupService(
       db,

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, ImageContent, Model } from "@earendil-works/pi-ai";
 import type {
   AgentSessionEvent,
   BashOperations,
@@ -34,6 +34,8 @@ import { and, asc, desc, eq, ilike, inArray, sql } from "drizzle-orm";
 import { HttpError, type UserRow } from "./auth.js";
 import { ClaudeCliTurns } from "./claude-cli-turn.js";
 import type { EverydayTools } from "./everyday.js";
+import type { AttachmentService } from "./files/service.js";
+import { toDto as toAttachmentDto } from "./files/service.js";
 import type { ApprovalService } from "./services/approvals.js";
 import type { AuditService } from "./services/audit.js";
 import type { CrewService } from "./services/crew.js";
@@ -60,6 +62,8 @@ export interface BridgeDeps {
   approvals: ApprovalService;
   audit: AuditService;
   skills: SkillService;
+  /** Files attached in chat. */
+  files: AttachmentService;
   agentDir: string;
 }
 
@@ -103,6 +107,9 @@ interface TurnOptions extends RunTurnOptions {
    * separate session (its main one may be busy delegating), without crew-management tools.
    */
   consultFor?: { slug: string; name: string };
+  /** Photos the person sent with this message; only the crew member they wrote to sees them. */
+  images?: ImageContent[];
+  imageNames?: string[];
 }
 
 /** Live state of one conversation: a pi session per crew member taking part. */
@@ -345,7 +352,9 @@ export class Bridge {
   async deleteConversation(user: UserRow, id: string): Promise<void> {
     await this.conversation(user, id);
     this.#dispose(id);
+    const files = await this.deps.files.idsIn(id);
     await this.deps.db.delete(conversations).where(eq(conversations.id, id));
+    await this.deps.files.removeFiles(files);
   }
 
   async messages(user: UserRow, id: string): Promise<MessageDto[]> {
@@ -373,11 +382,21 @@ export class Bridge {
 
   // ---------- running turns ----------
 
-  /** Handle a message from a person. Resolves when the crew has finished replying. */
-  async send(user: UserRow, conversationId: string, text: string): Promise<void> {
+  /**
+   * Handle a message from a person, with any files they uploaded for it. Resolves when the crew
+   * has finished replying.
+   */
+  async send(
+    user: UserRow,
+    conversationId: string,
+    text: string,
+    attachmentIds: string[] = [],
+  ): Promise<void> {
     const content = text.trim();
-    if (!content) return;
+    if (!content && !attachmentIds.length) return;
     const conv = await this.conversation(user, conversationId);
+    // Checked before the turn is claimed, so a stale file id is a plain error, not a stuck run.
+    const files = await this.deps.files.claim(user.id, conversationId, attachmentIds);
     const run = this.#run(conversationId);
     if (run.busy) throw new HttpError(409, "the crew is still answering the last message");
     // Claim the run before any await, so two quick sends cannot both start a turn.
@@ -401,18 +420,32 @@ export class Bridge {
         content,
         userId: user.id,
         authorName: user.displayName,
+        meta: files.length ? { attachments: files.map(toAttachmentDto) } : null,
       });
+      await this.deps.files.attach(
+        files.map((f) => f.id),
+        userMessage.id,
+      );
       this.emit(user.id, { type: "message", conversationId, message: userMessage });
       if (!conv.title) {
+        const title = content || files.map((f) => f.name).join(", ");
         await this.deps.db
           .update(conversations)
-          .set({ title: content.replace(/\s+/g, " ").slice(0, 60) })
+          .set({ title: title.replace(/\s+/g, " ").slice(0, 60) })
           .where(eq(conversations.id, conv.id));
       }
 
       if (!slug) throw new HttpError(410, "this crew member is no longer aboard");
       await this.#assertActive(slug, user);
-      await this.#turn(user, conv, run, slug, content, {});
+      const prepared = await this.deps.files.prepare(files);
+      const prompt =
+        [content, prepared.text].filter(Boolean).join("\n\n") ||
+        `(${user.displayName} sent ${prepared.imageNames.length === 1 ? "a photo" : "photos"} without a message.)`;
+      await this.#turn(user, conv, run, slug, prompt, {
+        ...(prepared.images.length
+          ? { images: prepared.images, imageNames: prepared.imageNames }
+          : {}),
+      });
     } catch (err) {
       if (!run.aborted) {
         this.emit(user.id, {
@@ -497,6 +530,13 @@ export class Bridge {
       return `${folder.manifest.name} runs on the Claude Code CLI and cannot answer crew questions mid-task. Use your best judgment, say what you assumed, and check with the person if it matters.`;
     }
     if (folder.manifest.backend === "claude-code-cli") {
+      if (options.images?.length) {
+        await this.#note(
+          conv,
+          `${crew.name} runs on the Claude Code CLI, which Shipmate cannot pass photos to, so ${crew.name} only gets their names. Ask the ${this.deps.crew.captain().manifest.name} on the Bridge to look at them instead.`,
+        );
+        prompt = `${prompt}\n\n(${user.displayName} attached photos you cannot see: ${(options.imageNames ?? []).join(", ")}.)`;
+      }
       try {
         return await this.#cli.turn({
           user,
@@ -575,8 +615,9 @@ export class Bridge {
           task,
         });
         try {
-          // Only the Captain's main session can delegate, so options carry no consult here.
-          return await this.#turn(user, conv, run, target, task, options);
+          // Only the Captain's main session can delegate, so options carry no consult here. The
+          // person's photos stay with the Captain; it describes what the delegate needs.
+          return await this.#turn(user, conv, run, target, task, withoutImages(options));
         } finally {
           stream = this.#openStream(user.id, conv.id, crew);
         }
@@ -606,7 +647,7 @@ export class Bridge {
         ].join("\n");
         try {
           return await this.#turn(user, conv, run, captain.slug, consult, {
-            ...options,
+            ...withoutImages(options),
             consultFor: crew,
           });
         } finally {
@@ -662,13 +703,40 @@ export class Bridge {
       { captain: host, crew: crewHost, approvals },
       options.consultFor,
     );
+    // A crew member whose model cannot see images hands this one turn to a model that can.
+    let images = options.images ?? [];
+    const own = session.session.model ?? session.model;
+    let restore: Model<Api> | undefined;
+    if (images.length && !own.input.includes("image")) {
+      const vision = await this.#visionModel(own);
+      if (
+        vision &&
+        (await session.session.setModel(vision).then(
+          () => true,
+          () => false,
+        ))
+      ) {
+        restore = own;
+        await this.#note(
+          conv,
+          `${crew.name}'s model can't see photos, so ${vision.name} (${vision.provider}/${vision.id}) answers this message.`,
+        );
+      } else {
+        images = [];
+        prompt = `${prompt}\n\n(${user.displayName} attached photos you cannot see: ${(options.imageNames ?? []).join(", ")}.)`;
+        await this.#note(
+          conv,
+          `No model that can see photos is set up, so ${crew.name} only gets their names. An owner can add one on the Providers page, or pick one under Settings → Photos.`,
+        );
+      }
+    }
     const unsubscribe = session.subscribe((event) => {
       this.#onEvent(
         user,
         conv,
         run,
         crewRow.id,
-        session.model,
+        session.session.model ?? session.model,
         stream,
         event,
         options.watchId ?? null,
@@ -679,11 +747,12 @@ export class Bridge {
       }
     });
     try {
-      await session.prompt(prompt);
+      await session.prompt(prompt, images);
       const failure = lastError(session);
       if (failure && !run.aborted) throw new Error(failure);
     } finally {
       unsubscribe();
+      if (restore) await session.session.setModel(restore).catch(() => {});
       await this.#closeStream(conv, crewRow.id, stream);
       // Spend must be stored before the turn ends, or the next message could slip past a cap.
       await Promise.all(run.writes);
@@ -939,6 +1008,33 @@ export class Bridge {
     return created;
   }
 
+  /**
+   * A model that can see images for a crew member whose `current` model cannot: the one picked
+   * in Settings, else one from the same provider, else the default model, else any.
+   */
+  async #visionModel(current: Model<Api>): Promise<Model<Api> | undefined> {
+    const available = (await this.deps.providers.available()).filter((m) =>
+      m.input.includes("image"),
+    );
+    const settings = await this.deps.settings.get();
+    const byRef = (ref: string) => {
+      const r = splitModelRef(ref);
+      return r ? available.find((m) => m.provider === r.provider && m.id === r.id) : undefined;
+    };
+    return (
+      (settings.visionModel ? byRef(settings.visionModel) : undefined) ??
+      available.find((m) => m.provider === current.provider) ??
+      byRef(settings.defaultModel) ??
+      available[0]
+    );
+  }
+
+  /** A line in the conversation from Shipmate itself (shown small and centered). */
+  async #note(conv: ConversationRow, content: string) {
+    const message = await this.#store(conv, { role: "system", content, authorName: "Shipmate" });
+    this.emit(conv.userId, { type: "message", conversationId: conv.id, message });
+  }
+
   /** The crew member's model, or the instance default when it has no credentials yet. */
   async #model(folder: CrewFolder): Promise<Model<Api>> {
     const available = await this.deps.providers.available();
@@ -1107,6 +1203,11 @@ interface Stream {
   text: string;
   tools: string[];
   closed: boolean;
+}
+
+function withoutImages(options: TurnOptions): TurnOptions {
+  const { images: _images, imageNames: _names, ...rest } = options;
+  return rest;
 }
 
 function textOf(message: AssistantMessage): string {

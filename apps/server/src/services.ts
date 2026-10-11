@@ -9,6 +9,7 @@ import { DiscordJsPort } from "./discord/discordjs.js";
 import type { DiscordClientPort } from "./discord/port.js";
 import { DiscordService } from "./discord/service.js";
 import { EverydayTools } from "./everyday.js";
+import { AttachmentService } from "./files/service.js";
 import { PushService } from "./push/service.js";
 import type { PushFetch } from "./push/webpush.js";
 import { ApprovalService } from "./services/approvals.js";
@@ -59,6 +60,7 @@ export interface Services {
   profiles: ProfileService;
   crewBundles: CrewBundleService;
   push: PushService;
+  files: AttachmentService;
 }
 
 /**
@@ -106,6 +108,7 @@ export async function createServices(
   const lists = new ListService(db, (ownerId, event) =>
     ownerId ? bridge?.emit(ownerId, event) : bridge?.broadcast(event),
   );
+  const files = new AttachmentService(db, config.dirs.files);
   bridge = new Bridge({
     db,
     crew,
@@ -116,6 +119,7 @@ export async function createServices(
     approvals,
     audit,
     skills,
+    files,
     agentDir: config.dirs.pi,
   });
   const watches = new WatchService(db, db.$client, crew, bridge, audit, emit, config.SHIPMATE_URL);
@@ -202,6 +206,7 @@ export async function createServices(
     crewBundles: new CrewBundleService({ crew, settings, providers, mcp, skills }),
     starters: new StarterService(config.TEMPLATES_DIR, crew, settings, mcp, watches),
     push,
+    files,
     backups: new BackupService(
       db,
       settings,

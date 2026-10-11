@@ -59,3 +59,29 @@ export interface PushPayload {
   /** For approvals: the one-time token behind the Approve and Deny buttons. */
   approval?: { id: string; token: string };
 }
+
+// ---------- files in chat ----------
+
+export type AttachmentKind = "image" | "pdf" | "text";
+
+/**
+ * A file attached to a message. Sent messages list theirs in `meta.attachments`.
+ * Images go to the model as images (a vision-capable model takes the turn when the crew
+ * member's cannot see them); PDFs and text files go as their text.
+ */
+export interface AttachmentDto {
+  id: string;
+  name: string;
+  /** The type Shipmate detected from the content: image/*, application/pdf or text/plain. */
+  mimeType: string;
+  kind: AttachmentKind;
+  size: number;
+}
+/**
+ * POST /api/conversations/:id/attachments (body: the raw bytes, content-type
+ *   application/octet-stream; headers x-file-name (URI-encoded) and x-file-type) → { attachment }
+ *   Photos up to 10 MB, PDFs up to 20 MB, text files up to 1 MB.
+ * Then send it: { type: "send", conversationId, text, attachments: [id, …] } on the WebSocket.
+ * GET /api/attachments/:id → the file (only for the person who uploaded it)
+ * DELETE /api/attachments/:id → { ok: true } (only while not yet sent)
+ */

@@ -43,3 +43,27 @@ just type the answer in that chat: `approve` (or `yes`, `ok`, 👍), `deny` (or 
 `always`. A typed answer goes to your newest waiting card in that chat. Only the person who
 was asked can answer; anyone else gets "Only <name> can answer this." When nothing is waiting,
 those words go to the crew like any other message.
+
+## Photos and files in chat
+
+Use the paperclip next to the message box to attach photos (JPEG, PNG, WebP, GIF, up to 10 MB),
+PDFs (up to 20 MB) and text files such as notes, CSV or JSON (up to 1 MB), up to eight per
+message. On a phone there is also a camera button that opens the camera directly. You can paste
+or drag files into the composer too. Sent photos show as thumbnails and files as chips in the
+conversation.
+
+- **Photos** go to the crew member's model as images. If that model cannot see images, Shipmate
+  hands that one message to a model that can and says so in the chat. Pick which one under
+  **Settings → Photos** (owner); **Automatic** prefers a model from the same provider, then the
+  default model. Without any vision-capable model the crew member only hears the file names.
+- **PDFs** are read on the server and their text is passed along (a scanned PDF without a text
+  layer has no text; send photos of the pages instead). **Text files** are passed as text.
+- When the Captain hands a task to a crew member, the photos stay with the Captain, who passes
+  on what matters. Write to a crew member directly to show them a photo.
+- Files are stored under `<data>/files/` (included in backups) and only the person who uploaded
+  a file can open it. Deleting a conversation deletes its files. Uploads that are never sent are
+  removed after a day.
+- iPhones may save photos as HEIC, which models do not accept. The camera button and most
+  share sheets hand over JPEG; otherwise set Settings → Camera → Formats → Most Compatible.
+- Discord, Telegram and Slack bridges take text only for now; send photos and files in the web
+  app.

@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type { Api, ImageContent, Model } from "@earendil-works/pi-ai";
 import {
   type AgentSession,
   type AgentSessionEvent,
@@ -62,7 +62,8 @@ export interface CrewSession {
   model: Model<Api>;
   /** Stream events (text deltas, tool calls, settled) to a UI or bridge. */
   subscribe: (listener: (event: AgentSessionEvent) => void) => () => void;
-  prompt: (text: string) => Promise<void>;
+  /** `images` go with the text as image content (the model must accept images). */
+  prompt: (text: string, images?: ImageContent[]) => Promise<void>;
   abort: () => Promise<void>;
   sessionFile: string | undefined;
   dispose: () => void;
@@ -192,7 +193,7 @@ export async function createCrewSession(options: CreateCrewSessionOptions): Prom
     crew,
     model,
     subscribe: (listener) => session.subscribe(listener),
-    prompt: (text) => session.prompt(text),
+    prompt: (text, images) => session.prompt(text, images?.length ? { images } : undefined),
     abort: () => session.abort(),
     get sessionFile() {
       return sessionManager.getSessionFile();

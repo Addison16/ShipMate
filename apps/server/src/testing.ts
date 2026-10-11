@@ -56,7 +56,11 @@ export async function testApp(
     modelsPath: join(dataDir, "models.json"),
     allowModelNetwork: false,
   });
-  const faux = fauxProvider({ provider: "faux", models: [{ id: "m" }] });
+  // "m" sees images; "text-only" does not (photos in chat route to a vision model).
+  const faux = fauxProvider({
+    provider: "faux",
+    models: [{ id: "m" }, { id: "text-only", input: ["text"] }],
+  });
   modelRuntime.registerNativeProvider(faux.provider);
   const app = await buildApp(config, {
     modelRuntime,

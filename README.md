@@ -35,7 +35,8 @@ Version 1.0. See [CHANGELOG.md](CHANGELOG.md) for what is in it and
 - **Chat anywhere**: the web app (installable as a PWA on phone and desktop), Discord,
   Telegram and Slack.
 - **On your phone**: push notifications for approvals (approve or deny from the notification),
-  watch results and crew replies. See [docs/phone.md](docs/phone.md).
+  watch results and crew replies, and photos, PDFs and files in chat (a receipt for the Purser,
+  a fridge photo for the Galley). See [docs/phone.md](docs/phone.md).
 - **Backups**: nightly or on demand, restorable from the UI or the CLI.
 
 ## Quick start

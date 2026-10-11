@@ -19,6 +19,7 @@ import { conversationRoutes } from "./routes/conversations.js";
 import { crewRoutes } from "./routes/crew.js";
 import { discordRoutes } from "./routes/discord.js";
 import { listRoutes } from "./routes/lists.js";
+import { fileRoutes } from "./routes/files.js";
 import { mcpRoutes } from "./routes/mcp.js";
 import { oidcRoutes } from "./routes/oidc.js";
 import { profileRoutes } from "./routes/profiles.js";
@@ -52,6 +53,7 @@ const ClientEventSchema = z.discriminatedUnion("type", [
     type: z.literal("send"),
     conversationId: z.string().uuid(),
     text: z.string().max(100_000),
+    attachments: z.array(z.string().uuid()).max(8).optional(),
   }),
   z.object({ type: z.literal("abort"), conversationId: z.string().uuid() }),
   z.object({ type: z.literal("approve"), approvalId: z.string(), decision: DecisionSchema }),
@@ -87,6 +89,8 @@ export async function buildApp(
   app.addHook("onReady", async () => {
     if (options.watches !== false) await services.watches.start();
     await services.backups.start();
+    // Files of conversations or people deleted while the server was down (or by a restore).
+    void services.files.sweep().catch(() => {});
     // Chat bridges connect in the background when configured; problems show on their pages.
     void services.telegram.start();
     void services.slack.start();
@@ -158,6 +162,7 @@ export async function buildApp(
   await backupRoutes(app, services);
   await claudeCliRoutes(app, services);
   await pushRoutes(app, services);
+  await fileRoutes(app, services);
   await oidcRoutes(app, services, { secureCookies: config.secureCookies });
 
   // The Bridge's live channel: streams crew replies and takes messages from the person.
@@ -203,7 +208,12 @@ export async function buildApp(
       if (event.type === "approve") {
         services.approvals.decide(current.id, event.approvalId, event.decision);
       } else if (event.type === "send") {
-        await services.bridge.send(current, event.conversationId, event.text);
+        await services.bridge.send(
+          current,
+          event.conversationId,
+          event.text,
+          event.attachments ?? [],
+        );
       } else {
         await services.bridge.abort(current, event.conversationId);
       }

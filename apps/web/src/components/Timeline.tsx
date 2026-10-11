@@ -1,8 +1,10 @@
-import type { MessageDto } from "@shipmate/core";
+import type { AttachmentDto, MessageDto } from "@shipmate/core";
 import type { ReactNode } from "react";
+import { messageAttachments } from "../lib/files.js";
 import { formatTime } from "../lib/format.js";
 import { type Handoff, messageHandoff, type TimelineItem, type ToolChip } from "../lib/timeline.js";
 import { ApprovalCard } from "./ApprovalCard.js";
+import { MessageFiles } from "./Attachments.js";
 import { Avatar } from "./Avatar.js";
 import { Markdown } from "./Markdown.js";
 import { cx } from "./ui.js";
@@ -80,6 +82,7 @@ function Bubble({
   tools,
   children,
   live,
+  files = [],
 }: {
   name: string;
   mine: boolean;
@@ -87,6 +90,8 @@ function Bubble({
   tools: ToolChip[];
   children: ReactNode;
   live?: boolean;
+  /** Photos and files sent with the message, shown above its text. */
+  files?: AttachmentDto[];
 }) {
   return (
     <div className={cx("flex flex-col", mine ? "items-end" : "items-start")}>
@@ -103,16 +108,23 @@ function Bubble({
           ))}
         </div>
       )}
-      <div
-        className={cx(
-          "max-w-[85%] rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed",
-          mine
-            ? "rounded-tr-sm bg-gradient-to-br from-accent-600 to-accent-700 text-white shadow-sm dark:from-accent-600 dark:to-accent-700 [&_a]:text-white [&_code]:bg-accent-900/50"
-            : "rounded-tl-sm border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900",
-        )}
-      >
-        {children}
-      </div>
+      {files.length > 0 && (
+        <div className="mb-1.5 max-w-[85%]">
+          <MessageFiles files={files} mine={mine} />
+        </div>
+      )}
+      {children !== null && (
+        <div
+          className={cx(
+            "max-w-[85%] rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed",
+            mine
+              ? "rounded-tr-sm bg-gradient-to-br from-accent-600 to-accent-700 text-white shadow-sm dark:from-accent-600 dark:to-accent-700 [&_a]:text-white [&_code]:bg-accent-900/50"
+              : "rounded-tl-sm border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900",
+          )}
+        >
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -128,6 +140,7 @@ function MessageView({ message, selfId }: { message: MessageDto; selfId: string 
   }
   const handoff = messageHandoff(message);
   const mine = a.kind === "user" && a.id === selfId;
+  const files = messageAttachments(message);
   return (
     <>
       {handoff && <HandoffLine handoff={handoff} />}
@@ -136,8 +149,9 @@ function MessageView({ message, selfId }: { message: MessageDto; selfId: string 
         mine={mine}
         time={formatTime(message.createdAt)}
         tools={metaTools(message)}
+        files={files}
       >
-        <Markdown text={message.content} />
+        {message.content || !files.length ? <Markdown text={message.content} /> : null}
       </Bubble>
     </>
   );

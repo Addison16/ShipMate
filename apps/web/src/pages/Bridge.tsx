@@ -14,6 +14,7 @@ import { api, errorMessage } from "../api.js";
 import { useApprovals } from "../approvals.js";
 import { useUser } from "../auth.js";
 import { ApprovalCard } from "../components/ApprovalCard.js";
+import { AttachButtons, PendingFiles, useComposerFiles } from "../components/Attachments.js";
 import { TimelineView } from "../components/Timeline.js";
 import { Badge, Button, cx, ErrorText, focusRing } from "../components/ui.js";
 import { formatTime } from "../lib/format.js";
@@ -334,6 +335,7 @@ function Thread({
       !state.items.some((it) => it.kind === "approval" && it.approval.id === a.id),
   );
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const files = useComposerFiles(conversationId);
 
   useServerEvents((event) => dispatch({ type: "event", event }));
 
@@ -384,13 +386,15 @@ function Thread({
   function send(e?: FormEvent) {
     e?.preventDefault();
     const body = text.trim();
-    if (!body || state.busy) return;
-    if (!socket.send({ type: "send", conversationId, text: body })) {
+    if ((!body && !files.ids.length) || state.busy || files.uploading) return;
+    const attachments = files.ids.length ? { attachments: files.ids } : {};
+    if (!socket.send({ type: "send", conversationId, text: body, ...attachments })) {
       setSendError("Not connected to the server. Your message was not sent; try again shortly.");
       return;
     }
     setSendError(null);
     setText("");
+    files.clear();
     stick.current = true;
   }
 
@@ -527,6 +531,14 @@ function Thread({
 
       <form
         onSubmit={send}
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+        }}
+        onDrop={(e) => {
+          if (!e.dataTransfer.files.length) return;
+          e.preventDefault();
+          files.add(e.dataTransfer.files);
+        }}
         className="border-t border-slate-200 bg-white px-3 py-3 sm:px-6 dark:border-slate-800 dark:bg-slate-900"
       >
         <div className="mx-auto max-w-3xl space-y-2">
@@ -541,7 +553,9 @@ function Thread({
             </div>
           )}
           <ErrorText>{sendError}</ErrorText>
+          <PendingFiles items={files.items} onRemove={files.remove} />
           <div className="flex items-end gap-2">
+            <AttachButtons onFiles={files.add} disabled={files.full} />
             <label htmlFor="composer" className="sr-only">
               Message
             </label>
@@ -552,6 +566,11 @@ function Thread({
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={onKeyDown}
+              onPaste={(e) => {
+                if (!e.clipboardData.files.length) return;
+                e.preventDefault();
+                files.add(e.clipboardData.files);
+              }}
               placeholder={state.busy ? "The crew is working…" : "Message the crew"}
               className={cx(
                 "min-h-[42px] flex-1 resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-[15px] dark:border-slate-600 dark:bg-slate-950",
@@ -569,7 +588,9 @@ function Thread({
               <Button
                 type="submit"
                 variant="primary"
-                disabled={!text.trim() || socketState !== "open"}
+                disabled={
+                  (!text.trim() && !files.ids.length) || files.uploading || socketState !== "open"
+                }
               >
                 Send
               </Button>

@@ -1,0 +1,40 @@
+services:
+  shipmate:
+    image: ghcr.io/addison16/shipmate:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      SHIPMATE_URL: ${SHIPMATE_URL:-http://localhost:3000}
+      DATABASE_URL: postgres://shipmate:${POSTGRES_PASSWORD:-shipmate}@db:5432/shipmate
+      # Leave unset to generate once on first boot (kept in the data volume).
+      SHIPMATE_SECRET: ${SHIPMATE_SECRET:-}
+    volumes:
+      - shipmate-data:/data
+      # Sandboxes for the Shipyard run as sibling containers through the Docker socket.
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: shipmate
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shipmate}
+      POSTGRES_DB: shipmate
+    volumes:
+      - shipmate-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shipmate -d shipmate"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  shipmate-data:
+  shipmate-db:

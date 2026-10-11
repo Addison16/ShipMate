@@ -1,9 +1,9 @@
 # Shipmate build plan
 
-*Draft 1, 2026-10-11. Open questions are at the end and marked **Q1**–**Q9** where they touch the design.*
+*Draft 2, 2026-10-11. All nine design questions are answered; the decisions are recorded in §17 and marked **Q1**–**Q9** where they touch the design.*
 
 Shipmate is a self-hosted, Docker-style alternative to Grok Bot for everyday life and for work.
-One container, one `docker compose up`, a web app on port 3000. A **Coordinator** bot is set up
+Two containers (app and Postgres), one `docker compose up`, a web app on port 3000. A **Captain** bot (the coordinator) is set up
 first and recruits **crew members** (specialist bots) as needed. Everything runs on the
 [pi agent harness](https://pi.dev).
 
@@ -24,7 +24,7 @@ first and recruits **crew members** (specialist bots) as needed. Everything runs
 │  Secrets vault · Audit log · Scheduler                                │
 │                                                                      │
 │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐                  │
-│  │ Coordinator  │ │ crew: chef   │ │ crew: dev    │  ← pi SDK        │
+│  │ Captain      │ │ crew: chef   │ │ crew: dev    │  ← pi SDK        │
 │  │ (pi session) │ │ (pi session) │ │ (pi session) │    sessions       │
 │  └──────────────┘ └──────────────┘ └──────┬───────┘                  │
 └───────────────────────────────────────────┼──────────────────────────┘
@@ -35,8 +35,8 @@ first and recruits **crew members** (specialist bots) as needed. Everything runs
    volumes:  /data (sqlite db, crew files, skills, memory, sessions, workspaces)
 ```
 
-Default deploy is a single container plus a named volume. Postgres and sandbox containers
-are opt-in (see **Q1**, **Q2**).
+Default deploy is two containers (Shipmate and Postgres) plus a named volume, with the Docker
+socket mounted so work sandboxes run as sibling containers (**Q1**, **Q2**).
 
 ## 2. Why pi, and how we use it
 
@@ -68,7 +68,8 @@ packages/
   crew/          pi session factory, Shipmate extensions, delegation   @shipmate/crew
   providers/     provider registry, key vault, OAuth flows             @shipmate/providers
   mcp-catalog/   curated MCP server catalog + installer                @shipmate/mcp-catalog
-  db/            Drizzle schema + migrations (SQLite, Postgres)        @shipmate/db
+  db/            Drizzle schema + migrations (Postgres)                @shipmate/db
+  bridges/       Discord bridge (one channel per crew member)          @shipmate/bridges
   cli/           `shipmate` CLI: init, doctor, backup, crew ls          @shipmate/cli
 templates/
   crew/          starter crew members (see §5)
@@ -87,7 +88,7 @@ Tailwind, Vitest, Playwright for e2e. Everything a contributor needs is `pnpm i 
 |---|---|
 | **User** | email, password hash (argon2) or OIDC subject, role (`owner`, `admin`, `member`), per-user settings |
 | **CrewMember** | slug, display name, owner user, visibility (`private`, `shared`), model ref, folder path, status |
-| **Conversation** | belongs to a user, has one or more crew participants; `bridge` conversations include the Coordinator |
+| **Conversation** | belongs to a user, has one or more crew participants; `bridge` conversations include the Captain |
 | **Message** | stored by Shipmate for the UI; pi's own session file remains the model-context source of truth |
 | **Skill** | slug, folder path, author (user or crew member), scope (crew, user, instance), approval state |
 | **Routine** | crew member, cron or trigger spec, prompt, enabled, last run, run history |
@@ -96,11 +97,12 @@ Tailwind, Vitest, Playwright for e2e. Everything a contributor needs is `pnpm i 
 | **Project** (work section) | repo URL, default branch, workspace path, assigned crew, GitHub installation / token ref |
 | **AuditEvent** | who, which crew, which tool, args summary, approval decision |
 
-Storage: SQLite (libsql) by default, Postgres via one env var. Files live under `/data`.
+Storage: Postgres (**Q1**). Files live under `/data`. Every message, tool call, routine run and
+token count carries the acting user id so usage is attributable per user (**Q3**).
 
 ## 5. Crew members
 
-A crew member is a folder. The Coordinator fills it out when it recruits someone; users can
+A crew member is a folder. The Captain fills it out when it recruits someone; users can
 edit every file from the web UI (Monaco editor) or on disk.
 
 ```
@@ -126,7 +128,8 @@ approval: ask                           # ask | auto | never-for: [send_email, p
 visibility: shared                      # private | shared  (Q3)
 ```
 
-**The Coordinator** is a crew member with extra tools, provided by a Shipmate extension:
+**The Captain** (the coordinator; the name is editable, Captain is the default, **Q8**) is a
+crew member with extra tools, provided by a Shipmate extension:
 
 - `recruit_crew_member(spec)` scaffolds the folder from a template and the user's description,
   writes `CREW.md`, registers it, and opens it for the user to review before first use.
@@ -135,7 +138,7 @@ visibility: shared                      # private | shared  (Q3)
   result; the bridge shows this as a hand-off, like Grok Bot's group chat.
 - `create_skill`, `create_routine`, `install_mcp_server` (each gated by approval policy).
 
-Starter crew templates shipped in `templates/crew/`: Coordinator, Quartermaster (household,
+Starter crew templates shipped in `templates/crew/`: Captain, Quartermaster (household,
 lists, errands), Navigator (calendar and travel), Purser (budget and bills), Lookout (research
 and news digests), Shipwright (software work, see §8). Users can rename or delete all of them.
 
@@ -171,15 +174,16 @@ projects the way Claude and ChatGPT's coding products do.
 
 - **Projects**: connect a GitHub repo (OAuth with GitHub, or a fine-grained PAT, or a GitHub
   App installation for orgs). Shipmate clones it into `/data/workspaces/<project>`.
-- **Sandboxes**: coding tools (bash, git, test runners) execute inside a per-project sandbox
-  container started through the Docker socket, with the workspace bind-mounted. Without the
-  socket, tools run inside the main container in a restricted workspace (**Q2**).
+- **Sandboxes** (**Q2**): coding tools (bash, git, test runners) execute inside a per-project
+  sandbox container started through the Docker socket, with the workspace bind-mounted and no
+  access to Shipmate's own secrets. The compose file mounts the socket by default; if it is
+  missing, the Shipyard is disabled with a clear message rather than running code unsandboxed.
 - **Flows**: "plan this feature", "fix this issue", "review this PR", "triage new issues",
   "keep CI green". Each produces branches, commits and PRs with a Shipmate attribution footer,
   and can watch the PR for CI and review events (via GitHub webhooks or polling).
 - **Beyond GitHub**: GitLab and Gitea providers follow the same interface. Non-code projects
   (a writing project, a research folder) are a Project without a git remote.
-- The Shipwright crew template is the default coder; the Coordinator can recruit more
+- The Shipwright crew template is the default coder; the Captain can recruit more
   (a reviewer, a release manager) with narrower tool access.
 
 ## 9. MCP server catalog
@@ -188,11 +192,15 @@ Shipmate ships a curated catalog (`packages/mcp-catalog/catalog.json`) with inst
 (`npx`, `uvx`, or docker image), required secrets, and a short description. One-click install
 from the UI stores secrets in the vault and wires the server to selected crew members.
 
-Launch set (about 20): filesystem, git, github, gitlab, fetch, playwright (browser), memory,
-time, sequential-thinking, sqlite, postgres, docker, brave-search / searxng, google workspace
-(gmail, calendar, drive), notion, obsidian, todoist, slack, discord, home-assistant, spotify,
-weather. Any custom MCP server can be added with a command or URL. Each server runs with only
-the env vars it declares, and crews only see the servers they are granted.
+**Core, bundled in the image and enabled by default** (**Q7**): filesystem, git, github, fetch,
+browser (Playwright), web search (SearXNG or Brave), memory, time, sequential-thinking.
+These are the servers nearly every agent setup already uses; they need no install step, only a
+key where one applies.
+
+**Catalog, one click to install**: gitlab, postgres, sqlite, docker, google workspace (gmail,
+calendar, drive), notion, obsidian, todoist, slack, discord, home-assistant, spotify, weather,
+and more over time. Any custom MCP server can be added with a command or URL. Each server runs
+with only the env vars it declares, and crews only see the servers they are granted.
 
 ## 10. Users, auth and multi-user
 
@@ -200,9 +208,13 @@ the env vars it declares, and crews only see the servers they are granted.
   OIDC (Authentik, Authelia, Keycloak, Google, GitHub) for people who already run SSO at home.
 - Sessions in secure cookies; passkeys as a later addition.
 - Roles: `owner` (instance settings, providers, users), `admin` (crews, MCP, skills), `member`.
-- Each user has private conversations and private crew; crew marked `shared` are visible to the
-  household/team and keep one memory folder with per-user sections (**Q3**).
-- Per-user provider credentials are allowed alongside instance-wide ones (**Q4**).
+- Crew are shared across the instance and use the instance's models (**Q3**). Each user has
+  their own conversations with the crew; crew memory keeps a shared section plus a per-user
+  section so the Captain remembers who asked for what. Private crew remain possible as a
+  per-crew flag but are not the default.
+- Provider credentials are instance-wide and set by the owner (**Q4**). Usage is metered per
+  user, per crew and per routine, and the owner can set monthly token or cost caps per user.
+  Per-user keys are not in scope for 1.0; the data model leaves room for them.
 
 ## 11. Model providers
 
@@ -253,7 +265,17 @@ prohibitions on automated extraction and bypassing protective measures, so Shipm
 do that either. **We implement Sign in with ChatGPT properly instead.**
 
 Net effect for the user: both subscriptions can be used, neither needs an hourly ping, and
-Shipmate holds no consumer session tokens at all.
+Shipmate holds no Claude.ai session tokens at all.
+
+**Will people have to log in again every few hours?** No (**Q6**). Both routes use short-lived
+access tokens backed by long-lived refresh tokens that renew silently:
+
+- Claude Code keeps its credentials in its own config directory, which Shipmate places on the
+  `/data` volume, and refreshes them itself whenever it runs. For headless setups,
+  `claude setup-token` issues a token good for a year. A user signs in once at setup.
+- Sign in with ChatGPT returns a refresh token to Shipmate as a registered OAuth client, which is
+  the sanctioned way to hold it. Shipmate renews the access token on demand, before each request
+  that needs it, not on a timer. A user signs in once and again only if they revoke access.
 
 ## 13. Security model
 
@@ -269,11 +291,17 @@ Shipmate holds no consumer session tokens at all.
 
 ## 14. Web app
 
-Pages: **Bridge** (group chat with the Coordinator and whichever crew it pulls in),
+Pages: **Bridge** (group chat with the Captain and whichever crew it pulls in),
 **Crew** (list, editor for `CREW.md`/`crew.yaml`, memory viewer), **Skills**, **Routines**
 (calendar view and run logs), **Shipyard** (projects, PRs, sandboxes), **Providers**,
 **MCP servers**, **Users**, **Settings**, **Costs**. Mobile-friendly; installable as a PWA.
-Messaging bridges (Telegram, Discord, Slack) are a later phase (**Q5**).
+
+**Discord bridge** (**Q5**): web app first, Discord in phase 3. One Discord application for the
+instance; Shipmate creates a channel per crew member (or binds to one you pick) and each crew
+member posts through that channel's webhook with its own name and avatar, so messages are
+visibly from "Captain" or "Galley", not from a generic bot. Owners who want fully separate bot
+users can give a crew member its own bot token instead. Discord user ids map to Shipmate users
+for attribution. Telegram and Slack follow the same bridge interface later.
 
 ## 15. Deployment
 
@@ -298,46 +326,31 @@ Also: Unraid and TrueNAS app templates, a Helm chart later, `shipmate backup` an
 | Phase | Deliverable | Rough size |
 |---|---|---|
 | 0 | Monorepo scaffold, Dockerfile, CI, docs site skeleton | 1 week |
-| 1 | Single-user core: auth (owner), providers (API keys + Ollama), Coordinator, recruit/edit crew, Bridge chat, memory | 3 weeks |
+| 1 | Core: users and roles from day one, providers (API keys + local models), the Captain, recruit/edit crew, Bridge chat, memory, core MCP servers, per-user usage metering | 3 weeks |
 | 2 | Skills (user + bot-made with approval), Routines + scheduler, MCP catalog + installer, approval gates, audit | 3 weeks |
-| 3 | Shipyard: GitHub connect, workspaces, sandboxes, PR flows, GitHub webhooks | 3 weeks |
-| 4 | Multi-user: roles, OIDC, shared vs private crew, per-user credentials, cost page | 2 weeks |
-| 5 | Subscription routes (Sign in with ChatGPT, Claude Code CLI backend), Telegram/Discord bridges, PWA polish, 1.0 | 3 weeks |
+| 3 | Discord bridge (channel per crew member), Shipyard: GitHub connect, workspaces, sandboxes, PR flows, webhooks | 3 weeks |
+| 4 | OIDC login, cost caps per user, cost page, backups, Unraid/TrueNAS templates | 2 weeks |
+| 5 | Subscription routes (Sign in with ChatGPT, Claude Code CLI backend), Telegram/Slack bridges, PWA polish, 1.0 | 3 weeks |
 
 Each phase ends with a tagged image that works end to end.
 
-## 17. Open questions
+## 17. Decisions (answered by Addison, 2026-10-11)
 
-Answers to these change the design. Defaults in bold are what I will build if unanswered.
-
-- **Q1 Database.** **SQLite in the single container by default**, Postgres as an opt-in for
-  larger households or teams. Or Postgres only, which means two containers from day one.
-- **Q2 Sandboxes for the work section.** **Optional Docker socket mount, with a per-repo
-  sandbox container when present and in-container execution when absent.** Alternatives: require
-  the socket (safer, harder to install) or never spawn containers (simplest, least isolated).
-- **Q3 Multi-user shape.** **One shared household/team instance: shared crew plus private crew
-  and private chats per user.** Or fully isolated users who never see each other's crew.
-- **Q4 Who pays for models.** **Both instance-wide keys set by the owner and per-user keys**,
-  with per-user overriding. Or owner-only keys with per-user spend limits.
-- **Q5 Chat surfaces.** **Web app first; Telegram and Discord in phase 5.** Or a messaging
-  bridge in phase 1 because that is where everyday use really happens.
-- **Q6 Subscriptions.** Confirm you are fine with the compliant approach in §12 (official
-  `claude` CLI backend and Sign in with ChatGPT) instead of hourly pings and stored tokens.
-- **Q7 Browser use.** Should crew members be able to drive a real browser (Playwright MCP, with
-  the user entering logins and 2FA) for sites with no MCP server, as Grok Bot does? **Yes, as an
-  opt-in MCP server in the catalog, not a core feature.**
-- **Q8 Names.** The first bot is "the Coordinator" in your message. Suggestions to fit the theme:
-  Coordinator = **Captain**, bot files = **crew manifest**, group chat = **Bridge**, work section
-  = **Shipyard**, routines = **Watches**. Keep, change, or drop any of these.
-- **Q9 License (answered 2026-10-11).** Addison wants source-available, self-hostable, and no
-  commercial use. The repo now uses the **PolyForm Noncommercial License 1.0.0** (SPDX
-  `PolyForm-Noncommercial-1.0.0`), replacing GPL-3.0. Notes that follow from that choice:
-  - It is not "open source" under the OSI definition, because it discriminates by field of use.
-    GitHub shows it as "Other", and the README should say "source-available, free for
-    noncommercial use" rather than "open source" to avoid arguments.
-  - Any use by a for-profit business, including a company self-hosting it internally, needs a
-    commercial license from Addison. That is a potential revenue path later, not a problem now.
-  - To keep that option, contributors should sign a lightweight CLA (or a DCO plus a copyright
-    assignment clause) so the project can grant commercial licenses or relicense later.
-  - Dependencies are unaffected: pi (MIT) and the MCP servers keep their own licenses, and the
-    PolyForm terms apply only to Shipmate's code.
+- **Q1 Database:** Postgres only. Compose ships two services.
+- **Q2 Sandboxes:** yes. Docker socket mounted by default; per-repo sandbox containers for the
+  Shipyard; Shipyard disabled rather than unsandboxed when the socket is absent.
+- **Q3 Multi-user shape:** one shared instance, shared crew, shared models, several user logins so
+  everything is tracked per user.
+- **Q4 Who pays:** owner sets instance-wide provider keys; usage metered per user with optional
+  per-user caps. Per-user keys deferred.
+- **Q5 Chat surfaces:** web app first; Discord in phase 3 with a channel per crew member and
+  distinct names and avatars per crew member.
+- **Q6 Subscriptions:** compliant routes only (official Claude Code CLI, Sign in with ChatGPT).
+  Users sign in once; refresh tokens renew silently, no re-login every few hours.
+- **Q7 MCP:** the most common servers are core and bundled; everything else is in the catalog.
+- **Q8 Names:** Captain is the default coordinator name and can be changed. Bridge, Shipyard,
+  Watches (routines) and crew manifest adopted.
+- **Q9 License:** PolyForm Noncommercial 1.0.0. Not OSI open source; describe as
+  "source-available, free for noncommercial use". A company self-hosting internally counts as
+  commercial, so commercial licenses can be sold later. Contributors sign a CLA to keep that
+  possible. Dependencies (pi is MIT, MCP servers vary) keep their own licenses.

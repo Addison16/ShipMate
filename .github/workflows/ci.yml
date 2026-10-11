@@ -1,0 +1,41 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env: { POSTGRES_USER: shipmate, POSTGRES_PASSWORD: shipmate, POSTGRES_DB: shipmate }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U shipmate" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgres://shipmate:shipmate@localhost:5432/shipmate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build          # builds packages in dependency order; also typechecks
+      - run: pnpm lint
+      - run: pnpm test
+      - name: Migrations apply cleanly
+        run: pnpm db:migrate
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          tags: shipmate:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

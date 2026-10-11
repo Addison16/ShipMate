@@ -1,0 +1,27 @@
+{
+  "name": "shipmate",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Self-hosted crew of AI bots for everyday life and work, captained by one coordinator. Built on the pi agent harness.",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm -r --filter \"./packages/*\" build && pnpm -r --parallel --filter \"./apps/*\" dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "db:generate": "pnpm --filter @shipmate/db generate",
+    "db:migrate": "pnpm --filter @shipmate/db migrate",
+    "check": "pnpm build && pnpm lint && pnpm test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}

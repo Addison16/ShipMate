@@ -107,7 +107,7 @@ function StatusCard({
             target="_blank"
             rel="noreferrer noopener"
             className={cx(
-              "inline-flex items-center rounded-md bg-teal-700 px-3.5 py-2 text-sm font-medium text-white hover:bg-teal-800 dark:bg-teal-600 dark:hover:bg-teal-500",
+              "inline-flex items-center rounded-md bg-accent-700 px-3.5 py-2 text-sm font-medium text-white hover:bg-accent-800 dark:bg-accent-600 dark:hover:bg-accent-500",
               focusRing,
             )}
           >
@@ -128,7 +128,7 @@ function SetupSteps() {
           href="https://discord.com/developers/applications"
           target="_blank"
           rel="noreferrer noopener"
-          className="font-medium text-teal-800 underline underline-offset-2 dark:text-teal-300"
+          className="font-medium text-accent-800 underline underline-offset-2 dark:text-accent-300"
         >
           discord.com/developers
         </a>
@@ -561,7 +561,7 @@ function LinkAccountCard({ configured }: { configured: boolean }) {
         <div className="space-y-3">
           {!configured && <Muted>Discord is not set up on this instance yet.</Muted>}
           {code && live ? (
-            <div className="space-y-2 rounded-md border border-teal-200 bg-teal-50 p-3 dark:border-teal-900 dark:bg-teal-950/50">
+            <div className="space-y-2 rounded-md border border-accent-200 bg-accent-50 p-3 dark:border-accent-900 dark:bg-accent-950/50">
               <p className="text-sm">
                 Your code:{" "}
                 <code className="rounded bg-white px-2 py-0.5 font-mono text-lg font-semibold tracking-widest dark:bg-slate-900">

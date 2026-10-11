@@ -118,7 +118,7 @@ function OidcSettingsCard() {
                 type="checkbox"
                 checked={clearSecret}
                 onChange={(e) => setClearSecret(e.target.checked)}
-                className="size-4 accent-teal-700"
+                className="size-4 accent-accent-700"
               />
               Remove the stored client secret
             </label>
@@ -135,7 +135,7 @@ function OidcSettingsCard() {
               type="checkbox"
               checked={allowSignup}
               onChange={(e) => setAllowSignup(e.target.checked)}
-              className="size-4 accent-teal-700"
+              className="size-4 accent-accent-700"
             />
             Create a member account on first sign-in
           </label>
@@ -153,7 +153,7 @@ function OidcSettingsCard() {
               type="checkbox"
               checked={enabled}
               onChange={(e) => setEnabled(e.target.checked)}
-              className="size-4 accent-teal-700"
+              className="size-4 accent-accent-700"
             />
             Show the single sign-on button on the login page
           </label>

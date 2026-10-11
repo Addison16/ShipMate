@@ -95,6 +95,31 @@ describe.skipIf(!db)("Shipmate server", () => {
     expect(bad.statusCode).toBe(401);
   });
 
+  it("keeps appearance preferences per user", async () => {
+    const before = (await api("GET", "/api/auth/me")).json().user;
+    expect(before.preferences).toEqual({ themeMode: "auto", colorTheme: "harbor" });
+    expect(
+      (await api("PATCH", "/api/auth/preferences", { themeMode: "dark" }, "")).statusCode,
+    ).toBe(401);
+    const res = await api("PATCH", "/api/auth/preferences", { themeMode: "dark" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().user.preferences).toEqual({ themeMode: "dark", colorTheme: "harbor" });
+    const both = await api("PATCH", "/api/auth/preferences", { colorTheme: "coral-reef" });
+    expect(both.json().user.preferences).toEqual({ themeMode: "dark", colorTheme: "coral-reef" });
+    expect((await api("PATCH", "/api/auth/preferences", { colorTheme: "plaid" })).statusCode).toBe(
+      400,
+    );
+    // Another user's preferences are untouched.
+    const login = await api(
+      "POST",
+      "/api/auth/login",
+      { email: "kid@example.com", password: "password1" },
+      "",
+    );
+    const kid = (await api("GET", "/api/auth/me", undefined, cookieOf(login))).json().user;
+    expect(kid.preferences).toEqual({ themeMode: "auto", colorTheme: "harbor" });
+  });
+
   it("stores provider keys encrypted and never returns them", async () => {
     const res = await api("POST", "/api/providers", { kind: "anthropic", apiKey: "sk-ant-secret" });
     expect(res.statusCode).toBe(200);

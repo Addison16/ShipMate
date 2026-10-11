@@ -1,4 +1,4 @@
-import type { MeResponse } from "@shipmate/core";
+import { ColorTheme, type MeResponse, parseUserPreferences, ThemeMode } from "@shipmate/core";
 import { users } from "@shipmate/db";
 import { eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
@@ -56,6 +56,22 @@ export async function authRoutes(app: FastifyInstance, s: Services) {
       throw new HttpError(401, "wrong email or password");
     }
     await s.sessions.start(reply, user.id);
+    return { user: toUserDto(user) };
+  });
+
+  /** Appearance settings belong to the signed-in user; anyone can change their own. */
+  app.patch("/api/auth/preferences", async (req) => {
+    const body = z
+      .object({ themeMode: ThemeMode.optional(), colorTheme: ColorTheme.optional() })
+      .strict()
+      .parse(req.body);
+    const preferences = { ...parseUserPreferences(req.user.preferences), ...body };
+    const [user] = await s.db
+      .update(users)
+      .set({ preferences })
+      .where(eq(users.id, req.user.id))
+      .returning();
+    if (!user) throw new HttpError(404, "user not found");
     return { user: toUserDto(user) };
   });
 

@@ -160,7 +160,7 @@ function DailyChart({ daily }: { daily: UsageResponse["daily"] }) {
                 >
                   <div
                     className={cx(
-                      "w-full rounded-t-sm bg-teal-600 group-hover:bg-teal-500 dark:bg-teal-500 dark:group-hover:bg-teal-400",
+                      "w-full rounded-t-sm bg-accent-600 group-hover:bg-accent-500 dark:bg-accent-500 dark:group-hover:bg-accent-400",
                       b.costMicroUsd > 0 && "min-h-px",
                     )}
                     style={{ height: `${b.height * 100}%` }}
@@ -279,7 +279,7 @@ export function UsagePage() {
                     "rounded px-3 py-1.5 text-sm font-medium",
                     focusRing,
                     scope === s
-                      ? "bg-teal-700 text-white dark:bg-teal-600"
+                      ? "bg-accent-700 text-white dark:bg-accent-600"
                       : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
                   )}
                 >
@@ -378,7 +378,7 @@ export function UsagePage() {
                       <a
                         href={href(`/watches/${w.watchId}`)}
                         className={cx(
-                          "rounded text-teal-800 hover:underline dark:text-teal-300",
+                          "rounded text-accent-800 hover:underline dark:text-accent-300",
                           focusRing,
                         )}
                       >

@@ -4,6 +4,15 @@ All notable changes to Shipmate. Versions follow [semver](https://semver.org); e
 published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:<major>` and
 `:latest`). Database migrations run on boot, so upgrading is pulling the new image.
 
+## Unreleased
+
+- **Light, Dark and Auto** appearance per user, saved to the account so it follows you to every
+  device. Auto follows the device and switches live. Pick it in Settings or from the sidebar.
+- **Color themes** with a nautical feel: Harbor (teal, the default), Open Sea, Coral Reef,
+  Lighthouse, Kelp Forest and Admiral.
+- Navigation icons, a filled highlight for the current page, and colored avatars for crew
+  members on the Crew page and in chat.
+
 ## 1.0.0 — 2026-10-11
 
 The first stable release. Phases 0 to 5 of [the build plan](docs/BUILD_PLAN.md) are done.

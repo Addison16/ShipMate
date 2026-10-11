@@ -56,7 +56,7 @@ export function Toasts() {
                 href={href(t.link)}
                 onClick={() => dismiss(t.id)}
                 className={cx(
-                  "mt-1 inline-block rounded text-xs font-medium text-teal-700 underline underline-offset-2 dark:text-teal-300",
+                  "mt-1 inline-block rounded text-xs font-medium text-accent-700 underline underline-offset-2 dark:text-accent-300",
                   focusRing,
                 )}
               >

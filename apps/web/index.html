@@ -15,6 +15,20 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="/icons/favicon-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <script>
+      // Apply the saved appearance before the first paint (see src/lib/theme.ts).
+      (() => {
+        try {
+          const p = JSON.parse(localStorage.getItem("shipmate-appearance") || "{}");
+          const root = document.documentElement;
+          const systemDark = matchMedia("(prefers-color-scheme: dark)").matches;
+          if (p.themeMode === "dark" || (p.themeMode !== "light" && systemDark)) {
+            root.classList.add("dark");
+          }
+          if (typeof p.colorTheme === "string") root.dataset.colorTheme = p.colorTheme;
+        } catch {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

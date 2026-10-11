@@ -33,7 +33,7 @@ function renderInline(nodes: Inline[]): ReactNode[] {
             href={n.href}
             target="_blank"
             rel="noopener noreferrer nofollow"
-            className="text-teal-700 underline underline-offset-2 hover:text-teal-900 dark:text-teal-300 dark:hover:text-teal-200"
+            className="text-accent-700 underline underline-offset-2 hover:text-accent-900 dark:text-accent-300 dark:hover:text-accent-200"
           >
             {renderInline(n.children)}
           </a>

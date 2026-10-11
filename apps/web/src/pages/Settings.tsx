@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { useAuth, useUser } from "../auth.js";
+import { AppearanceSettings } from "../components/AppearanceSettings.js";
 import { BackupSettings } from "../components/BackupSettings.js";
 import { ModelSelect } from "../components/ModelSelect.js";
 import { OidcSettings } from "../components/OidcSettings.js";
@@ -18,6 +19,7 @@ export function SettingsPage() {
     <Page>
       <PageHeader title="Settings" />
       <div className="space-y-6">
+        <AppearanceSettings />
         <InstanceSettings />
         <OidcSettings />
         <BackupSettings />

@@ -34,6 +34,8 @@ export const users = pgTable("users", {
   telegramUserId: text("telegram_user_id").unique(),
   /** Linked Slack account in the connected workspace (phase 5). */
   slackUserId: text("slack_user_id").unique(),
+  /** Web app appearance (theme mode, color theme); parsed with UserPreferences. */
+  preferences: jsonb("preferences").notNull().default({}),
   createdAt: createdAt(),
 });
 

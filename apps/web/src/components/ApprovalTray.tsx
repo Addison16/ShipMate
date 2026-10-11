@@ -103,7 +103,7 @@ export function ApprovalTray({ variant }: { variant: "sidebar" | "topbar" }) {
                     <span className="block truncate text-xs text-slate-600 dark:text-slate-300">
                       {a.summary}
                     </span>
-                    <span className="block text-xs text-teal-700 dark:text-teal-300">
+                    <span className="block text-xs text-accent-700 dark:text-accent-300">
                       {a.conversationId ? "Open conversation" : "Open watch"}
                     </span>
                   </button>

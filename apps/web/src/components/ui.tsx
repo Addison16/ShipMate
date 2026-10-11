@@ -15,7 +15,7 @@ type Variant = "primary" | "secondary" | "danger" | "ghost";
 
 const variants: Record<Variant, string> = {
   primary:
-    "bg-teal-700 text-white hover:bg-teal-800 disabled:bg-teal-700/50 dark:bg-teal-600 dark:hover:bg-teal-500",
+    "bg-accent-700 text-white hover:bg-accent-800 disabled:bg-accent-700/50 dark:bg-accent-600 dark:hover:bg-accent-500",
   secondary:
     "border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700",
   danger:
@@ -24,7 +24,7 @@ const variants: Record<Variant, string> = {
 };
 
 export const focusRing =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 dark:focus-visible:outline-teal-400";
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-600 dark:focus-visible:outline-accent-400";
 
 export function Button({
   variant = "secondary",
@@ -137,7 +137,7 @@ export function Card({ children, className }: { children: ReactNode; className?:
 type Tone = "neutral" | "accent" | "warn" | "danger" | "ok";
 const tones: Record<Tone, string> = {
   neutral: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-  accent: "bg-teal-100 text-teal-800 dark:bg-teal-900/60 dark:text-teal-200",
+  accent: "bg-accent-100 text-accent-800 dark:bg-accent-900/60 dark:text-accent-200",
   warn: "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200",
   danger: "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200",
   ok: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200",
@@ -170,7 +170,7 @@ export function ErrorText({ children }: { children: ReactNode }) {
 
 export function Notice({ children }: { children: ReactNode }) {
   return (
-    <p className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-900 dark:border-teal-900 dark:bg-teal-950/50 dark:text-teal-100">
+    <p className="rounded-md border border-accent-200 bg-accent-50 px-3 py-2 text-sm text-accent-900 dark:border-accent-900 dark:bg-accent-950/50 dark:text-accent-100">
       {children}
     </p>
   );

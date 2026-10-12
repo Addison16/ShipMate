@@ -10,6 +10,7 @@ import {
   type ConversationDto,
   type ConversationSearchResultDto,
   type CrewManifest,
+  DEFAULT_MODEL,
   type MessageDto,
   SEARCH_MARK,
   type ServerEvent,
@@ -26,6 +27,7 @@ import {
   captainTools,
   createCrewSession,
   crewTools,
+  gateToolCall,
   MemoryStore,
   memoryTools,
   skillTools,
@@ -35,6 +37,7 @@ import { conversations, crewMembers, type Db, messages, users, watches } from "@
 import { and, asc, desc, eq, ilike, inArray, sql } from "drizzle-orm";
 import { HttpError, type UserRow } from "./auth.js";
 import { ClaudeCliTurns } from "./claude-cli-turn.js";
+import { CliToolServer } from "./cli-mcp.js";
 import type { EverydayTools } from "./everyday.js";
 import type { AttachmentService } from "./files/service.js";
 import { toDto as toAttachmentDto } from "./files/service.js";
@@ -141,6 +144,8 @@ export class Bridge {
   #everyday: EverydayTools | undefined;
   /** Turns of `backend: claude-code-cli` crew members (the official `claude` binary). */
   #cli: ClaudeCliTurns;
+  /** Shipmate's tools for those turns, served over loopback MCP. */
+  readonly cliTools = new CliToolServer();
 
   constructor(private readonly deps: BridgeDeps) {
     this.#cli = new ClaudeCliTurns(deps.db);
@@ -564,40 +569,6 @@ export class Bridge {
     let stream = this.#openStream(user.id, conv.id, crew);
     let final = "";
 
-    if (folder.manifest.backend === "claude-code-cli" && options.consultFor) {
-      await this.#closeStream(conv, crewRow.id, stream);
-      return `${folder.manifest.name} runs on the Claude Code CLI and cannot answer crew questions mid-task. Use your best judgment, say what you assumed, and check with the person if it matters.`;
-    }
-    if (folder.manifest.backend === "claude-code-cli") {
-      if (options.images?.length) {
-        await this.#note(
-          conv,
-          `${crew.name} runs on the Claude Code CLI, which Shipmate cannot pass photos to, so ${crew.name} only gets their names. Ask the ${this.deps.crew.captain().manifest.name} on the Bridge to look at them instead.`,
-        );
-        prompt = `${prompt}\n\n(${user.displayName} attached photos you cannot see: ${(options.imageNames ?? []).join(", ")}.)`;
-      }
-      try {
-        return await this.#cli.turn({
-          user,
-          conv,
-          folder,
-          prompt,
-          stream,
-          usage: {
-            userId: user.id,
-            crewMemberId: crewRow.id,
-            conversationId: conv.id,
-            routineId: options.watchId ?? null,
-          },
-          emit: (event) => this.emit(user.id, event),
-          record: (...args) => this.#recordUsage(run, ...args),
-        });
-      } finally {
-        await this.#closeStream(conv, crewRow.id, stream);
-        await Promise.all(run.writes);
-      }
-    }
-
     const host: CaptainHost = {
       listCrew: () => this.#roster(user),
       recruit: (spec) => this.#recruit(user, spec),
@@ -750,6 +721,55 @@ export class Bridge {
         }
       },
     };
+
+    if (folder.manifest.backend === "claude-code-cli") {
+      if (options.images?.length) {
+        await this.#note(
+          conv,
+          `${crew.name} runs on the Claude Code CLI, which Shipmate cannot pass photos to, so ${crew.name} only gets their names. Ask the ${this.deps.crew.captain().manifest.name} on the Bridge to look at them instead.`,
+        );
+        prompt = `${prompt}\n\n(${user.displayName} attached photos you cannot see: ${(options.imageNames ?? []).join(", ")}.)`;
+      }
+      const isCaptain = folder.manifest.captain && conv.kind === "bridge" && !options.consultFor;
+      // A consult is a one-off answer without tools, like the pi Captain's consult session.
+      const allowed = new Set(folder.manifest.allow);
+      const grant = options.consultFor
+        ? undefined
+        : this.cliTools.open({
+            tools: this.#cliTools(user, folder, { captain: host, crew: crewHost }, isCaptain),
+            gate: (call) =>
+              gateToolCall({ approval: folder.manifest.approval, allowed }, approvals, call),
+          });
+      const context = options.consultFor
+        ? [
+            `## Answering the crew\n\nIn this session you only answer a question from ${options.consultFor.name}, who is mid-task. You cannot delegate or change the crew here; if the answer needs that, say so and ${user.displayName} or you can do it on the Bridge.`,
+          ]
+        : await this.#crewContext(user, folder, isCaptain, grant !== undefined);
+      try {
+        return await this.#cli.turn({
+          user,
+          conv,
+          folder,
+          prompt,
+          stream: () => stream,
+          usage: {
+            userId: user.id,
+            crewMemberId: crewRow.id,
+            conversationId: conv.id,
+            routineId: options.watchId ?? null,
+          },
+          emit: (event) => this.emit(user.id, event),
+          record: (...args) => this.#recordUsage(run, ...args),
+          ...(grant ? { mcpConfig: grant.mcpConfig } : {}),
+          context,
+          oneOff: options.consultFor !== undefined,
+        });
+      } finally {
+        grant?.revoke();
+        await this.#closeStream(conv, crewRow.id, stream);
+        await Promise.all(run.writes);
+      }
+    }
 
     const session = await this.#session(
       user,
@@ -1150,6 +1170,20 @@ export class Bridge {
       "",
       memory.contextFor(user.id),
     ];
+    parts.push(...(await this.#crewContext(user, folder, isCaptain, true)).flatMap((p) => ["", p]));
+    if (skippedMcp.length) {
+      parts.push("", `MCP servers not started (missing setup): ${skippedMcp.join(", ")}.`);
+    }
+    return parts.join("\n");
+  }
+
+  /** The Captain's crew roster, or a crew member's note on asking the Captain. */
+  async #crewContext(
+    user: UserRow,
+    folder: CrewFolder,
+    isCaptain: boolean,
+    hasTools: boolean,
+  ): Promise<string[]> {
     if (isCaptain) {
       const roster = (await this.#roster(user))
         .filter((c) => !c.captain && c.status !== "retired")
@@ -1157,18 +1191,50 @@ export class Bridge {
           (c) =>
             `- ${c.slug}: ${c.name}, ${c.role}${c.status === "pending_review" ? " (awaiting review)" : ""}`,
         );
-      parts.push("", "## Crew aboard", "", roster.join("\n") || "(only you so far)");
-    } else if (!folder.manifest.captain) {
-      const captain = this.deps.crew.captain().manifest.name;
-      parts.push(
-        "",
-        `${captain} coordinates the crew. When you are unsure what ${user.displayName} wants, what to do next, or whether something is your job, ask ${captain} with \`ask_captain\` instead of guessing.`,
-      );
+      const out = [`## Crew aboard\n\n${roster.join("\n") || "(only you so far)"}`];
+      if (folder.manifest.backend === "claude-code-cli") {
+        out.push(
+          hasTools
+            ? `## Coordinating\n\nYou coordinate this crew. When ${user.displayName}'s message is work that fits a crew member's role, hand it to them with the \`delegate\` tool (crew slug plus the task with all the context they need, since they cannot see this conversation), then add only what ${user.displayName} needs next. Answer yourself when no one fits or it is quick.`
+            : "## Coordinating\n\nShipmate's crew tools are not reachable from this session, so you cannot hand work to the crew right now; answer yourself and say who would normally take it.",
+        );
+      }
+      return out;
     }
-    if (skippedMcp.length) {
-      parts.push("", `MCP servers not started (missing setup): ${skippedMcp.join(", ")}.`);
-    }
-    return parts.join("\n");
+    if (folder.manifest.captain || !hasTools) return [];
+    const captain = this.deps.crew.captain().manifest.name;
+    return [
+      `${captain} coordinates the crew. When you are unsure what ${user.displayName} wants, what to do next, or whether something is your job, ask ${captain} with \`ask_captain\` instead of guessing.`,
+    ];
+  }
+
+  /** Shipmate's tools for a turn on the Claude Code CLI, served to it over MCP (cli-mcp.ts). */
+  #cliTools(
+    user: UserRow,
+    folder: CrewFolder,
+    hosts: { captain: CaptainHost; crew: CrewHost },
+    isCaptain: boolean,
+  ): ToolDefinition[] {
+    const acting: ActingUser = { id: user.id, displayName: user.displayName, role: user.role };
+    const skills = this.deps.skills;
+    return [
+      ...memoryTools(new MemoryStore(folder.dir), acting),
+      ...skillTools({
+        createSkill: async ({ scope, content }) =>
+          skills.createByCrew(
+            folder.slug,
+            user.id,
+            scope,
+            content,
+            this.deps.crew.folder(folder.slug).manifest.autoApproveSkills,
+          ),
+      }),
+      ...(isCaptain ? captainTools(hosts.captain, acting) : []),
+      ...(folder.manifest.captain
+        ? []
+        : crewTools(hosts.crew, this.deps.crew.captain().manifest.name)),
+      ...(this.#everyday?.tools(user, folder) ?? []),
+    ];
   }
 
   async #roster(user: UserRow): Promise<CrewSummary[]> {
@@ -1183,13 +1249,12 @@ export class Bridge {
   }
 
   async #recruit(user: UserRow, spec: Parameters<CaptainHost["recruit"]>[0]) {
-    const settings = await this.deps.settings.get();
     const d = await this.deps.crew.create({
       slug: spec.slug,
       manifest: {
         name: spec.name,
         role: spec.role,
-        model: spec.model ?? settings.defaultModel,
+        model: spec.model ?? DEFAULT_MODEL,
         tools: spec.tools ?? ["read", "write", "edit"],
         mcp: spec.mcp ?? [],
       },

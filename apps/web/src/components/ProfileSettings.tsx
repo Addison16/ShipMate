@@ -2,9 +2,10 @@ import type { HouseholdDto, ProfileDto } from "@shipmate/core";
 import { type FormEvent, useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { isAdmin, useUser } from "../auth.js";
+import { USE_CHOICES } from "../lib/onboarding.js";
 import { browserTimeZone } from "../lib/starters.js";
 import { useResource } from "../lib/useResource.js";
-import { Button, Card, ErrorText, Muted, TextAreaField, TextField } from "./ui.js";
+import { Button, Card, ErrorText, Muted, SelectField, TextAreaField, TextField } from "./ui.js";
 
 function Saved({ show }: { show: boolean }) {
   return show ? (
@@ -167,6 +168,7 @@ function Household({ initial }: { initial: HouseholdDto }) {
     setError(null);
     try {
       const { household } = await api.updateHousehold({
+        use: h.use,
         location: h.location,
         timezone: h.timezone.trim(),
         notes: h.notes,
@@ -188,6 +190,21 @@ function Household({ initial }: { initial: HouseholdDto }) {
         {canEdit ? "Everyone can read them." : "Only owners and admins can change them."}
       </p>
       <form onSubmit={save} className="space-y-4">
+        <SelectField
+          label="Shipmate is for"
+          className="max-w-sm"
+          hint="Tells the crew what kind of help to expect."
+          disabled={!canEdit}
+          value={h.use}
+          onChange={(e) => set("use", e.target.value as HouseholdDto["use"])}
+        >
+          <option value="">Not set</option>
+          {USE_CHOICES.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.title}
+            </option>
+          ))}
+        </SelectField>
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField
             label="Home location"

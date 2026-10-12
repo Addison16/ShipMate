@@ -61,35 +61,49 @@ export function approvalExtension(options: {
   host: () => ApprovalHost;
 }): ExtensionFactory {
   const allowed = new Set(options.manifest.allow);
-  const policy = options.manifest.approval;
   return (pi) => {
-    pi.on("tool_call", async (event) => {
-      const call = { toolName: event.toolName, input: event.input as Record<string, unknown> };
-      const host = options.host();
-      if (typeof policy === "object" && matches(policy["never-for"], call.toolName)) {
-        host.audit({ ...call, decision: "blocked" });
-        return { block: true, reason: `${call.toolName} is never allowed for this crew member.` };
-      }
-      const ask =
-        policy === "ask" && isConsequential(call.toolName) && !matches([...allowed], call.toolName);
-      if (!ask) {
-        host.audit({ ...call, decision: "auto" });
-        return undefined;
-      }
-      const answer = await host.request(call);
-      if (answer === "deny") {
-        host.audit({ ...call, decision: "denied" });
-        return {
-          block: true,
-          reason: "The person declined this action. Ask what they would like instead.",
-        };
-      }
-      if (answer === "always") {
-        allowed.add(call.toolName);
-        await host.remember(call.toolName);
-      }
-      host.audit({ ...call, decision: answer === "always" ? "always" : "approved" });
-      return undefined;
-    });
+    pi.on("tool_call", async (event) =>
+      gateToolCall({ approval: options.manifest.approval, allowed }, options.host(), {
+        toolName: event.toolName,
+        input: event.input as Record<string, unknown>,
+      }),
+    );
   };
+}
+
+/**
+ * One tool call through the approval policy: audits it, asks the person when the policy says
+ * so, and returns why it is blocked (or undefined to let it run). `allowed` grows when the
+ * person picks "always allow". Also used for Shipmate's tools on the Claude Code CLI backend.
+ */
+export async function gateToolCall(
+  policy: { approval: CrewManifest["approval"]; allowed: Set<string> },
+  host: ApprovalHost,
+  call: { toolName: string; input: Record<string, unknown> },
+): Promise<{ block: true; reason: string } | undefined> {
+  const { approval, allowed } = policy;
+  if (typeof approval === "object" && matches(approval["never-for"], call.toolName)) {
+    host.audit({ ...call, decision: "blocked" });
+    return { block: true, reason: `${call.toolName} is never allowed for this crew member.` };
+  }
+  const ask =
+    approval === "ask" && isConsequential(call.toolName) && !matches([...allowed], call.toolName);
+  if (!ask) {
+    host.audit({ ...call, decision: "auto" });
+    return undefined;
+  }
+  const answer = await host.request(call);
+  if (answer === "deny") {
+    host.audit({ ...call, decision: "denied" });
+    return {
+      block: true,
+      reason: "The person declined this action. Ask what they would like instead.",
+    };
+  }
+  if (answer === "always") {
+    allowed.add(call.toolName);
+    await host.remember(call.toolName);
+  }
+  host.audit({ ...call, decision: answer === "always" ? "always" : "approved" });
+  return undefined;
 }

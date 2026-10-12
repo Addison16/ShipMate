@@ -21,7 +21,9 @@ import {
   TextAreaField,
   TextField,
 } from "../components/ui.js";
+import { claudeCliApi } from "../lib/claude-cli.js";
 import { formatTime } from "../lib/format.js";
+import { CREW_DEFAULT, modelLabel } from "../lib/models.js";
 import { useResource } from "../lib/useResource.js";
 import { href, navigate } from "../router.js";
 import { useServerEvents } from "../ws.js";
@@ -49,6 +51,7 @@ function CrewList() {
   const user = useUser();
   const [showRetired, setShowRetired] = useState(false);
   const crew = useResource(() => api.listCrew(showRetired).then((r) => r.crew), [showRetired]);
+  const settings = useResource(() => api.getSettings());
   useServerEvents((ev) => {
     if (ev.type === "crew_changed") void crew.reload();
   });
@@ -101,7 +104,7 @@ function CrewList() {
                   </div>
                   <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{c.role}</p>
                   <p className="mt-3 truncate font-mono text-xs text-slate-500 dark:text-slate-400">
-                    {c.model}
+                    {modelLabel(c.model, settings.data?.defaultModel)}
                   </p>
                 </div>
               </div>
@@ -124,21 +127,15 @@ function slugify(name: string): string {
 function NewCrew() {
   const user = useUser();
   const models = useResource(() => api.listModels().then((r) => r.models));
+  const settings = useResource(() => api.getSettings());
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
   const [role, setRole] = useState("");
-  const [model, setModel] = useState("");
+  const [model, setModel] = useState(CREW_DEFAULT);
   const [persona, setPersona] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (!model && models.data) {
-      const first = models.data.find((m) => m.available);
-      if (first) setModel(first.ref);
-    }
-  }, [models.data, model]);
 
   if (!isAdmin(user)) {
     return (
@@ -208,7 +205,12 @@ function NewCrew() {
             value={role}
             onChange={(e) => setRole(e.target.value)}
           />
-          <ModelSelect value={model} onChange={setModel} models={models.data} />
+          <ModelSelect
+            value={model}
+            onChange={setModel}
+            models={models.data}
+            crewDefault={settings.data?.defaultModel ?? ""}
+          />
           <TextAreaField
             label="Persona (CREW.md)"
             mono
@@ -293,6 +295,10 @@ function CrewDetail({ slug }: { slug: string }) {
   const user = useUser();
   const admin = isAdmin(user);
   const detail = useResource(() => api.getCrew(slug).then((r) => r.crew), [slug]);
+  const models = useResource(() => api.listModels().then((r) => r.models));
+  const settings = useResource(() => api.getSettings());
+  // Admins only; for others it fails quietly and the Claude subscription is not offered.
+  const cli = useResource(() => claudeCliApi.status().then((r) => r.claudeCli));
   const [tab, setTab] = useState<Tab>("persona");
   const [actionError, setActionError] = useState<string | null>(null);
   useServerEvents((ev) => {
@@ -350,7 +356,7 @@ function CrewDetail({ slug }: { slug: string }) {
                 </div>
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{crew.role}</p>
                 <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">
-                  {crew.slug} · {crew.model}
+                  {crew.slug} · {modelLabel(crew.model, settings.data?.defaultModel)}
                 </p>
               </div>
             </div>
@@ -372,7 +378,7 @@ function CrewDetail({ slug }: { slug: string }) {
             <div className="mb-4">
               <Notice>
                 This crew member is waiting for review (recruited by the coordinator, or imported).
-                Read the persona and manifest, then approve it to put it to work.
+                Read the persona and settings, then approve it to put it to work.
               </Notice>
             </div>
           )}
@@ -423,6 +429,9 @@ function CrewDetail({ slug }: { slug: string }) {
               <CrewSettings
                 key={crew.slug}
                 crew={crew}
+                models={models.data}
+                crewDefault={settings.data?.defaultModel ?? ""}
+                claudeCode={!!cli.data?.signedIn}
                 readOnly={!admin}
                 onSaved={detail.setData}
               />

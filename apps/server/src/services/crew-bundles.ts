@@ -5,7 +5,7 @@ import { isIP, type LookupFunction } from "node:net";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import type { CrewBundle, CrewDetailDto, CrewImportPreviewDto, CrewManifest } from "@shipmate/core";
-import { CREW_FILES, CrewSlug } from "@shipmate/core";
+import { CREW_FILES, CrewSlug, DEFAULT_MODEL } from "@shipmate/core";
 import { CrewValidationError, parseManifestYaml, parseSkill, SkillError } from "@shipmate/crew";
 import { loadCatalog } from "@shipmate/mcp-catalog";
 import { stringify as stringifyYaml } from "yaml";
@@ -163,7 +163,9 @@ export class CrewBundleService {
     const warnings: string[] = [];
 
     const available = await this.deps.providers.available();
-    const usable = available.some((m) => `${m.provider}/${m.id}` === manifest.model);
+    const usable =
+      manifest.model === DEFAULT_MODEL ||
+      available.some((m) => `${m.provider}/${m.id}` === manifest.model);
     const { defaultModel } = await this.deps.settings.get();
     const model = usable ? manifest.model : defaultModel;
 
@@ -233,7 +235,9 @@ export class CrewBundleService {
       throw new HttpError(409, `a crew member called "${slug}" already exists; pick another slug`);
     }
     const available = await this.deps.providers.available();
-    const usable = available.some((m) => `${m.provider}/${m.id}` === manifest.model);
+    const usable =
+      manifest.model === DEFAULT_MODEL ||
+      available.some((m) => `${m.provider}/${m.id}` === manifest.model);
     const { defaultModel } = await this.deps.settings.get();
     const created = await this.deps.crew.create({
       slug,

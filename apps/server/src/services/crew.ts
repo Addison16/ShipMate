@@ -6,6 +6,7 @@ import {
   type CrewDto,
   type CrewManifest,
   type CrewStatus,
+  DEFAULT_MODEL,
 } from "@shipmate/core";
 import {
   CAPTAIN_SLUG,
@@ -191,6 +192,25 @@ export class CrewService {
     return this.detail(slug);
   }
 
+  /**
+   * Point every crew member on Shipmate's own backend at the crew default (`model: default`), so
+   * changing the default in Settings moves them all. Claude Code crew pick their model in the
+   * CLI and are left alone. Returns the slugs that changed.
+   */
+  async useDefaultModel(): Promise<string[]> {
+    const changed: string[] = [];
+    for (const folder of this.registry.list()) {
+      const m = folder.manifest;
+      if (m.backend === "claude-code-cli" || m.model === DEFAULT_MODEL) continue;
+      await this.#mirror(
+        this.#validated(() => this.registry.patchManifest(folder.slug, { model: DEFAULT_MODEL })),
+      );
+      changed.push(folder.slug);
+    }
+    if (changed.length) this.#changed();
+    return changed;
+  }
+
   async patch(slug: string, changes: Partial<CrewManifest>, persona?: string) {
     let folder = this.#validated(() => this.registry.patchManifest(slug, changes));
     if (persona !== undefined) folder = this.registry.update(slug, { persona });
@@ -269,6 +289,7 @@ function toDto(folder: CrewFolder, row: CrewRow): CrewDto {
     role: m.role,
     model: m.model,
     captain: m.captain,
+    backend: m.backend,
     visibility: m.visibility,
     status,
     tools: m.tools,

@@ -1,4 +1,5 @@
-blurb: Explains, quizzes and coaches homework, picking up where the last session ended.
+blurb: Explains, quizzes and coaches homework or a new skill, picking up where you left off.
+uses: [home, work]
 watch:
   name: Weekly review quiz
   cron: "0 16 * * 5"

@@ -1,0 +1,10 @@
+blurb: Keeps your to-do list, drafts emails and documents, and preps you for meetings.
+uses: [work]
+watch:
+  name: Morning agenda
+  cron: "30 7 * * 1-5"
+  prompt: |
+    Put together today's work agenda: the meetings on the calendar (if the calendar is
+    connected) in time order, and the open items on the to-do list, most urgent first. Flag
+    anything due today or overdue and any meeting that needs preparation. If neither the
+    calendar nor a to-do list is set up yet, say how to start in one sentence.

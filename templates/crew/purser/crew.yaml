@@ -1,6 +1,6 @@
 name: Purser
 role: money; keeps the bills list, tracks due dates and helps with the household budget
-model: anthropic/claude-sonnet-5-5
+model: default
 tools: [read, write, edit]
 mcp: [time]
 skills: []

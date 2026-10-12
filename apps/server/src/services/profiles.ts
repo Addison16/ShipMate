@@ -5,6 +5,7 @@ import {
   type ProfileDto,
   parseHouseholdFacts,
   parsePersonProfile,
+  SHIPMATE_USES,
 } from "@shipmate/core";
 import { type Db, userProfiles, users } from "@shipmate/db";
 import { eq } from "drizzle-orm";
@@ -35,6 +36,7 @@ export const UpdateProfileSchema = z
 
 export const UpdateHouseholdSchema = z
   .object({
+    use: z.enum(["", ...SHIPMATE_USES]),
     location: z.string().trim().max(200),
     timezone: TimeZone,
     notes: z.string().trim().max(4000),
@@ -146,13 +148,20 @@ export function profileLines(p: PersonProfile, max = Number.POSITIVE_INFINITY): 
   });
 }
 
+const USE_LABELS = {
+  home: "home life (family, meals, bills, plans)",
+  work: "work (tasks, email, meetings, research)",
+  both: "both home life and work",
+} as const;
+
 /** Household facts as lines; empty when nothing is set. */
 export function householdLines(h: HouseholdFacts, max = Number.POSITIVE_INFINITY): string[] {
   const out: string[] = [];
+  if (h.use) out.push(`- Used for: ${USE_LABELS[h.use]}`);
   const home = [h.location.trim(), h.timezone.trim() ? `(${h.timezone.trim()})` : ""]
     .filter(Boolean)
     .join(" ");
-  if (home) out.push(`- Home: ${home}`);
+  if (home) out.push(`- ${h.use === "work" ? "Based in" : "Home"}: ${home}`);
   const notes = h.notes.trim();
   if (notes) {
     out.push(notes.length > max ? `${notes.slice(0, max)}… (read_profiles for the rest)` : notes);

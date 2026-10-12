@@ -170,6 +170,9 @@ export const api = {
     request<{ crew: CrewDetailDto }>("PUT", `/api/crew/${enc(slug)}`, body),
   approveCrew: (slug: string) =>
     request<{ crew: CrewDetailDto }>("POST", `/api/crew/${enc(slug)}/approve`),
+  /** Point every crew member (except Claude Code ones) at the crew default model. */
+  moveCrewToDefaultModel: () =>
+    request<{ changed: string[] }>("POST", "/api/crew/use-default-model"),
   retireCrew: (slug: string) => request<Ok>("DELETE", `/api/crew/${enc(slug)}`),
   crewMemory: (slug: string) =>
     request<{ shared: MemoryEntryDto[]; mine: MemoryEntryDto[] }>(

@@ -8,7 +8,9 @@ recruits the rest from these templates or from scratch.
 
 Folders with a `starter.yaml` are **starter crew packs**, offered during first-run setup and
 under **Crew → Add starter crew**: Galley (meals and groceries), Purser (bills), Navigator
-(calendar, travel, weather), Tutor and Health Log. `starter.yaml` holds a one-line `blurb` and
+(calendar, travel, weather), Tutor, Health Log, Yeoman (to-dos, email drafts, meeting prep) and
+Lookout (research). `starter.yaml` holds a one-line `blurb`, `uses` (`home`, `work` or both; the
+setup guide suggests the ones that match what the owner said Shipmate is for) and
 an optional `watch` (`name`, `cron`, `prompt`) that is created paused for the person who adds the
 crew member. It is not copied into the crew folder. Installed starter crew get the instance's
 default model instead of the one in their `crew.yaml`, and may only list MCP servers from

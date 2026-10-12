@@ -17,14 +17,14 @@ describe("parseOnboarding", () => {
 
   it("is pending until completedAt is set and repairs bad values", () => {
     expect(parseOnboarding(freshOnboarding())).toEqual({
-      step: "model",
+      step: "purpose",
       done: ["account"],
       skipped: [],
       completedAt: null,
       pending: true,
     });
     expect(parseOnboarding({ step: "nowhere", done: "x", completedAt: null })).toMatchObject({
-      step: "model",
+      step: "purpose",
       done: [],
       pending: true,
     });
@@ -53,7 +53,7 @@ describe("applyOnboardingUpdate", () => {
   });
 
   it("never goes back to the account step", () => {
-    expect(applyOnboardingUpdate(freshOnboarding(), { step: "account" }).step).toBe("model");
+    expect(applyOnboardingUpdate(freshOnboarding(), { step: "account" }).step).toBe("purpose");
   });
 
   it("finishes and restarts", () => {

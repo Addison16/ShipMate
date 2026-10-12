@@ -226,7 +226,7 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
               projectNames={projectNames}
             />
           ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
+            <div className="min-h-0 flex-1 overflow-y-auto p-2 md:pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
               {conversations.error && <ErrorText>{conversations.error}</ErrorText>}
               {conversations.data?.length === 0 && (
                 <p className="p-3 text-sm text-slate-500 dark:text-slate-400">
@@ -936,7 +936,7 @@ function SearchResults({
 }) {
   return (
     <div
-      className="min-h-0 flex-1 overflow-y-auto p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]"
+      className="min-h-0 flex-1 overflow-y-auto p-2 md:pb-[calc(0.5rem+env(safe-area-inset-bottom))]"
       aria-live="polite"
     >
       <div className="flex items-center justify-between px-3 py-1 text-xs text-slate-500 dark:text-slate-400">

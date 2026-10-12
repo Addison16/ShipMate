@@ -15,8 +15,9 @@ import { useApprovals } from "../approvals.js";
 import { useUser } from "../auth.js";
 import { ApprovalCard } from "../components/ApprovalCard.js";
 import { AttachButtons, PendingFiles, useComposerFiles } from "../components/Attachments.js";
+import { NavIcon } from "../components/icons.js";
 import { TimelineView } from "../components/Timeline.js";
-import { Badge, Button, cx, ErrorText, focusRing } from "../components/ui.js";
+import { Badge, Button, cx, ErrorText, focusRing, IconButton } from "../components/ui.js";
 import { MicButton, speaker, useHandsFree, useVoiceStatus } from "../components/Voice.js";
 import { formatTime } from "../lib/format.js";
 import { splitHighlights } from "../lib/search.js";
@@ -226,31 +227,24 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
                   <li key={c.id}>
                     {c.pinned && i === 0 && <ListLabel>Pinned</ListLabel>}
                     {!c.pinned && i > 0 && all[i - 1]?.pinned && <ListLabel>Recent</ListLabel>}
-                    <a
-                      href={href(`/bridge/${c.id}`)}
-                      aria-current={c.id === conversationId ? "page" : undefined}
-                      className={cx(
-                        "block rounded-md px-3 py-2",
-                        focusRing,
-                        c.id === conversationId
-                          ? "bg-accent-700/10 dark:bg-accent-400/10"
-                          : "hover:bg-slate-100 dark:hover:bg-slate-800",
-                      )}
-                    >
-                      <span className="flex items-baseline justify-between gap-2">
-                        <span className="flex min-w-0 items-center gap-1 text-sm font-medium">
-                          {c.pinned && <PinGlyph />}
-                          <span className="truncate">{conversationTitle(c, crewList)}</span>
-                        </span>
-                        <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
-                          {formatTime(c.updatedAt)}
-                        </span>
-                      </span>
-                      <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-                        {c.kind === "bridge" ? "Bridge" : "Direct"}
-                        <ConversationTags c={c} projectNames={projectNames} />
-                      </span>
-                    </a>
+                    <ConversationRow
+                      c={c}
+                      title={conversationTitle(c, crewList)}
+                      active={c.id === conversationId}
+                      projectNames={projectNames}
+                      onRenamed={(next) =>
+                        conversations.setData(
+                          (conversations.data ?? []).map((x) => (x.id === next.id ? next : x)),
+                        )
+                      }
+                      onPinned={() => void conversations.reload()}
+                      onDeleted={() => {
+                        conversations.setData(
+                          (conversations.data ?? []).filter((x) => x.id !== c.id),
+                        );
+                        if (c.id === conversationId) navigate("/bridge");
+                      }}
+                    />
                   </li>
                 ))}
               </ul>
@@ -298,6 +292,167 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
           )}
         </section>
       </div>
+    </div>
+  );
+}
+
+/**
+ * One chat in the list, with pin, rename and delete right on the row so nobody has to open a
+ * chat to find them. Chats from other apps or watches are read-only and only get delete.
+ */
+function ConversationRow({
+  c,
+  title,
+  active,
+  projectNames,
+  onRenamed,
+  onPinned,
+  onDeleted,
+}: {
+  c: ConversationDto;
+  title: string;
+  active: boolean;
+  projectNames: Map<string, string>;
+  onRenamed: (c: ConversationDto) => void;
+  onPinned: () => void;
+  onDeleted: () => void;
+}) {
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const editable = c.surface === "web";
+
+  async function run(fn: () => Promise<void>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function saveTitle(e: FormEvent) {
+    e.preventDefault();
+    if (renaming === null) return;
+    void run(async () => {
+      const { conversation } = await api.renameConversation(c.id, renaming.trim());
+      onRenamed(conversation);
+      setRenaming(null);
+    });
+  }
+
+  if (renaming !== null) {
+    return (
+      <form
+        onSubmit={saveTitle}
+        className="space-y-1.5 rounded-md bg-slate-100 p-2 dark:bg-slate-800"
+      >
+        <label htmlFor={`rename-${c.id}`} className="sr-only">
+          Chat name
+        </label>
+        <input
+          id={`rename-${c.id}`}
+          // biome-ignore lint/a11y/noAutofocus: the user just pressed Rename on this row
+          autoFocus
+          value={renaming}
+          placeholder={title}
+          maxLength={200}
+          onChange={(e) => setRenaming(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setRenaming(null);
+          }}
+          className={cx(
+            "w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900",
+            focusRing,
+          )}
+        />
+        <ErrorText>{error}</ErrorText>
+        <div className="flex gap-1.5">
+          <Button size="sm" type="submit" variant="primary" disabled={busy}>
+            Save
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setRenaming(null)}>
+            Cancel
+          </Button>
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <div
+      className={cx(
+        "relative rounded-md",
+        active
+          ? "bg-accent-700/10 dark:bg-accent-400/10"
+          : "hover:bg-slate-100 dark:hover:bg-slate-800",
+      )}
+    >
+      <a
+        href={href(`/bridge/${c.id}`)}
+        aria-current={active ? "page" : undefined}
+        className={cx("block rounded-md px-3 py-2", focusRing)}
+      >
+        <span className="flex items-baseline justify-between gap-2">
+          <span className="flex min-w-0 items-center gap-1 text-sm font-medium">
+            {c.pinned && <PinGlyph />}
+            <span className="truncate">{title}</span>
+          </span>
+          <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+            {formatTime(c.updatedAt)}
+          </span>
+        </span>
+        <span className="mt-0.5 flex min-h-7 min-w-0 flex-wrap items-center gap-1.5 pr-24 text-xs text-slate-500 dark:text-slate-400">
+          {c.kind === "bridge" ? "Bridge" : "Direct"}
+          <ConversationTags c={c} projectNames={projectNames} />
+        </span>
+      </a>
+      <div className="absolute right-1.5 bottom-1.5 flex items-center gap-0.5">
+        {editable && (
+          <>
+            <IconButton
+              icon="pin"
+              label={c.pinned ? `Unpin ${title}` : `Pin ${title}`}
+              active={c.pinned}
+              aria-pressed={c.pinned}
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  await api.pinConversation(c.id, !c.pinned);
+                  onPinned();
+                })
+              }
+            />
+            <IconButton
+              icon="pencil"
+              label={`Rename ${title}`}
+              disabled={busy}
+              onClick={() => setRenaming(c.title ?? "")}
+            />
+          </>
+        )}
+        <IconButton
+          icon="trash"
+          label={`Delete ${title}`}
+          tone="danger"
+          disabled={busy}
+          onClick={() => {
+            if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return;
+            void run(async () => {
+              await api.deleteConversation(c.id);
+              onDeleted();
+            });
+          }}
+        />
+      </div>
+      {error && (
+        <p role="alert" className="px-3 pb-2 text-xs text-red-700 dark:text-red-300">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -511,6 +666,7 @@ function Thread({
                   aria-pressed={conversation.pinned}
                   onClick={() => void togglePin()}
                 >
+                  <NavIcon name="pin" size={14} />
                   {conversation.pinned ? "Unpin" : "Pin"}
                 </Button>
                 <Button
@@ -518,9 +674,11 @@ function Thread({
                   variant="ghost"
                   onClick={() => setRenaming(conversation.title ?? "")}
                 >
+                  <NavIcon name="pencil" size={14} />
                   Rename
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => void remove()}>
+                  <NavIcon name="trash" size={14} />
                   Delete
                 </Button>
               </>

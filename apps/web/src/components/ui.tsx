@@ -6,6 +6,7 @@ import type {
   TextareaHTMLAttributes,
 } from "react";
 import { useId } from "react";
+import { type IconName, NavIcon } from "./icons.js";
 
 export function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(" ");
@@ -45,6 +46,44 @@ export function Button({
       )}
       {...rest}
     />
+  );
+}
+
+/**
+ * A small always-visible icon action (rename, delete…) for list rows. The label is the tooltip
+ * and the accessible name, so the icon never has to carry the meaning alone.
+ */
+export function IconButton({
+  icon,
+  label,
+  tone = "neutral",
+  active,
+  className,
+  ...rest
+}: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> & {
+  icon: IconName;
+  label: string;
+  tone?: "neutral" | "danger";
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      className={cx(
+        "grid size-7 shrink-0 place-items-center rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        active ? "text-accent-700 dark:text-accent-300" : "text-slate-500 dark:text-slate-400",
+        tone === "danger"
+          ? "hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/60 dark:hover:text-red-300"
+          : "hover:bg-slate-200/70 hover:text-slate-800 dark:hover:bg-slate-700 dark:hover:text-slate-100",
+        focusRing,
+        className,
+      )}
+      {...rest}
+    >
+      <NavIcon name={icon} size={15} />
+    </button>
   );
 }
 

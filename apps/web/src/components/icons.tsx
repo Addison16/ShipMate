@@ -49,7 +49,10 @@ export type IconName =
   | "key"
   | "backup"
   | "back"
-  | "chevron";
+  | "chevron"
+  | "pencil"
+  | "trash"
+  | "pin";
 
 const paths: Record<IconName, ReactNode> = {
   // Speech bubble: talk to the crew.
@@ -212,6 +215,19 @@ const paths: Record<IconName, ReactNode> = {
   ),
   back: <path d="M15 5l-7 7 7 7" />,
   chevron: <path d="M9 5l7 7-7 7" />,
+  pencil: (
+    <>
+      <path d="M4 20h4L19 9l-4-4L4 16v4z" />
+      <path d="M13.5 6.5l4 4" />
+    </>
+  ),
+  trash: (
+    <>
+      <path d="M4 7h16M10 7V4.5h4V7M6 7l1 13h10l1-13" />
+      <path d="M10 11v5M14 11v5" />
+    </>
+  ),
+  pin: <path d="M15 3l6 6-3 1-3.5 3.5L15 18l-2 2-4-4-5 5M9 16l-4-4 2-2 4.5.5L13 6l2-3" />,
 };
 
 export function NavIcon({ name, size }: { name: IconName; size?: number }) {

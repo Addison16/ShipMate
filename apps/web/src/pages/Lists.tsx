@@ -1,4 +1,4 @@
-import type { ListDetailDto, ListItemDto, ListKind } from "@shipmate/core";
+import type { ListDetailDto, ListDto, ListItemDto, ListKind } from "@shipmate/core";
 import { type FormEvent, useRef, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { isAdmin, useUser } from "../auth.js";
@@ -9,6 +9,7 @@ import {
   cx,
   ErrorText,
   focusRing,
+  IconButton,
   Muted,
   Page,
   PageHeader,
@@ -31,6 +32,125 @@ import { useServerEvents } from "../ws.js";
 export function ListsPage({ listId }: { listId: string | null }) {
   if (listId) return <ListDetail key={listId} id={listId} />;
   return <ListIndex />;
+}
+
+/** A list on the index, with rename and delete on the card itself. */
+function ListCard({
+  list: l,
+  onChanged,
+  onDeleted,
+}: {
+  list: ListDto;
+  onChanged: (l: ListDto) => void;
+  onDeleted: () => void;
+}) {
+  const user = useUser();
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const canDelete = !l.shared || isAdmin(user) || l.createdById === user.id;
+
+  async function run(fn: () => Promise<void>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (renaming !== null) {
+    return (
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void run(async () => {
+            const { list } = await api.updateList(l.id, { name: renaming.trim() });
+            onChanged(list);
+            setRenaming(null);
+          });
+        }}
+        className="h-full space-y-2 rounded-xl border border-accent-600/50 bg-white p-4 dark:border-accent-400/50 dark:bg-slate-900"
+      >
+        <TextField
+          label="List name"
+          required
+          maxLength={100}
+          autoFocus
+          value={renaming}
+          onChange={(e) => setRenaming(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setRenaming(null);
+          }}
+        />
+        <ErrorText>{error}</ErrorText>
+        <div className="flex gap-2">
+          <Button size="sm" type="submit" variant="primary" disabled={busy || !renaming.trim()}>
+            Save
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setRenaming(null)}>
+            Cancel
+          </Button>
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <div className="relative h-full">
+      <a
+        href={href(`/lists/${l.id}`)}
+        className={cx(
+          "block h-full rounded-xl border border-slate-200 bg-white p-4 pr-20 transition hover:-translate-y-0.5 hover:border-accent-600/50 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:hover:border-accent-400/50",
+          focusRing,
+        )}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold">{l.name}</span>
+          <Badge tone="accent">{kindLabel(l.kind)}</Badge>
+          {!l.shared && <Badge>private</Badge>}
+        </div>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+          {l.itemCount === 0
+            ? "Empty"
+            : l.openCount === 0
+              ? `All ${l.itemCount} done`
+              : `${l.openCount} open of ${l.itemCount}`}
+        </p>
+        {error && (
+          <p role="alert" className="mt-2 text-xs text-red-700 dark:text-red-300">
+            {error}
+          </p>
+        )}
+      </a>
+      <div className="absolute top-3 right-3 flex gap-0.5">
+        <IconButton
+          icon="pencil"
+          label={`Rename ${l.name}`}
+          disabled={busy}
+          onClick={() => setRenaming(l.name)}
+        />
+        {canDelete && (
+          <IconButton
+            icon="trash"
+            label={`Delete ${l.name}`}
+            tone="danger"
+            disabled={busy}
+            onClick={() => {
+              if (!window.confirm(`Delete the list "${l.name}" and everything on it?`)) return;
+              void run(async () => {
+                await api.deleteList(l.id);
+                onDeleted();
+              });
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
 }
 
 function ListIndex() {
@@ -79,26 +199,13 @@ function ListIndex() {
           <ul className="grid gap-3 sm:grid-cols-2">
             {all.map((l) => (
               <li key={l.id}>
-                <a
-                  href={href(`/lists/${l.id}`)}
-                  className={cx(
-                    "block h-full rounded-xl border border-slate-200 bg-white p-4 transition hover:-translate-y-0.5 hover:border-accent-600/50 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:hover:border-accent-400/50",
-                    focusRing,
-                  )}
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold">{l.name}</span>
-                    <Badge tone="accent">{kindLabel(l.kind)}</Badge>
-                    {!l.shared && <Badge>private</Badge>}
-                  </div>
-                  <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                    {l.itemCount === 0
-                      ? "Empty"
-                      : l.openCount === 0
-                        ? `All ${l.itemCount} done`
-                        : `${l.openCount} open of ${l.itemCount}`}
-                  </p>
-                </a>
+                <ListCard
+                  list={l}
+                  onChanged={(next) =>
+                    lists.setData(all.map((x) => (x.id === next.id ? { ...x, ...next } : x)))
+                  }
+                  onDeleted={() => lists.setData(all.filter((x) => x.id !== l.id))}
+                />
               </li>
             ))}
           </ul>

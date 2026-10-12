@@ -12,6 +12,9 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   and each screen keeps that list beside it. Press **Ctrl K** (**⌘K** on a Mac), **/**, or the
   Search button to jump to any page, setting or crew member by typing a few letters, such as
   "discord" or "password". Old links like `#/providers` still work.
+- **Actions where you look for them**: every chat in the Bridge list has pin, rename and delete
+  buttons on its row (rename happens in place), list cards have rename and delete, and each
+  watch has edit and delete next to **Run now**, so nothing needs opening first to find them.
 - **First-launch guide**: a new install walks the owner through a step-by-step, skippable setup
   after creating the account: connect a model (Ollama, ChatGPT plan, Claude subscription or an API
   key) and pick the crew's default, name the Captain and choose its personality (five presets or

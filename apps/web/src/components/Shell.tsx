@@ -233,6 +233,7 @@ export function Shell() {
         <WatchesPage
           watchId={route[1] ?? null}
           runId={route[2] === "runs" ? (route[3] ?? null) : null}
+          edit={route[2] === "edit"}
         />
       );
       break;

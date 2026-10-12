@@ -24,6 +24,7 @@ import {
   cx,
   ErrorText,
   focusRing,
+  IconButton,
   Muted,
   Page,
   PageHeader,
@@ -49,10 +50,18 @@ import {
 import { href, navigate } from "../router.js";
 import { useServerEvents } from "../ws.js";
 
-export function WatchesPage({ watchId, runId }: { watchId: string | null; runId: string | null }) {
+export function WatchesPage({
+  watchId,
+  runId,
+  edit = false,
+}: {
+  watchId: string | null;
+  runId: string | null;
+  edit?: boolean;
+}) {
   if (watchId === "new") return <NewWatch />;
   if (watchId && runId) return <RunTranscript key={runId} watchId={watchId} runId={runId} />;
-  if (watchId) return <WatchDetail key={watchId} id={watchId} />;
+  if (watchId) return <WatchDetail key={watchId} id={watchId} startEditing={edit} />;
   return <WatchList />;
 }
 
@@ -164,6 +173,39 @@ function EnabledToggle({
   );
 }
 
+function DeleteWatchButton({ watch, onDeleted }: { watch: WatchDto; onDeleted: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function remove() {
+    if (!window.confirm(`Delete the watch "${watch.name}"? Its run history goes too.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.deleteWatch(watch.id);
+      onDeleted();
+    } catch (err) {
+      setError(errorMessage(err));
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <IconButton
+        icon="trash"
+        label={`Delete ${watch.name}`}
+        tone="danger"
+        disabled={busy}
+        onClick={() => void remove()}
+      />
+      {error && (
+        <span role="alert" className="text-xs text-red-700 dark:text-red-300">
+          {error}
+        </span>
+      )}
+    </>
+  );
+}
+
 function RunNow({ watch, onRun }: { watch: WatchDto; onRun?: (run: WatchRunDto) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -272,6 +314,19 @@ function WatchList() {
                   <div className="flex flex-wrap items-center gap-3">
                     <EnabledToggle watch={w} disabled={!editable} onChange={replace} />
                     {editable && <RunNow watch={w} onRun={() => void watches.reload()} />}
+                    {editable && (
+                      <span className="flex gap-0.5">
+                        <IconButton
+                          icon="pencil"
+                          label={`Edit ${w.name}`}
+                          onClick={() => navigate(`/watches/${w.id}/edit`)}
+                        />
+                        <DeleteWatchButton
+                          watch={w}
+                          onDeleted={() => watches.setData(all.filter((x) => x.id !== w.id))}
+                        />
+                      </span>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -793,13 +848,13 @@ function WebhookCopyField({ label, value }: { label: string; value: string }) {
   );
 }
 
-function WatchDetail({ id }: { id: string }) {
+function WatchDetail({ id, startEditing }: { id: string; startEditing: boolean }) {
   const projects = useGitHubProjects();
   const user = useUser();
   const watches = useWatches();
   const crew = useCrew();
   const runs = useResource(() => api.watchRuns(id, 25).then((r) => r.runs), [id]);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(startEditing);
   const [error, setError] = useState<string | null>(null);
   useServerEvents((ev) => {
     if (ev.type === "watch_run" && ev.run.watchId === id) void runs.reload();

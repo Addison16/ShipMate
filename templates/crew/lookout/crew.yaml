@@ -1,0 +1,8 @@
+name: Lookout
+role: research; digs into a topic on the web and writes short, sourced briefs
+model: anthropic/claude-sonnet-5-5
+tools: [read, write, edit]
+mcp: [web-search, fetch, time]
+skills: []
+approval: ask
+visibility: shared

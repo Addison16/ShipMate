@@ -4,6 +4,7 @@ import type {
   InstallStartersResponse,
   OnboardingStep,
   ProjectDto,
+  ShipmateUse,
 } from "@shipmate/core";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api.js";
@@ -40,6 +41,7 @@ import {
   stepPosition,
   stepState,
   TOUR_STOPS,
+  USE_CHOICES,
 } from "../lib/onboarding.js";
 import { browserTimeZone } from "../lib/starters.js";
 import { useResource } from "../lib/useResource.js";
@@ -59,7 +61,7 @@ import { TelegramPanel } from "./Telegram.js";
 export function OnboardingPage() {
   const { user, onboarding, setOnboarding, refresh } = useAuth();
   const [step, setStep] = useState<OnboardingStep>(
-    user ? (onboarding?.step ?? "model") : "account",
+    user ? (onboarding?.step ?? "purpose") : "account",
   );
   const [error, setError] = useState<string | null>(null);
 
@@ -130,6 +132,7 @@ export function OnboardingPage() {
     >
       <ErrorText>{error}</ErrorText>
       {step === "account" && <AccountStep onCreated={refresh} />}
+      {step === "purpose" && <PurposeStep nav={nav} />}
       {step === "model" && <ModelStep nav={nav} />}
       {step === "captain" && <CaptainStep nav={nav} />}
       {step === "household" && <HouseholdStep nav={nav} />}
@@ -441,7 +444,58 @@ function AccountStep({ onCreated }: { onCreated: () => Promise<void> }) {
   );
 }
 
-// ---------- 2. model ----------
+// ---------- 2. purpose ----------
+
+type Use = ShipmateUse | "";
+
+/** What Shipmate is for, as saved on the purpose step ("" when skipped). */
+function useShipmateUse() {
+  return useResource(() => api.getProfile().then((r) => r.household.use));
+}
+
+function PurposeStep({ nav }: { nav: StepNav }) {
+  const use = useShipmateUse();
+  return (
+    <>
+      <StepHeader eyebrow="First things first" title="What will you use Shipmate for?">
+        This decides what the guide asks next and which crew members it suggests. You can change it
+        later in Settings.
+      </StepHeader>
+      <ErrorText>{use.error}</ErrorText>
+      {use.loading && use.data === null && <Muted>Loading…</Muted>}
+      {use.data !== null && <PurposeForm initial={use.data} nav={nav} />}
+    </>
+  );
+}
+
+function PurposeForm({ initial, nav }: { initial: Use; nav: StepNav }) {
+  const [use, setUse] = useState<Use>(initial);
+
+  async function save() {
+    if (!use) throw new Error("Pick one, or skip this for now.");
+    if (use !== initial) await api.updateHousehold({ use });
+  }
+
+  return (
+    <>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {USE_CHOICES.map((c) => (
+          <ChoiceCard
+            key={c.id}
+            selected={use === c.id}
+            onSelect={() => setUse(c.id)}
+            title={c.title}
+          >
+            {c.body}
+          </ChoiceCard>
+        ))}
+      </div>
+      <StepFooter nav={nav} onNext={save} />
+    </>
+  );
+}
+
+// ---------- 3. model ----------
 
 const CAPTAIN = "captain";
 
@@ -603,10 +657,11 @@ function ModelStep({ nav }: { nav: StepNav }) {
   );
 }
 
-// ---------- 3. captain ----------
+// ---------- 4. captain ----------
 
 function CaptainStep({ nav }: { nav: StepNav }) {
   const setup = useResource(() => api.captainSetup());
+  const use = useShipmateUse();
   const data = setup.data;
   return (
     <>
@@ -616,12 +671,28 @@ function CaptainStep({ nav }: { nav: StepNav }) {
       </StepHeader>
       <ErrorText>{setup.error}</ErrorText>
       {setup.loading && !data && <Muted>Loading…</Muted>}
-      {data && <CaptainForm key={data.name + data.voice} initial={data} nav={nav} />}
+      {data && (
+        <CaptainForm
+          key={data.name + data.voice}
+          initial={data}
+          work={use.data === "work"}
+          nav={nav}
+        />
+      )}
     </>
   );
 }
 
-function CaptainForm({ initial, nav }: { initial: CaptainSetupDto; nav: StepNav }) {
+function CaptainForm({
+  initial,
+  work,
+  nav,
+}: {
+  initial: CaptainSetupDto;
+  /** Preview a work question instead of a home one. */
+  work: boolean;
+  nav: StepNav;
+}) {
   const [name, setName] = useState(initial.name);
   const [voiceId, setVoiceId] = useState(initial.voiceId);
   const [custom, setCustom] = useState(initial.voiceId === "custom" ? initial.voice : "");
@@ -685,14 +756,15 @@ function CaptainForm({ initial, nav }: { initial: CaptainSetupDto; nav: StepNav 
           </p>
           <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/50">
             <div className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-sm bg-accent-700 px-3 py-2 text-sm text-white">
-              What's for dinner tonight?
+              {work ? "What's on my plate today?" : "What's for dinner tonight?"}
             </div>
             <div className="flex items-start gap-2">
               <Avatar name={shownName} size="sm" />
               <div>
                 <p className="mb-0.5 text-xs font-medium">{shownName}</p>
                 <div className="rounded-2xl rounded-tl-sm bg-white px-3 py-2 text-sm shadow-sm dark:bg-slate-800">
-                  {preset?.sample ?? (custom.trim() ? "(answers in the voice you describe)" : "…")}
+                  {(work ? preset?.workSample : preset?.sample) ??
+                    (custom.trim() ? "(answers in the voice you describe)" : "…")}
                 </div>
               </div>
             </div>
@@ -704,15 +776,17 @@ function CaptainForm({ initial, nav }: { initial: CaptainSetupDto; nav: StepNav 
   );
 }
 
-// ---------- 4. household ----------
+// ---------- 5. household ----------
 
 function HouseholdStep({ nav }: { nav: StepNav }) {
   const data = useResource(() => api.getProfile());
+  const work = data.data?.household.use === "work";
   return (
     <>
-      <StepHeader eyebrow="So nobody asks twice" title="Tell the crew about home">
-        Every crew member reads this, so the Galley knows your diet and the morning briefing knows
-        your town. All of it is optional and lives on your server.
+      <StepHeader eyebrow="So nobody asks twice" title="A few basics">
+        {work
+          ? "Where you're based and when you work, so reminders and briefings land at the right time. All of it is optional and stays on your server."
+          : "Your town and timezone are enough to start. Every crew member reads this, and all of it is optional and stays on your server."}
       </StepHeader>
       <ErrorText>{data.error}</ErrorText>
       {data.loading && !data.data && <Muted>Loading…</Muted>}
@@ -728,6 +802,8 @@ function HouseholdForm({
   initial: Awaited<ReturnType<typeof api.getProfile>>;
   nav: StepNav;
 }) {
+  const use = initial.household.use;
+  const work = use === "work";
   const tz = browserTimeZone() ?? "";
   const [location, setLocation] = useState(initial.household.location);
   const [timezone, setTimezone] = useState(initial.household.timezone || tz);
@@ -735,6 +811,10 @@ function HouseholdForm({
   const [diet, setDiet] = useState(initial.profile.diet);
   const [schedule, setSchedule] = useState(initial.profile.schedule);
   const [showInvite, setShowInvite] = useState(false);
+  // Personal details wait behind a button, so the guide doesn't open with questions about family.
+  const [more, setMore] = useState(
+    !!(initial.household.notes || initial.profile.diet || initial.profile.schedule),
+  );
 
   async function save() {
     const tzValue = timezone.trim();
@@ -762,7 +842,7 @@ function HouseholdForm({
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField
-            label="Home town"
+            label={work ? "Where you're based" : "Home town"}
             placeholder="e.g. Austin, TX"
             hint="For the weather and travel."
             maxLength={200}
@@ -782,30 +862,52 @@ function HouseholdForm({
             onChange={(e) => setTimezone(e.target.value)}
           />
         </div>
-        <TextAreaField
-          label="Who's aboard"
-          rows={3}
-          maxLength={4000}
-          placeholder="Who lives here, kids' ages, pets, shared routines, house rules"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-        />
-        <div className="grid gap-4 sm:grid-cols-2">
+        {work ? (
           <TextField
-            label="Your diet and allergies"
-            placeholder="e.g. vegetarian, no peanuts"
-            maxLength={500}
-            value={diet}
-            onChange={(e) => setDiet(e.target.value)}
-          />
-          <TextField
-            label="Your schedule"
-            placeholder="e.g. work 9 to 5 weekdays, gym Tuesdays"
+            label="Your working hours"
+            placeholder="e.g. 9 to 5 weekdays, no meetings on Fridays"
             maxLength={2000}
             value={schedule}
             onChange={(e) => setSchedule(e.target.value)}
           />
-        </div>
+        ) : more ? (
+          <>
+            <TextAreaField
+              label="Who's aboard"
+              rows={3}
+              maxLength={4000}
+              placeholder="Who lives here, kids' ages, pets, shared routines, house rules"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextField
+                label="Your diet and allergies"
+                placeholder="e.g. vegetarian, no peanuts"
+                maxLength={500}
+                value={diet}
+                onChange={(e) => setDiet(e.target.value)}
+              />
+              <TextField
+                label="Your schedule"
+                placeholder="e.g. work 9 to 5 weekdays, gym Tuesdays"
+                maxLength={2000}
+                value={schedule}
+                onChange={(e) => setSchedule(e.target.value)}
+              />
+            </div>
+          </>
+        ) : (
+          <div>
+            <Button variant="secondary" size="sm" onClick={() => setMore(true)}>
+              Add more about {use === "home" ? "your household" : "yourself"}
+            </Button>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Optional: who's aboard, diets and allergies, your schedule. You can also add these
+              later in Settings.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="mt-6 space-y-4">
@@ -813,7 +915,13 @@ function HouseholdForm({
         <Card>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="font-semibold">Add the rest of the household</h2>
+              <h2 className="font-semibold">
+                {work
+                  ? "Add your team"
+                  : use === "home"
+                    ? "Add the rest of the household"
+                    : "Add other people"}
+              </h2>
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 Everyone shares the crew; each person gets their own conversations and profile.
               </p>
@@ -918,9 +1026,10 @@ function InviteForm() {
   );
 }
 
-// ---------- 5. crew ----------
+// ---------- 6. crew ----------
 
 function CrewStep({ nav }: { nav: StepNav }) {
+  const use = useShipmateUse();
   const [result, setResult] = useState<InstallStartersResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
@@ -990,7 +1099,9 @@ function CrewStep({ nav }: { nav: StepNav }) {
               <ErrorText>{error}</ErrorText>
             </div>
           )}
-          {switching ? (
+          {use.data === null && !use.error ? (
+            <Muted>Loading…</Muted>
+          ) : switching ? (
             <Muted>Moving the new crew to Claude Code…</Muted>
           ) : pending ? (
             <Button onClick={() => void installed(pending)}>Try again</Button>
@@ -1000,6 +1111,7 @@ function CrewStep({ nav }: { nav: StepNav }) {
               onDone={(r) => void installed(r)}
               skipLabel="Skip for now"
               onSkip={nav.skip}
+              use={use.data ?? ""}
             />
           )}
           {nav.back && (
@@ -1015,7 +1127,7 @@ function CrewStep({ nav }: { nav: StepNav }) {
   );
 }
 
-// ---------- 6. connect ----------
+// ---------- 7. connect ----------
 
 function ConnectStep({ nav }: { nav: StepNav }) {
   const [tab, setTab] = useState<BridgeTab | null>(null);
@@ -1058,7 +1170,7 @@ function ConnectStep({ nav }: { nav: StepNav }) {
   );
 }
 
-// ---------- 7. shipyard ----------
+// ---------- 8. shipyard ----------
 
 function ShipyardStep({ nav }: { nav: StepNav }) {
   const shipyard = useResource(() => api.getShipyard());
@@ -1125,7 +1237,7 @@ function ShipyardStep({ nav }: { nav: StepNav }) {
   );
 }
 
-// ---------- 8. tour ----------
+// ---------- 9. tour ----------
 
 function FinishStep({
   onGo,

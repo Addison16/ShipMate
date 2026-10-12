@@ -15,6 +15,10 @@ import type { WatchService } from "./watches.js";
 /** Per-template extras in `starter.yaml`; a template without one is not a starter pack. */
 const StarterFile = z.object({
   blurb: z.string().min(1).max(200),
+  uses: z
+    .array(z.enum(["home", "work"]))
+    .min(1)
+    .default(["home", "work"]),
   watch: z
     .object({
       name: z.string().min(1).max(100),
@@ -28,6 +32,7 @@ interface Starter {
   slug: string;
   dir: string;
   blurb: string;
+  uses: Array<"home" | "work">;
   watch: { name: string; cron: string; prompt: string } | null;
 }
 
@@ -56,7 +61,8 @@ export class StarterService {
       if (!existsSync(file) || !existsSync(join(dir, CREW_FILES.manifest))) continue;
       const parsed = StarterFile.safeParse(parseYaml(readFileSync(file, "utf8")));
       if (!parsed.success) continue;
-      out.push({ slug: d.name, dir, blurb: parsed.data.blurb, watch: parsed.data.watch ?? null });
+      const { blurb, uses, watch } = parsed.data;
+      out.push({ slug: d.name, dir, blurb, uses, watch: watch ?? null });
     }
     return out;
   }
@@ -69,6 +75,7 @@ export class StarterService {
         name: m.name,
         role: m.role,
         blurb: s.blurb,
+        uses: s.uses,
         mcp: m.mcp,
         watch: s.watch,
         installed: this.crew.registry.has(s.slug),

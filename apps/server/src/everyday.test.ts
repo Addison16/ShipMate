@@ -105,7 +105,19 @@ describe.skipIf(!db)("Everyday life", () => {
   it("lists the starter packs with their opt-in watches", async () => {
     const { starters } = (await api("GET", "/api/crew/starters")).json();
     const slugs = starters.map((s: { slug: string }) => s.slug).sort();
-    expect(slugs).toEqual(["galley", "healthlog", "navigator", "purser", "tutor"]);
+    expect(slugs).toEqual([
+      "galley",
+      "healthlog",
+      "lookout",
+      "navigator",
+      "purser",
+      "tutor",
+      "yeoman",
+    ]);
+    const uses = Object.fromEntries(
+      starters.map((s: { slug: string; uses: string[] }) => [s.slug, s.uses]),
+    );
+    expect(uses).toMatchObject({ galley: ["home"], yeoman: ["work"], lookout: ["work", "home"] });
     for (const s of starters) {
       expect(s.installed).toBe(false);
       expect(s.watch?.cron).toBeTruthy();
@@ -263,9 +275,14 @@ describe.skipIf(!db)("Everyday life", () => {
     expect(
       (await api("PUT", "/api/household", { location: "Nowhere" }, memberCookie)).statusCode,
     ).toBe(403);
-    await api("PUT", "/api/household", { location: "Austin, TX", notes: "Two kids, Sam (8)" });
+    expect((await api("PUT", "/api/household", { use: "office" })).statusCode).toBe(400);
+    await api("PUT", "/api/household", {
+      use: "both",
+      location: "Austin, TX",
+      notes: "Two kids, Sam (8)",
+    });
     const kid = (await api("GET", "/api/profile", undefined, memberCookie)).json();
-    expect(kid.household.location).toBe("Austin, TX");
+    expect(kid.household).toMatchObject({ use: "both", location: "Austin, TX" });
     expect(kid.profile.diet).toBe("loves pasta");
 
     const conv = (await api("POST", "/api/conversations", {})).json().conversation;
@@ -283,6 +300,7 @@ describe.skipIf(!db)("Everyday life", () => {
     ]);
     await turn(conv.id, "what's for dinner?");
     expect(system).toContain("Home: Austin, TX");
+    expect(system).toContain("Used for: both home life and work");
     expect(system).toContain("Diet: vegetarian, no peanuts");
     expect(system).toMatch(/Local time for Addison: .*\(America\/Chicago\)/);
     expect(system).toContain("Shared profiles of Kid");

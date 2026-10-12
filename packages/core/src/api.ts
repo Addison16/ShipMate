@@ -1170,6 +1170,8 @@ export interface StarterCrewDto {
   role: string;
   /** One line for the picker. */
   blurb: string;
+  /** Whether it suits home life, work or both; the setup guide suggests the ones that match. */
+  uses: Array<"home" | "work">;
   /** MCP servers from the catalog it is set up with. */
   mcp: string[];
   /** The watch it comes with; created paused, so nothing runs until someone turns it on. */

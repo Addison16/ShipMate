@@ -6,6 +6,12 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Simpler navigation**: the sidebar is down to six places (Bridge, Lists, Watches, Shipyard,
+  Crew, Settings), each with a one-line hint of what it is for. Settings opens on an overview of
+  every screen in four groups (You, Crew and tools, AI and cost, This Shipmate) with a filter box,
+  and each screen keeps that list beside it. Press **Ctrl K** (**⌘K** on a Mac), **/**, or the
+  Search button to jump to any page, setting or crew member by typing a few letters, such as
+  "discord" or "password". Old links like `#/providers` still work.
 - **First-launch guide**: a new install walks the owner through a step-by-step, skippable setup
   after creating the account: connect a model (Ollama, ChatGPT plan, Claude subscription or an API
   key) and pick the crew's default, name the Captain and choose its personality (five presets or

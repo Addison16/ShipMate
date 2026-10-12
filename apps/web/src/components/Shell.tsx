@@ -1,7 +1,8 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useUpdateAppearance } from "../appearance.js";
 import { ApprovalsProvider } from "../approvals.js";
 import { isAdmin, useAuth, useUser } from "../auth.js";
+import { activeNavId, canSee, MAIN_NAV, SETTINGS_HOME, settingsSectionFor } from "../lib/nav.js";
 import { THEME_MODES } from "../lib/theme.js";
 import { AuditPage } from "../pages/Audit.js";
 import { BridgePage } from "../pages/Bridge.js";
@@ -21,49 +22,12 @@ import { WatchesPage } from "../pages/Watches.js";
 import { href, navigate, useRoute } from "../router.js";
 import { socket, useSocketState } from "../ws.js";
 import { ApprovalTray } from "./ApprovalTray.js";
-import { type IconName, NavIcon } from "./icons.js";
+import { NavIcon } from "./icons.js";
 import { Logo } from "./Logo.js";
+import { QuickJump, QuickJumpButton, useQuickJumpShortcut } from "./QuickJump.js";
+import { SettingsLayout } from "./SettingsLayout.js";
 import { Toasts } from "./Toasts.js";
 import { cx, focusRing } from "./ui.js";
-
-interface NavItem {
-  path: string;
-  label: string;
-  icon: IconName;
-  adminOnly?: boolean;
-}
-
-const NAV: Array<{ group: string | null; items: NavItem[] }> = [
-  {
-    group: null,
-    items: [
-      { path: "bridge", label: "Bridge", icon: "bridge" },
-      { path: "lists", label: "Lists", icon: "lists" },
-      { path: "watches", label: "Watches", icon: "watches" },
-      { path: "shipyard", label: "Shipyard", icon: "shipyard" },
-    ],
-  },
-  {
-    group: "Crew & tools",
-    items: [
-      { path: "crew", label: "Crew", icon: "crew" },
-      { path: "skills", label: "Skills", icon: "skills" },
-      { path: "mcp", label: "MCP servers", icon: "mcp" },
-    ],
-  },
-  {
-    group: "Manage",
-    items: [
-      { path: "providers", label: "Providers", icon: "providers" },
-      { path: "usage", label: "Cost", icon: "cost" },
-      { path: "audit", label: "Audit", icon: "audit" },
-      { path: "users", label: "Users", icon: "users", adminOnly: true },
-      { path: "bridges", label: "Chat bridges", icon: "bridges" },
-      { path: "health", label: "Health", icon: "health", adminOnly: true },
-      { path: "settings", label: "Settings", icon: "settings" },
-    ],
-  },
-];
 
 function SocketDot() {
   const state = useSocketState();
@@ -89,47 +53,19 @@ function SocketDot() {
 
 function NavLinks({ current, onNavigate }: { current: string; onNavigate?: () => void }) {
   const user = useUser();
-  return (
-    <div className="space-y-5">
-      {NAV.map((g) => (
-        <div key={g.group ?? "main"}>
-          {g.group && (
-            <p className="px-3 pb-1.5 text-[11px] font-semibold tracking-wider text-accent-700/80 uppercase dark:text-accent-300/80">
-              {g.group}
-            </p>
-          )}
-          <NavList
-            items={g.items.filter((n) => !n.adminOnly || isAdmin(user))}
-            current={current}
-            onNavigate={onNavigate}
-          />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function NavList({
-  items,
-  current,
-  onNavigate,
-}: {
-  items: NavItem[];
-  current: string;
-  onNavigate?: () => void;
-}) {
+  const items = [...MAIN_NAV.filter((n) => canSee(user, n.access)), SETTINGS_HOME];
   return (
     <ul className="space-y-0.5">
       {items.map((n) => {
-        const active = current === n.path;
+        const active = current === n.id;
         return (
-          <li key={n.path}>
+          <li key={n.id}>
             <a
-              href={href(`/${n.path}`)}
+              href={href(n.path)}
               onClick={onNavigate}
               aria-current={active ? "page" : undefined}
               className={cx(
-                "group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                "group flex items-center gap-3 rounded-lg px-3 py-2 transition-colors",
                 focusRing,
                 active
                   ? "bg-accent-600 text-white shadow-sm dark:bg-accent-500/20 dark:text-accent-100"
@@ -144,7 +80,19 @@ function NavList({
               >
                 <NavIcon name={n.icon} />
               </span>
-              {n.label}
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">{n.label}</span>
+                <span
+                  className={cx(
+                    "block truncate text-xs",
+                    active
+                      ? "text-white/80 dark:text-accent-200/80"
+                      : "text-slate-500 dark:text-slate-400",
+                  )}
+                >
+                  {n.hint}
+                </span>
+              </span>
             </a>
           </li>
         );
@@ -241,7 +189,14 @@ export function Shell() {
   const route = useRoute();
   const user = useUser();
   const [drawer, setDrawer] = useState(false);
+  const [jump, setJump] = useState(false);
   const section = route[0] ?? "";
+  const settingsSection = settingsSectionFor(route);
+  const openJump = useCallback(() => {
+    setDrawer(false);
+    setJump(true);
+  }, []);
+  useQuickJumpShortcut(openJump);
 
   useEffect(() => {
     socket.start();
@@ -309,7 +264,7 @@ export function Shell() {
       page = isAdmin(user) ? <UsersPage /> : <NotFound />;
       break;
     case "settings":
-      page = <SettingsPage />;
+      page = <SettingsPage section={route[1] ?? ""} />;
       break;
     case "health":
       page = isAdmin(user) ? <HealthPage /> : <NotFound />;
@@ -317,6 +272,9 @@ export function Shell() {
     default:
       page = <NotFound />;
   }
+  // Settings screens other than the overview get the grouped settings list beside them.
+  if (settingsSection) page = <SettingsLayout current={settingsSection}>{page}</SettingsLayout>;
+  const activeNav = activeNavId(route);
 
   return (
     <ApprovalsProvider>
@@ -324,7 +282,15 @@ export function Shell() {
         {/* Top bar on narrow screens */}
         <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2.5 md:hidden dark:border-slate-800 dark:bg-slate-900">
           <Brand />
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              aria-label="Search"
+              onClick={openJump}
+              className={cx("rounded-md p-2 hover:bg-slate-100 dark:hover:bg-slate-800", focusRing)}
+            >
+              <NavIcon name="search" size={20} />
+            </button>
             <ApprovalTray variant="topbar" />
             <button
               type="button"
@@ -357,7 +323,7 @@ export function Shell() {
                 <Brand />
               </div>
               <div className="flex-1 overflow-y-auto px-2">
-                <NavLinks current={section} onNavigate={() => setDrawer(false)} />
+                <NavLinks current={activeNav} onNavigate={() => setDrawer(false)} />
               </div>
               <UserBox />
             </nav>
@@ -367,13 +333,16 @@ export function Shell() {
         {/* Sidebar on wide screens */}
         <nav
           aria-label="Main"
-          className="hidden w-56 shrink-0 flex-col border-r border-slate-200 bg-white md:flex dark:border-slate-800 dark:bg-slate-900"
+          className="hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white md:flex dark:border-slate-800 dark:bg-slate-900"
         >
-          <div className="px-4 py-4">
-            <Brand />
+          <div className="space-y-3 px-3 py-4">
+            <div className="px-1">
+              <Brand />
+            </div>
+            <QuickJumpButton onOpen={openJump} />
           </div>
           <div className="flex-1 overflow-y-auto px-2">
-            <NavLinks current={section} />
+            <NavLinks current={activeNav} />
           </div>
           <div className="px-2 pb-2">
             <ApprovalTray variant="sidebar" />
@@ -382,6 +351,7 @@ export function Shell() {
         </nav>
 
         <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto">{page}</main>
+        {jump && <QuickJump onClose={() => setJump(false)} />}
         <Toasts />
       </div>
     </ApprovalsProvider>

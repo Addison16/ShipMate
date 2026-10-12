@@ -38,16 +38,27 @@ export type IconName =
   | "light"
   | "dark"
   | "auto"
-  | "check";
+  | "check"
+  | "search"
+  | "profile"
+  | "palette"
+  | "bell"
+  | "general"
+  | "camera"
+  | "sandbox"
+  | "key"
+  | "backup"
+  | "back"
+  | "chevron";
 
 const paths: Record<IconName, ReactNode> = {
   // Speech bubble: talk to the crew.
   bridge: <path d="M4 5h16v11H9l-5 4V5z" />,
-  // Bell for scheduled watches.
+  // Clock for scheduled watches.
   watches: (
     <>
-      <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16z" />
-      <path d="M10 20.5a2 2 0 0 0 4 0" />
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" />
     </>
   ),
   // Checklist.
@@ -141,6 +152,66 @@ const paths: Record<IconName, ReactNode> = {
     </>
   ),
   check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
+  search: (
+    <>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M16 16l4.5 4.5" />
+    </>
+  ),
+  profile: (
+    <>
+      <circle cx="12" cy="9" r="3.5" />
+      <path d="M6.5 18.5a6.5 6.5 0 0 1 11 0" />
+      <circle cx="12" cy="12" r="9" />
+    </>
+  ),
+  palette: (
+    <>
+      <path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.3-1-1.6-1-2.6 0-.9.7-1.4 1.6-1.4H17a3.5 3.5 0 0 0 3.5-3.5c0-4.3-3.8-7.8-8.5-7.8z" />
+      <path d="M7.5 11.5h.01M10 7.5h.01M14.5 7.5h.01" />
+    </>
+  ),
+  bell: (
+    <>
+      <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16z" />
+      <path d="M10 20.5a2 2 0 0 0 4 0" />
+    </>
+  ),
+  // Ship's wheel: the instance itself.
+  general: (
+    <>
+      <circle cx="12" cy="12" r="5" />
+      <circle cx="12" cy="12" r="1.5" />
+      <path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.9 2.9M15.5 15.5l2.9 2.9M5.6 18.4l2.9-2.9M15.5 8.5l2.9-2.9" />
+    </>
+  ),
+  camera: (
+    <>
+      <path d="M4 8h3.5L9 5.5h6L16.5 8H20v11H4z" />
+      <circle cx="12" cy="13" r="3.5" />
+    </>
+  ),
+  // Shipping container: where code runs.
+  sandbox: (
+    <>
+      <path d="M12 3l8.5 4.5v9L12 21l-8.5-4.5v-9L12 3z" />
+      <path d="M3.5 7.5L12 12l8.5-4.5M12 12v9" />
+    </>
+  ),
+  key: (
+    <>
+      <circle cx="8" cy="15" r="4" />
+      <path d="M11 12l8.5-8.5M16.5 6.5l2.5 2.5M14.5 8.5l2 2" />
+    </>
+  ),
+  backup: (
+    <>
+      <rect x="3.5" y="4" width="17" height="4.5" rx="1" />
+      <path d="M5 8.5V20h14V8.5M10 12.5h4" />
+    </>
+  ),
+  back: <path d="M15 5l-7 7 7 7" />,
+  chevron: <path d="M9 5l7 7-7 7" />,
 };
 
 export function NavIcon({ name, size }: { name: IconName; size?: number }) {

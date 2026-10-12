@@ -1,17 +1,36 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { useAuth, useUser } from "../auth.js";
 import { AppearanceSettings } from "../components/AppearanceSettings.js";
 import { BackupSettings } from "../components/BackupSettings.js";
+import { NavIcon } from "../components/icons.js";
 import { ModelSelect } from "../components/ModelSelect.js";
 import { OidcSettings } from "../components/OidcSettings.js";
 import { PhotoSettings } from "../components/PhotoSettings.js";
 import { ProfileSettings } from "../components/ProfileSettings.js";
 import { PushSettings } from "../components/PushSettings.js";
 import { SandboxSettings } from "../components/SandboxSettings.js";
-import { Badge, Button, Card, ErrorText, Page, PageHeader, TextField } from "../components/ui.js";
+import {
+  Badge,
+  Button,
+  Card,
+  cx,
+  ErrorText,
+  focusRing,
+  Muted,
+  Page,
+  PageHeader,
+  TextField,
+} from "../components/ui.js";
 import { VoiceSettings } from "../components/VoiceSettings.js";
+import {
+  SETTINGS_GROUPS,
+  type SettingsSection,
+  searchDestinations,
+  visibleSections,
+} from "../lib/nav.js";
 import { useResource } from "../lib/useResource.js";
+import { href } from "../router.js";
 
 function Saved({ show }: { show: boolean }) {
   return show ? (
@@ -19,25 +38,156 @@ function Saved({ show }: { show: boolean }) {
   ) : null;
 }
 
-export function SettingsPage() {
+/** One settings screen at #/settings/<section>; the overview and other sections route elsewhere. */
+export function SettingsPage({ section }: { section: string }) {
+  switch (section) {
+    case "profile":
+      return (
+        <SettingsSectionPage title="Profile and account">
+          <ProfileSettings />
+          <MyAccount />
+        </SettingsSectionPage>
+      );
+    case "appearance":
+      return (
+        <SettingsSectionPage title="Appearance">
+          <AppearanceSettings />
+        </SettingsSectionPage>
+      );
+    case "notifications":
+      return (
+        <SettingsSectionPage title="Notifications">
+          <PushSettings />
+        </SettingsSectionPage>
+      );
+    case "general":
+      return (
+        <SettingsSectionPage title="General">
+          <InstanceSettings />
+          <SetupGuide />
+        </SettingsSectionPage>
+      );
+    case "media":
+      return (
+        <SettingsSectionPage title="Photos and voice">
+          <PhotoSettings />
+          <VoiceSettings />
+        </SettingsSectionPage>
+      );
+    case "sandbox":
+      return (
+        <SettingsSectionPage title="Shipyard sandbox" ownerOnly>
+          <SandboxSettings />
+        </SettingsSectionPage>
+      );
+    case "sign-in":
+      return (
+        <SettingsSectionPage title="Single sign-on" ownerOnly>
+          <OidcSettings />
+        </SettingsSectionPage>
+      );
+    case "backups":
+      return (
+        <SettingsSectionPage title="Backups" ownerOnly>
+          <BackupSettings />
+        </SettingsSectionPage>
+      );
+    default:
+      return <SettingsOverview />;
+  }
+}
+
+function SettingsSectionPage({
+  title,
+  ownerOnly,
+  children,
+}: {
+  title: string;
+  ownerOnly?: boolean;
+  children: ReactNode;
+}) {
+  const user = useUser();
   return (
     <Page>
-      <PageHeader title="Settings" />
+      <PageHeader title={title} />
+      {ownerOnly && user.role !== "owner" ? (
+        <Muted>Only the owner can change these.</Muted>
+      ) : (
+        <div className="space-y-6">{children}</div>
+      )}
+    </Page>
+  );
+}
+
+/** #/settings: every section as a tile with a one-line hint, grouped, with a filter box. */
+function SettingsOverview() {
+  const user = useUser();
+  const [query, setQuery] = useState("");
+  const sections = searchDestinations(visibleSections(user), query);
+  const grouped = query.trim() ? [{ group: null, items: sections }] : groupSections(sections);
+  return (
+    <Page>
+      <PageHeader title="Settings" description="Everything you can set up, in one place." />
+      <label className="relative mb-6 block">
+        <span className="sr-only">Find a setting</span>
+        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">
+          <NavIcon name="search" size={16} />
+        </span>
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Find a setting, like password, Discord or API key"
+          className={cx(
+            "w-full rounded-lg border border-slate-300 bg-white py-2.5 pr-3 pl-9 text-sm dark:border-slate-700 dark:bg-slate-900",
+            focusRing,
+          )}
+        />
+      </label>
+      {sections.length === 0 && <Muted>No settings match “{query.trim()}”.</Muted>}
       <div className="space-y-6">
-        <AppearanceSettings />
-        <ProfileSettings />
-        <PushSettings />
-        <InstanceSettings />
-        <SetupGuide />
-        <PhotoSettings />
-        <VoiceSettings />
-        <OidcSettings />
-        <SandboxSettings />
-        <BackupSettings />
-        <MyAccount />
+        {grouped.map((g) => (
+          <section key={g.group ?? "results"}>
+            {g.group && (
+              <h2 className="mb-2 text-[11px] font-semibold tracking-wider text-accent-700/80 uppercase dark:text-accent-300/80">
+                {g.group}
+              </h2>
+            )}
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {g.items.map((s) => (
+                <li key={s.id}>
+                  <a
+                    href={href(s.path)}
+                    className={cx(
+                      "flex h-full items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 transition-colors hover:border-accent-300 hover:bg-accent-50/50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-accent-700 dark:hover:bg-slate-800/60",
+                      focusRing,
+                    )}
+                  >
+                    <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-md bg-accent-50 text-accent-700 dark:bg-accent-950/60 dark:text-accent-300">
+                      <NavIcon name={s.icon} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium">{s.label}</span>
+                      <span className="block text-xs text-slate-500 dark:text-slate-400">
+                        {s.hint}
+                      </span>
+                    </span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
       </div>
     </Page>
   );
+}
+
+function groupSections(sections: SettingsSection[]) {
+  return SETTINGS_GROUPS.map((group) => ({
+    group,
+    items: sections.filter((s) => s.group === group),
+  })).filter((g) => g.items.length > 0);
 }
 
 function InstanceSettings() {

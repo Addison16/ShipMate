@@ -160,7 +160,7 @@ function StatusBanner({ status }: { status: ShipyardStatusDto | null }) {
         {user.role === "owner" ? (
           <>
             Choose and test one under{" "}
-            <a href={href("/settings")} className="underline underline-offset-2">
+            <a href={href("/settings/sandbox")} className="underline underline-offset-2">
               Settings → Shipyard sandbox
             </a>
             .

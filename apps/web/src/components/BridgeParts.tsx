@@ -2,6 +2,7 @@ import type { BridgeLinkCode, UserDto } from "@shipmate/core";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { useAuth, useUser } from "../auth.js";
+import { copyText } from "../lib/clipboard.js";
 import { formatCountdown, secondsLeft } from "../lib/discord.js";
 import { Badge, Button, Card, cx, ErrorText, focusRing, Muted } from "./ui.js";
 
@@ -69,7 +70,7 @@ export function CopyBlock({ label, value }: { label: string; value: string }) {
   );
   async function copy() {
     try {
-      await navigator.clipboard.writeText(value);
+      await copyText(value);
       setCopied(true);
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => setCopied(false), 2000);

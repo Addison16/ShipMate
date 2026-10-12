@@ -223,6 +223,8 @@ export interface CrewDto {
   role: string;
   model: string;
   captain: boolean;
+  /** What runs it: Shipmate's own harness (pi) or the official Claude Code CLI. */
+  backend: "pi" | "claude-code-cli";
   visibility: "shared" | "private";
   status: CrewStatus;
   tools: string[];

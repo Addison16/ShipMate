@@ -6,6 +6,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Claude subscription in the setup guide**: when Claude Code is signed in, the model step can
+  run the Captain (and the starter crew brought aboard next) on it and continue, instead of only
+  offering "Next without a model". The Bridge no longer warns about a missing provider when the
+  Captain runs on Claude Code. Copy buttons now work when Shipmate is opened over plain http
+  (a LAN address), where browsers hide the clipboard API.
 - **First-launch guide**: a new install walks the owner through a step-by-step, skippable setup
   after creating the account: connect a model (Ollama, ChatGPT plan, Claude subscription or an API
   key) and pick the crew's default, name the Captain and choose its personality (five presets or

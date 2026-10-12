@@ -1,5 +1,6 @@
 import type {
   CaptainSetupDto,
+  ClaudeCliStatusDto,
   InstallStartersResponse,
   OnboardingStep,
   ProjectDto,
@@ -31,6 +32,7 @@ import {
   TextField,
 } from "../components/ui.js";
 import { BRIDGE_TABS, type BridgeTab } from "../lib/bridges.js";
+import { claudeCliApi, readBackend, withBackend } from "../lib/claude-cli.js";
 import {
   GUIDE_STEPS,
   nextStep,
@@ -441,6 +443,8 @@ function AccountStep({ onCreated }: { onCreated: () => Promise<void> }) {
 
 // ---------- 2. model ----------
 
+const CAPTAIN = "captain";
+
 type ModelRoute = "local" | "chatgpt" | "claude" | "key";
 
 function ModelStep({ nav }: { nav: StepNav }) {
@@ -449,9 +453,20 @@ function ModelStep({ nav }: { nav: StepNav }) {
   const settings = useResource(() => api.getSettings());
   const [route, setRoute] = useState<ModelRoute | null>(null);
   const [defaultModel, setDefaultModel] = useState<string | null>(null);
+  // The Claude subscription is not a provider: it runs crew members through the official CLI.
+  const cliStatus = useResource(() => claudeCliApi.status().then((r) => r.claudeCli));
+  const [cli, setCli] = useState<ClaudeCliStatusDto | null>(null);
+  const cliReady = !!(cli ?? cliStatus.data)?.signedIn;
+  const captain = useResource(() => api.getCrew(CAPTAIN).then((r) => r.crew));
+  const captainOnCli = captain.data
+    ? readBackend(captain.data.manifestYaml) === "claude-code-cli"
+    : false;
+  const [useCli, setUseCli] = useState<boolean | null>(null);
   const available = models.data?.filter((m) => m.available) ?? [];
   const current = defaultModel ?? settings.data?.defaultModel ?? "";
-  const ready = available.length > 0;
+  // Default to Claude when it is signed in and nothing else is, or the Captain already uses it.
+  const onCli = cliReady && (useCli ?? (captainOnCli || available.length === 0));
+  const ready = available.length > 0 || onCli;
   const kinds = (providers.data?.kinds ?? []).filter(
     (k) => k.kind !== "openai-chatgpt" && k.kind !== "claude-code-cli",
   );
@@ -463,6 +478,13 @@ function ModelStep({ nav }: { nav: StepNav }) {
 
   async function save() {
     if (!ready) return;
+    if (captain.data && onCli !== captainOnCli) {
+      const backend = onCli ? "claude-code-cli" : "pi";
+      await api.updateCrew(CAPTAIN, {
+        manifestYaml: withBackend(captain.data.manifestYaml, backend),
+      });
+    }
+    if (available.length === 0) return;
     // Point the crew's default at a model that works; keep the owner's pick when it does.
     const usable = available.some((m) => m.ref === current) ? current : available[0]?.ref;
     if (usable && usable !== settings.data?.defaultModel) {
@@ -477,7 +499,7 @@ function ModelStep({ nav }: { nav: StepNav }) {
         on the Providers page, and each crew member can use a different one.
       </StepHeader>
 
-      {ready && (
+      {available.length > 0 && (
         <div className="mb-5">
           <Notice>
             {available.length} model{available.length === 1 ? " is" : "s are"} ready. Add another or
@@ -525,16 +547,32 @@ function ModelStep({ nav }: { nav: StepNav }) {
         {route === "chatgpt" && <ChatGptCard onChanged={reload} />}
         {route === "claude" && (
           <div className="space-y-3">
-            <ClaudeCliCard />
-            <Button size="sm" onClick={() => void reload()}>
-              I've signed in, check again
-            </Button>
+            <ClaudeCliCard onStatus={setCli} />
           </div>
         )}
         {route === "key" && providers.data && <AddProvider kinds={kinds} onAdded={reload} />}
       </div>
 
-      {ready && (
+      {cliReady && (
+        <label className="mt-5 flex items-start gap-3 rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-700">
+          <input
+            type="checkbox"
+            checked={onCli}
+            onChange={(e) => setUseCli(e.target.checked)}
+            className="mt-0.5 size-4 accent-accent-700"
+          />
+          <span>
+            <span className="block font-medium">Run the Captain on your Claude subscription</span>
+            <span className="block text-slate-600 dark:text-slate-400">
+              Claude Code is signed in. The Captain will answer through it, and so will the starter
+              crew you bring aboard next. On Claude Code the Captain chats and uses its own tools,
+              but cannot hand work to other crew members; add a provider too for that.
+            </span>
+          </span>
+        </label>
+      )}
+
+      {available.length > 0 && (
         <div className="mt-5 max-w-md">
           <ModelSelect
             label="Default model for the crew"
@@ -883,6 +921,25 @@ function InviteForm() {
 
 function CrewStep({ nav }: { nav: StepNav }) {
   const [result, setResult] = useState<InstallStartersResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // A Captain on the Claude subscription (picked on the model step) brings its crew along.
+  async function installed(r: InstallStartersResponse) {
+    setResult(r);
+    try {
+      const { crew: captain } = await api.getCrew(CAPTAIN);
+      if (readBackend(captain.manifestYaml) !== "claude-code-cli") return;
+      for (const c of r.crew) {
+        const { crew } = await api.getCrew(c.slug);
+        if (readBackend(crew.manifestYaml) === "claude-code-cli") continue;
+        await api.updateCrew(c.slug, {
+          manifestYaml: withBackend(crew.manifestYaml, "claude-code-cli"),
+        });
+      }
+    } catch (err) {
+      setError(`Could not switch the new crew to Claude Code: ${errorMessage(err)}`);
+    }
+  }
   return (
     <>
       <StepHeader eyebrow="Fill the ship" title="Bring aboard a starter crew">
@@ -906,6 +963,7 @@ function CrewStep({ nav }: { nav: StepNav }) {
             ))}
           </ul>
           <div className="mt-4 space-y-2">
+            <ErrorText>{error}</ErrorText>
             {result.notes.map((n) => (
               <Notice key={n}>{n}</Notice>
             ))}
@@ -916,7 +974,7 @@ function CrewStep({ nav }: { nav: StepNav }) {
         <>
           <StarterCrewPicker
             doneLabel="Bring aboard"
-            onDone={(r) => setResult(r)}
+            onDone={(r) => void installed(r)}
             skipLabel="Skip for now"
             onSkip={nav.skip}
           />

@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { copyText } from "../lib/clipboard.js";
 import { Button, cx, focusRing } from "./ui.js";
 
 /** A read-only value with a Copy button. */
@@ -21,7 +22,7 @@ export function CopyField({
   );
   async function copy() {
     try {
-      await navigator.clipboard.writeText(value);
+      await copyText(value);
       setCopied(true);
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => setCopied(false), 2000);

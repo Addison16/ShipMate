@@ -38,7 +38,7 @@ process.stdin.on("end", () => {
   const sid = resume || "sess-" + Math.random().toString(36).slice(2, 8);
   log({ args, cwd: process.cwd(), prompt, pid: process.pid, leaked: Object.keys(process.env).filter((k) => k.startsWith("SHIPMATE_")) });
   const out = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
-  out({ type: "system", subtype: "init", session_id: sid, model: "claude-fake-1", tools: ["Read"], apiKeySource: process.env.FAKE_CLAUDE_KEY_SOURCE || "none" });
+  out({ type: "system", subtype: "init", session_id: sid, model: "claude-fake-1", tools: ["Read"], ...(process.env.FAKE_CLAUDE_KEY_SOURCE === "omit" ? {} : { apiKeySource: process.env.FAKE_CLAUDE_KEY_SOURCE || "none" }) });
   if (prompt.includes("hang")) { setInterval(() => {}, 1000); return; }
   // "route <slug> <task>": call Shipmate's delegate tool over the MCP server in --mcp-config.
   const mcp = at("--mcp-config");
@@ -195,14 +195,25 @@ describe("claude-code-cli backend: manifest and runner", () => {
         bin: fakeBin,
         cwd: dir,
         prompt: "hi",
-        env: { ...process.env, ...(source ? { FAKE_CLAUDE_KEY_SOURCE: source } : {}) },
+        env: {
+          ...process.env,
+          ANTHROPIC_API_KEY: "",
+          ...(source ? { FAKE_CLAUDE_KEY_SOURCE: source } : {}),
+        },
       });
     expect(claudeCliBilling(await run())).toBe("subscription");
     const keyed = await run("ANTHROPIC_API_KEY");
     expect(keyed.apiKeySource).toBe("ANTHROPIC_API_KEY");
     expect(claudeCliBilling(keyed)).toBe("api");
-    // Older CLIs do not report a source: this backend is for subscriptions.
-    expect(claudeCliBilling({ apiKeySource: null })).toBe("subscription");
+    // Older CLIs do not report a source: an API key in the environment decides.
+    expect(claudeCliBilling(await run("omit"))).toBe("subscription");
+    const old = await runClaudeCli({
+      bin: fakeBin,
+      cwd: dir,
+      prompt: "hi",
+      env: { ...process.env, FAKE_CLAUDE_KEY_SOURCE: "omit", ANTHROPIC_API_KEY: "sk-test" },
+    });
+    expect(claudeCliBilling(old)).toBe("api");
   });
 
   it("prices subscription calls at API rates without counting them as spend", () => {

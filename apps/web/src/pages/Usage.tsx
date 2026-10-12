@@ -353,8 +353,10 @@ export function UsagePage() {
     [month, scope],
   );
   const data = usage.data;
-  const metric = chosenMetric ?? (data ? defaultMetric(data.totals) : "cost");
   const subs = data !== null && data.totals.subscriptionCalls > 0;
+  // "Subscription value" is only offered for months with subscription calls; elsewhere fall back.
+  const chosen = chosenMetric === "saved" && !subs ? null : chosenMetric;
+  const metric = chosen ?? (data ? defaultMetric(data.totals) : "cost");
   // Every call ran on a free (local) model: nothing spent and nothing on a subscription.
   const free = data !== null && data.totals.calls > 0 && data.totals.costMicroUsd === 0 && !subs;
   const allOnSubscription = subs && data.totals.subscriptionCalls === data.totals.calls;
@@ -464,12 +466,12 @@ export function UsagePage() {
                 onChange={setMetric}
               />
             </div>
-            {free && chosenMetric === null && (
+            {free && chosen === null && (
               <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
                 Everything this month ran on free (local) models, so the chart shows tokens.
               </p>
             )}
-            {metric === "saved" && chosenMetric === null && (
+            {metric === "saved" && chosen === null && (
               <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
                 Nothing this month was spent on API keys, so the chart shows what your subscriptions
                 covered.

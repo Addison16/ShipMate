@@ -126,8 +126,9 @@ export function childEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEn
 
 /**
  * Whether a run was paid by an API key or a Claude subscription. The CLI reports "none" when it
- * is signed in with a Claude account; an unreported source counts as the subscription, which is
- * what this backend is for.
+ * is signed in with a Claude account. When it reports nothing, runClaudeCli fills in
+ * ANTHROPIC_API_KEY if that is set; otherwise the run counts as the subscription, which is what
+ * this backend is for.
  */
 export function claudeCliBilling(
   result: Pick<ClaudeCliResult, "apiKeySource">,
@@ -241,6 +242,11 @@ function runOnce(options: ClaudeCliRunOptions): Promise<ClaudeCliResult> {
       clearTimeout(killTimer);
       if (buffer.trim()) handle(buffer);
       if (!result.text) result.text = parser.text.trim();
+      // A CLI that does not report its credential source uses an API key when one is set.
+      const env = options.env ?? childEnv();
+      if (!result.apiKeySource && env.ANTHROPIC_API_KEY?.trim()) {
+        result.apiKeySource = "ANTHROPIC_API_KEY";
+      }
       if (result.aborted) {
         result.isError = true;
         result.error = null;

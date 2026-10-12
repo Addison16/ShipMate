@@ -21,6 +21,7 @@ import {
   th,
 } from "../components/ui.js";
 import { usableModels } from "../lib/claude-cli.js";
+import { groupByProvider, providerLabel } from "../lib/models.js";
 import { useResource } from "../lib/useResource.js";
 
 const OLLAMA_URL = "http://localhost:11434/v1";
@@ -105,26 +106,39 @@ export function ProvidersPage() {
       )}
       {usable && usable.length > 0 && (
         <div className="mt-3">
-          <Table>
-            <thead>
-              <tr>
-                <th className={th}>Model</th>
-                <th className={th}>Reference</th>
-                <th className={th}>From</th>
-              </tr>
-            </thead>
-            <tbody>
-              {usable.map((m) => (
-                <tr key={m.ref}>
-                  <td className={td}>{m.name}</td>
-                  <td className={`${td} font-mono text-xs`}>{m.ref}</td>
-                  <td className={td}>
-                    <Badge tone="ok">{m.source}</Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
+          {[...groupByProvider(usable.map((m) => ({ ...m, provider: m.source })))].map(
+            ([source, list]) => (
+              <details
+                key={source}
+                className="mb-2 rounded-xl border border-slate-200 dark:border-slate-800"
+              >
+                <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm">
+                  <span className="font-medium">{providerLabel(source)}</span>
+                  <Badge tone="ok">
+                    {list.length} model{list.length === 1 ? "" : "s"}
+                  </Badge>
+                </summary>
+                <div className="px-2 pb-2">
+                  <Table>
+                    <thead>
+                      <tr>
+                        <th className={th}>Model</th>
+                        <th className={th}>Reference</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {list.map((m) => (
+                        <tr key={m.ref}>
+                          <td className={td}>{m.name}</td>
+                          <td className={`${td} font-mono text-xs`}>{m.ref}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </div>
+              </details>
+            ),
+          )}
         </div>
       )}
     </Page>

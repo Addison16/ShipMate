@@ -14,7 +14,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 - **One crew default model**: crew.yaml can say `model: default`, which means the crew default
   picked in Settings, and follows it when it changes. New crew, starters and recruits start on
   it. Settings has "Put everyone on the crew default" for existing crew, and each crew member's
-  Manifest tab has a model picker for giving one its own model.
+  page has a model picker for giving one its own model.
+- **Pick where a model runs, then which one**: model pickers are two dropdowns, a provider (or
+  the Claude subscription, or the crew default) and then its models. Choosing a Claude
+  subscription model for a crew member also moves it onto Claude Code, and the setup guide asks
+  which Claude model the Captain should use.
 - **Only usable models**: the Providers page lists the models you can run with what is signed in
   or configured (including the Claude Code models when it is signed in), not every model pi
   knows. Model pickers leave out models nothing is configured for.

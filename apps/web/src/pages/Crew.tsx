@@ -3,7 +3,6 @@ import { type FormEvent, useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { isAdmin, useUser } from "../auth.js";
 import { Avatar } from "../components/Avatar.js";
-import { CrewBackendSelect } from "../components/ClaudeCliCard.js";
 import { ExportCrewButton, ImportCrewPage } from "../components/CrewBundle.js";
 import { CrewModelSelect, ModelSelect } from "../components/ModelSelect.js";
 import { StarterCrewPicker } from "../components/StarterCrewPicker.js";
@@ -21,6 +20,7 @@ import {
   TextAreaField,
   TextField,
 } from "../components/ui.js";
+import { claudeCliApi } from "../lib/claude-cli.js";
 import { formatTime } from "../lib/format.js";
 import { CREW_DEFAULT, modelLabel } from "../lib/models.js";
 import { useResource } from "../lib/useResource.js";
@@ -296,6 +296,8 @@ function CrewDetail({ slug }: { slug: string }) {
   const detail = useResource(() => api.getCrew(slug).then((r) => r.crew), [slug]);
   const models = useResource(() => api.listModels().then((r) => r.models));
   const settings = useResource(() => api.getSettings());
+  // Admins only; for others it fails quietly and the Claude subscription is not offered.
+  const cli = useResource(() => claudeCliApi.status().then((r) => r.claudeCli));
   const [tab, setTab] = useState<Tab>("persona");
   const [actionError, setActionError] = useState<string | null>(null);
   useServerEvents((ev) => {
@@ -380,6 +382,14 @@ function CrewDetail({ slug }: { slug: string }) {
             </div>
           )}
           <ErrorText>{actionError}</ErrorText>
+          <CrewModelSelect
+            crew={crew}
+            models={models.data}
+            crewDefault={settings.data?.defaultModel ?? ""}
+            claudeCode={!!cli.data?.signedIn}
+            readOnly={!admin}
+            onSaved={detail.setData}
+          />
           <div
             role="tablist"
             aria-label="Crew member sections"
@@ -429,18 +439,6 @@ function CrewDetail({ slug }: { slug: string }) {
               <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
                 The approval policy and allow list are edited in the Manifest tab.
               </p>
-            )}
-            {tab === "manifest" && (
-              <CrewBackendSelect crew={crew} readOnly={!admin} onSaved={detail.setData} />
-            )}
-            {tab === "manifest" && crew.backend !== "claude-code-cli" && (
-              <CrewModelSelect
-                crew={crew}
-                models={models.data}
-                crewDefault={settings.data?.defaultModel ?? ""}
-                readOnly={!admin}
-                onSaved={detail.setData}
-              />
             )}
             {tab === "manifest" && (
               <FileEditor

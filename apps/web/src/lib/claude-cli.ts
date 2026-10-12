@@ -52,7 +52,7 @@ export const CLAUDE_CODE_MODELS = [
 export interface UsableModel {
   ref: string;
   name: string;
-  /** Where it comes from, e.g. `anthropic` or `Claude Code`. */
+  /** The provider id it comes from, e.g. `anthropic` or `claude-code`. */
   source: string;
 }
 
@@ -69,7 +69,7 @@ export function usableModels(
     .filter((m) => m.available)
     .map((m) => ({ ref: m.ref, name: m.name, source: m.provider }));
   if (cliSignedIn) {
-    out.push(...CLAUDE_CODE_MODELS.map((m) => ({ ...m, source: "Claude Code" })));
+    out.push(...CLAUDE_CODE_MODELS.map((m) => ({ ...m, source: "claude-code" })));
   }
   return out;
 }

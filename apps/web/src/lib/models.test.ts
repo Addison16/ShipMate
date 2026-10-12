@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { modelLabel, readModel, withModel } from "./models.js";
+import {
+  groupByProvider,
+  modelLabel,
+  providerLabel,
+  providerOf,
+  readModel,
+  withModel,
+} from "./models.js";
 
 describe("crew model helpers", () => {
   it("reads and sets the model line without touching others", () => {
@@ -13,5 +20,20 @@ describe("crew model helpers", () => {
     expect(modelLabel("default", "anthropic/x")).toBe("Crew default (anthropic/x)");
     expect(modelLabel("default")).toBe("Crew default");
     expect(modelLabel("openai/y", "anthropic/x")).toBe("openai/y");
+  });
+});
+
+describe("provider grouping", () => {
+  it("groups models by provider in order", () => {
+    const g = groupByProvider([
+      { ref: "openai/a", name: "A" },
+      { ref: "anthropic/b", name: "B" },
+      { ref: "openai/c", name: "C", provider: "openai" },
+    ]);
+    expect([...g.keys()]).toEqual(["openai", "anthropic"]);
+    expect(g.get("openai")?.map((m) => m.ref)).toEqual(["openai/a", "openai/c"]);
+    expect(providerLabel("claude-code")).toBe("Claude subscription");
+    expect(providerLabel("mystery")).toBe("mystery");
+    expect(providerOf("default")).toBe("");
   });
 });

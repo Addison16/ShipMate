@@ -33,7 +33,14 @@ import {
   TextField,
 } from "../components/ui.js";
 import { BRIDGE_TABS, type BridgeTab } from "../lib/bridges.js";
-import { claudeCliApi, readBackend, withBackend } from "../lib/claude-cli.js";
+import { CLAUDE_CODE_MODELS, claudeCliApi, readBackend, withBackend } from "../lib/claude-cli.js";
+import {
+  CLAUDE_CODE_PROVIDER,
+  CREW_DEFAULT,
+  providerOf,
+  readModel,
+  withModel,
+} from "../lib/models.js";
 import {
   GUIDE_STEPS,
   nextStep,
@@ -516,6 +523,11 @@ function ModelStep({ nav }: { nav: StepNav }) {
     ? readBackend(captain.data.manifestYaml) === "claude-code-cli"
     : false;
   const [useCli, setUseCli] = useState<boolean | null>(null);
+  const captainModel = captain.data ? readModel(captain.data.manifestYaml) : "";
+  const [cliModel, setCliModel] = useState<string | null>(null);
+  const claudeModel =
+    cliModel ??
+    (providerOf(captainModel) === CLAUDE_CODE_PROVIDER ? captainModel : "claude-code/sonnet");
   const available = models.data?.filter((m) => m.available) ?? [];
   const current = defaultModel ?? settings.data?.defaultModel ?? "";
   // Default to Claude when it is signed in and nothing else is, or the Captain already uses it.
@@ -535,9 +547,12 @@ function ModelStep({ nav }: { nav: StepNav }) {
     // Read the Captain fresh, so a slow or failed load never skips the switch silently.
     const { crew: skipper } = await api.getCrew(CAPTAIN);
     const isCli = readBackend(skipper.manifestYaml) === "claude-code-cli";
-    if (onCli !== isCli) {
-      const backend = onCli ? "claude-code-cli" : "pi";
-      await api.updateCrew(CAPTAIN, { manifestYaml: withBackend(skipper.manifestYaml, backend) });
+    if (onCli) {
+      const yaml = withModel(withBackend(skipper.manifestYaml, "claude-code-cli"), claudeModel);
+      if (yaml !== skipper.manifestYaml) await api.updateCrew(CAPTAIN, { manifestYaml: yaml });
+    } else if (isCli) {
+      const yaml = withModel(withBackend(skipper.manifestYaml, "pi"), CREW_DEFAULT);
+      await api.updateCrew(CAPTAIN, { manifestYaml: yaml });
     }
     if (available.length === 0) return;
     // Point the crew's default at a model that works; keep the owner's pick when it does.
@@ -625,6 +640,22 @@ function ModelStep({ nav }: { nav: StepNav }) {
             </span>
           </span>
         </label>
+      )}
+      {onCli && (
+        <div className="mt-3 max-w-md">
+          <SelectField
+            label="Claude model"
+            hint="Opus is the most capable, Sonnet is quick and capable, Haiku is fastest and uses the least of your plan. Change it per crew member any time."
+            value={claudeModel}
+            onChange={(e) => setCliModel(e.target.value)}
+          >
+            {CLAUDE_CODE_MODELS.map((m) => (
+              <option key={m.ref} value={m.ref}>
+                {m.name}
+              </option>
+            ))}
+          </SelectField>
+        </div>
       )}
 
       {available.length > 0 && (
@@ -1045,12 +1076,14 @@ function CrewStep({ nav }: { nav: StepNav }) {
     try {
       const { crew: captain } = await api.getCrew(CAPTAIN);
       if (readBackend(captain.manifestYaml) === "claude-code-cli") {
+        // They take the Captain's Claude model too, when it picked one.
+        const model = readModel(captain.manifestYaml);
         for (const c of r.crew) {
           const { crew } = await api.getCrew(c.slug);
           if (readBackend(crew.manifestYaml) === "claude-code-cli") continue;
-          await api.updateCrew(c.slug, {
-            manifestYaml: withBackend(crew.manifestYaml, "claude-code-cli"),
-          });
+          let yaml = withBackend(crew.manifestYaml, "claude-code-cli");
+          if (providerOf(model) === CLAUDE_CODE_PROVIDER) yaml = withModel(yaml, model);
+          await api.updateCrew(c.slug, { manifestYaml: yaml });
         }
       }
       setResult(r);

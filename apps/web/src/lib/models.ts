@@ -20,3 +20,48 @@ export function modelLabel(model: string, crewDefault?: string): string {
   if (model !== CREW_DEFAULT) return model;
   return crewDefault ? `Crew default (${crewDefault})` : "Crew default";
 }
+
+/** The provider id Claude subscription models use in crew.yaml (`claude-code/sonnet`). */
+export const CLAUDE_CODE_PROVIDER = "claude-code";
+
+const PROVIDER_LABELS: Record<string, string> = {
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  "openai-codex": "ChatGPT plan",
+  chatgpt: "ChatGPT plan",
+  xai: "xAI",
+  google: "Google",
+  openrouter: "OpenRouter",
+  ollama: "Ollama (local)",
+  [CLAUDE_CODE_PROVIDER]: "Claude subscription",
+};
+
+/** A provider id as people read it. */
+export function providerLabel(id: string): string {
+  return PROVIDER_LABELS[id] ?? id;
+}
+
+/** The provider part of a model ref (`anthropic/claude-x` → `anthropic`). */
+export function providerOf(ref: string): string {
+  const i = ref.indexOf("/");
+  return i > 0 ? ref.slice(0, i) : "";
+}
+
+export interface ModelChoice {
+  ref: string;
+  name: string;
+}
+
+/** Models grouped by provider, in first-seen order. */
+export function groupByProvider(
+  models: readonly (ModelChoice & { provider?: string })[],
+): Map<string, ModelChoice[]> {
+  const out = new Map<string, ModelChoice[]>();
+  for (const m of models) {
+    const p = m.provider ?? providerOf(m.ref);
+    const list = out.get(p) ?? [];
+    list.push({ ref: m.ref, name: m.name });
+    out.set(p, list);
+  }
+  return out;
+}

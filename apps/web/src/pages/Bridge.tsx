@@ -715,7 +715,7 @@ function Thread({
       </div>
 
       {readOnly ? (
-        <p className="border-t border-slate-200 bg-white px-3 py-3 text-center text-sm text-slate-500 sm:px-6 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+        <p className="border-t border-slate-200 bg-white px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] text-center text-sm text-slate-500 sm:px-6 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
           {conversation?.surface === "watch"
             ? "A watch ran this conversation. It is shown here to read."
             : `This conversation happened in ${surfaceLabel(conversation?.surface ?? "") ?? "another app"}. Reply there to continue it.`}
@@ -731,7 +731,7 @@ function Thread({
             e.preventDefault();
             files.add(e.dataTransfer.files);
           }}
-          className="border-t border-slate-200 bg-white px-3 py-3 sm:px-6 dark:border-slate-800 dark:bg-slate-900"
+          className="border-t border-slate-200 bg-white px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-6 dark:border-slate-800 dark:bg-slate-900"
         >
           <div className="mx-auto max-w-3xl space-y-2">
             {state.error && (

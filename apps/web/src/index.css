@@ -133,6 +133,10 @@ body,
 body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
+  /* The page runs edge to edge (viewport-fit=cover); keep content off the notch in landscape. */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  box-sizing: border-box;
 }
 
 /* Mobile navigation slide-over (Shell). */

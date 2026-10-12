@@ -35,6 +35,7 @@ Version 1.0. See [CHANGELOG.md](CHANGELOG.md) for what is in it and
   person and monthly caps.
 - **Models**: API keys, self-hosted models (Ollama, vLLM, LM Studio, llama.cpp), your ChatGPT
   plan via Sign in with ChatGPT, and your Claude subscription via the official Claude Code CLI.
+  An optional bundled Ollama runs everything locally with no API key.
 - **Chat anywhere**: the web app (installable as a PWA on phone and desktop), Discord,
   Telegram and Slack.
 - **On your phone**: push notifications for approvals (approve or deny from the notification),
@@ -43,6 +44,9 @@ Version 1.0. See [CHANGELOG.md](CHANGELOG.md) for what is in it and
   if you like, with a provider's speech or a local Whisper and Kokoro. See
   [docs/phone.md](docs/phone.md).
 - **Backups**: nightly or on demand, restorable from the UI or the CLI.
+- **Health and updates**: a Health page with the running version, newer releases and checks
+  for the database, providers, bridges, the Docker socket, disk and backups, plus a one-click
+  update when the Docker socket is mounted.
 
 ## Quick start
 
@@ -54,11 +58,22 @@ open http://localhost:3000
 
 The first visit creates the owner account. Then add a provider under **Providers** (an API key,
 a local model server, or a subscription sign-in) and say hello to the Captain on the **Bridge**.
+
+**No API key?** Start the bundled local model server too; it downloads a small model on first
+start, and setup offers it right after you create the owner account:
+
+```bash
+docker compose --profile local-ai up -d
+```
+
+See [docs/local-models.md](docs/local-models.md) for picking a model and using a GPU.
 Set `SHIPMATE_URL` to the address people use to reach the instance; it is needed for OIDC,
 webhooks and links in chat bridges.
 
 Images are tagged `ghcr.io/addison16/shipmate:1.0.0`, `:1.0`, `:1` and `:latest`; pin a version
-tag to control upgrades. Migrations run on boot. `:edge` follows `main`.
+tag to control upgrades. Migrations run on boot. `:edge` follows `main`. **Health** (owners and
+admins) says when a newer release is out and can update in one click; see
+[docs/health-and-updates.md](docs/health-and-updates.md).
 
 To install the web app, open it in a browser and use **Install app** (desktop) or **Add to Home
 Screen** (iOS and Android). The service worker needs HTTPS (or `localhost`).

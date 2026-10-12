@@ -19,6 +19,7 @@ import type {
   CrewImportRequest,
   DiscordLinkCode,
   DiscordStatusDto,
+  HealthDto,
   HouseholdDto,
   InstallStartersRequest,
   InstallStartersResponse,
@@ -26,6 +27,8 @@ import type {
   ListDetailDto,
   ListDto,
   ListKind,
+  LocalAiStatusDto,
+  LocalModelPullDto,
   LoginRequest,
   McpServerDto,
   MemoryEntryDto,
@@ -137,6 +140,17 @@ export const api = {
     request<{ models: string[] }>("POST", `/api/providers/${enc(id)}/probe`),
   listModels: () => request<{ models: ModelOption[] }>("GET", "/api/models"),
 
+  // local models (Ollama)
+  localAi: (url?: string) =>
+    request<{ localAi: LocalAiStatusDto }>("GET", `/api/local-ai${url ? `?url=${enc(url)}` : ""}`),
+  pullLocalModel: (model: string, url?: string) =>
+    request<{ pull: LocalModelPullDto }>("POST", "/api/local-ai/pull", {
+      model,
+      ...(url ? { url } : {}),
+    }),
+  setUpLocalModel: (body: { model: string; url?: string; makeDefault?: boolean }) =>
+    request<{ provider: ProviderDto; settings: SettingsDto }>("POST", "/api/local-ai/use", body),
+
   // crew
   listCrew: (all = false) => request<{ crew: CrewDto[] }>("GET", `/api/crew${all ? "?all=1" : ""}`),
   getCrew: (slug: string) => request<{ crew: CrewDetailDto }>("GET", `/api/crew/${enc(slug)}`),
@@ -212,6 +226,13 @@ export const api = {
   // usage
   usage: (month: string, scope: "me" | "all") =>
     request<UsageResponse>("GET", `/api/usage?month=${enc(month)}&scope=${scope}`),
+
+  // health and updates
+  health: (refresh = false) =>
+    request<{ health: HealthDto }>("GET", `/api/health${refresh ? "?refresh=1" : ""}`),
+  startUpdate: () =>
+    request<{ started: true; helper: string }>("POST", "/api/health/update", { confirm: true }),
+  meta: () => request<{ version: string }>("GET", "/api/meta"),
 
   // settings
   getSettings: () => request<SettingsDto>("GET", "/api/settings"),

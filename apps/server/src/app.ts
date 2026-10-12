@@ -19,7 +19,9 @@ import { conversationRoutes } from "./routes/conversations.js";
 import { crewRoutes } from "./routes/crew.js";
 import { discordRoutes } from "./routes/discord.js";
 import { fileRoutes } from "./routes/files.js";
+import { healthRoutes } from "./routes/health.js";
 import { listRoutes } from "./routes/lists.js";
+import { localAiRoutes } from "./routes/local-ai.js";
 import { mcpRoutes } from "./routes/mcp.js";
 import { oidcRoutes } from "./routes/oidc.js";
 import { profileRoutes } from "./routes/profiles.js";
@@ -109,6 +111,7 @@ export async function buildApp(
   app.addHook("onClose", async () => {
     clearInterval(fileSweep);
     await services.backups.stop();
+    services.localAi.close();
     await services.watches.stop();
     services.shipyard.jobs.stop();
     services.approvals.close();
@@ -177,6 +180,8 @@ export async function buildApp(
   await pushRoutes(app, services);
   await fileRoutes(app, services);
   await voiceRoutes(app, services);
+  await localAiRoutes(app, services);
+  await healthRoutes(app, services);
   await oidcRoutes(app, services, { secureCookies: config.secureCookies });
 
   // The Bridge's live channel: streams crew replies and takes messages from the person.

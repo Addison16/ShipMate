@@ -36,7 +36,17 @@ files, set the workspaces path as that machine mounts it, and press **Test conne
 use the `DOCKER_HOST` lines in the YAML. Step by step: [docs/shipyard.md](../../docs/shipyard.md#sandboxes-without-the-docker-socket).
 
 Updating: **Apps → shipmate → Update** (or edit the YAML to pin a version tag). Migrations run
-on every start.
+on every start. The **Health** page in Shipmate shows when a newer release is out and checks the
+database, providers, bridges, Docker socket, disk and backups; it leaves the update itself to
+TrueNAS.
+
+## Local models (optional)
+
+To run models on the NAS with no API key, create one more dataset (e.g.
+`apps/shipmate/ollama`; models take several GB each), uncomment the `ollama` service in the
+YAML and point its volume at that dataset. After the app restarts, open **Providers → Local
+model (Ollama)** as the owner, download a model (progress shows on the page) and press **Use
+this model**. See [docs/local-models.md](../../docs/local-models.md) for which model to pick.
 
 ## Backups
 

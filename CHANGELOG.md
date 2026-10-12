@@ -83,6 +83,26 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   `DOCKER_CERT_PATH`. **Test connection** says which engine answered or why it did not. The
   "Code cannot run right now" notice explains the options; see
   [docs/shipyard.md](docs/shipyard.md).
+- **Bundled local models**: an optional Ollama service in `docker-compose.yml`, off by default.
+  `docker compose --profile local-ai up -d` starts it and downloads a small starter model, so
+  Shipmate runs with no API key at all. First-run setup and **Providers → Local model** find
+  the Ollama server (address configurable, `SHIPMATE_OLLAMA_URL`), suggest a few small models
+  that handle tools, download one with live progress, and set it up as the Ollama provider and
+  the default model in one click. NAS templates and [docs/local-models.md](docs/local-models.md)
+  cover running it on Unraid and TrueNAS and with a GPU.
+- **Health page** for owners and admins: the running version, the latest GitHub release with
+  its notes (cached, failure-tolerant, off with `SHIPMATE_UPDATE_CHECK=off`), and checks with
+  a hint each for Postgres and migrations, every model provider (free requests only, never a
+  model call), connected chat bridges, the Docker socket, free disk space and backup recency.
+- **One-click update**: with the Docker socket mounted and a moving image tag, the owner can
+  update after a confirm. A short-lived helper container (a one-shot Watchtower) pulls the
+  image and recreates Shipmate's container with the same settings; the page reloads when the
+  new version answers. Otherwise, and on Unraid and TrueNAS, it shows the commands to run.
+- **Cost page for local models**: every model call now records how long the model took to
+  answer. The Cost page shows average and p95 response time per person, crew member, watch and
+  model, and the daily chart switches between cost, tokens and response time. When a month ran
+  only on free (local) models it opens on tokens instead of a flat $0 line. The CSV export gains
+  a `response_ms` column. Per-person metering and caps are unchanged.
 
 ## 1.0.0 — 2026-10-11
 

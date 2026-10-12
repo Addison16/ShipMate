@@ -32,7 +32,16 @@ export function costMicroUsd(model: Model<Api>, usage: Usage): number {
 export class UsageService {
   constructor(private readonly db: Db) {}
 
-  async record(ctx: UsageContext, model: Model<Api>, usage: Usage): Promise<void> {
+  /**
+   * Store one model call. `durationMs` is how long the model took to answer (request to last
+   * token), so local models, which cost nothing, still show how they perform.
+   */
+  async record(
+    ctx: UsageContext,
+    model: Model<Api>,
+    usage: Usage,
+    durationMs?: number | null,
+  ): Promise<void> {
     await this.db.insert(usageEvents).values({
       userId: ctx.userId,
       crewMemberId: ctx.crewMemberId,
@@ -44,6 +53,10 @@ export class UsageService {
       cacheReadTokens: usage.cacheRead,
       cacheWriteTokens: usage.cacheWrite,
       costMicroUsd: costMicroUsd(model, usage),
+      durationMs:
+        durationMs === undefined || durationMs === null || !Number.isFinite(durationMs)
+          ? null
+          : Math.max(0, Math.round(durationMs)),
     });
   }
 
@@ -87,14 +100,23 @@ export class UsageService {
       cacheReadTokens: sql<string>`coalesce(sum(${usageEvents.cacheReadTokens}), 0)`,
       cacheWriteTokens: sql<string>`coalesce(sum(${usageEvents.cacheWriteTokens}), 0)`,
       costMicroUsd: sql<string>`coalesce(sum(${usageEvents.costMicroUsd}), 0)`,
+      // Calls recorded before response times were kept have no duration and are left out.
+      avgResponseMs: sql<string | null>`avg(${usageEvents.durationMs})`,
+      p95ResponseMs: sql<
+        string | null
+      >`percentile_cont(0.95) within group (order by ${usageEvents.durationMs})`,
     };
-    const num = (r: Record<keyof typeof totals, string>): UsageTotals => ({
+    const ms = (v: string | number | null | undefined) =>
+      v === null || v === undefined ? null : Math.round(Number(v));
+    const num = (r: Record<keyof typeof totals, string | number | null>): UsageTotals => ({
       calls: Number(r.calls),
       inputTokens: Number(r.inputTokens),
       outputTokens: Number(r.outputTokens),
       cacheReadTokens: Number(r.cacheReadTokens),
       cacheWriteTokens: Number(r.cacheWriteTokens),
       costMicroUsd: Number(r.costMicroUsd),
+      avgResponseMs: ms(r.avgResponseMs),
+      p95ResponseMs: ms(r.p95ResponseMs),
     });
 
     const [all] = await this.db.select(totals).from(usageEvents).where(where);
@@ -134,7 +156,13 @@ export class UsageService {
       .groupBy(usageEvents.routineId, watches.name, watches.monthlyCapCents);
     const day = sql<string>`to_char(${usageEvents.createdAt} at time zone 'UTC', 'YYYY-MM-DD')`;
     const perDay = await this.db
-      .select({ date: day, calls: totals.calls, costMicroUsd: totals.costMicroUsd })
+      .select({
+        date: day,
+        calls: totals.calls,
+        costMicroUsd: totals.costMicroUsd,
+        tokens: sql<string>`coalesce(sum(${usageEvents.inputTokens} + ${usageEvents.outputTokens}), 0)`,
+        avgResponseMs: totals.avgResponseMs,
+      })
       .from(usageEvents)
       .where(where)
       .groupBy(day);
@@ -150,10 +178,15 @@ export class UsageService {
         date,
         calls: Number(d?.calls ?? 0),
         costMicroUsd: Number(d?.costMicroUsd ?? 0),
+        tokens: Number(d?.tokens ?? 0),
+        avgResponseMs: ms(d?.avgResponseMs),
       });
     }
 
-    const byCost = <T extends UsageTotals>(a: T, b: T) => b.costMicroUsd - a.costMicroUsd;
+    // Most spend first; free (local) usage falls back to most tokens.
+    const byCost = <T extends UsageTotals>(a: T, b: T) =>
+      b.costMicroUsd - a.costMicroUsd ||
+      b.inputTokens + b.outputTokens - (a.inputTokens + a.outputTokens);
     return {
       month,
       totals: all ? num(all) : num({} as never),
@@ -215,6 +248,7 @@ export class UsageService {
       "cache_read_tokens",
       "cache_write_tokens",
       "cost_usd",
+      "response_ms",
     ];
     const lines = [header.join(",")];
     for (const { e, user, crew, watch } of rows) {
@@ -232,6 +266,7 @@ export class UsageService {
           e.cacheReadTokens,
           e.cacheWriteTokens,
           (e.costMicroUsd / 1_000_000).toFixed(6),
+          e.durationMs ?? "",
         ].join(","),
       );
     }

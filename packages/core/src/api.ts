@@ -125,6 +125,58 @@ export interface UpdateProviderRequest {
  * `<baseUrl>/models` and saves the result on the provider.
  */
 
+// ---------- local models (Ollama) ----------
+
+export interface LocalModelDto {
+  /** Ollama model name with its tag, e.g. "qwen3:4b". */
+  name: string;
+  sizeBytes: number | null;
+}
+export interface RecommendedModelDto {
+  name: string;
+  /** Approximate download size, e.g. "2.5 GB". */
+  size: string;
+  /** One line on what it is good for and what it needs. */
+  note: string;
+}
+export interface LocalModelPullDto {
+  model: string;
+  status: "pulling" | "done" | "failed";
+  /** Ollama's latest status line ("pulling manifest", "verifying sha256 digest", ...). */
+  detail: string;
+  completedBytes: number;
+  /** 0 until Ollama reports the layer sizes. */
+  totalBytes: number;
+  error: string | null;
+  startedAt: string;
+}
+export interface LocalAiStatusDto {
+  /** The Ollama server checked (its root URL, without /v1). */
+  url: string;
+  reachable: boolean;
+  /** Ollama's version when reachable. */
+  version: string | null;
+  /** Why it is not reachable, in plain words. */
+  error: string | null;
+  installed: LocalModelDto[];
+  recommended: RecommendedModelDto[];
+  /** The Ollama provider row, once Ollama is set up as a provider. */
+  providerId: string | null;
+  defaultModel: string;
+  /** Pulls running now or finished in the last few minutes. */
+  pulls: LocalModelPullDto[];
+}
+/**
+ * The bundled Ollama service (docker compose --profile local-ai) or any Ollama server.
+ * GET /api/local-ai?url= (owner) → { localAi: LocalAiStatusDto } (url defaults to the Ollama
+ *   provider's server, else SHIPMATE_OLLAMA_URL, else http://ollama:11434)
+ * POST /api/local-ai/pull (owner) { url?, model } → { pull: LocalModelPullDto } (runs in the
+ *   background; poll GET /api/local-ai for progress)
+ * POST /api/local-ai/use (owner) { url?, model, makeDefault? } → { provider: ProviderDto,
+ *   settings: SettingsDto } (adds or updates the Ollama provider with that model; makeDefault
+ *   sets it as the instance default model, which crew without a working model fall back to)
+ */
+
 export interface ModelOption {
   /** `provider/model-id`, the form crew.yaml uses. */
   ref: string;
@@ -263,6 +315,12 @@ export interface UsageTotals {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   costMicroUsd: number;
+  /**
+   * How long the model took to answer, averaged and at the 95th percentile, in ms. Null when no
+   * call in the group has a recorded response time (calls from before it was recorded).
+   */
+  avgResponseMs: number | null;
+  p95ResponseMs: number | null;
 }
 
 export interface UsageResponse {
@@ -278,7 +336,14 @@ export interface UsageResponse {
   /** Spend per watch (routine) this month (phase 4). */
   byWatch: Array<UsageTotals & { watchId: string; name: string; capCents: number | null }>;
   /** One entry per UTC day of the month up to today, zeros included (phase 4). */
-  daily: Array<{ date: string; costMicroUsd: number; calls: number }>;
+  daily: Array<{
+    date: string;
+    costMicroUsd: number;
+    calls: number;
+    /** Input plus output tokens. */
+    tokens: number;
+    avgResponseMs: number | null;
+  }>;
 }
 /**
  * GET /api/usage?month=YYYY-MM&scope=me|all → UsageResponse (scope=all needs owner or admin)
@@ -845,6 +910,73 @@ export interface BackupSettingsDto {
  * DELETE /api/backups/:name (owner) → { ok: true }
  * PUT /api/backups/settings (owner) Partial<{ hourUtc, keep }> → { settings }
  * CLI: `shipmate backup [--out file]`, `shipmate restore <file> --yes`, `shipmate doctor`
+ */
+
+// ---------- health and updates ----------
+
+export type HealthStatus = "ok" | "warn" | "fail";
+
+export interface HealthCheckDto {
+  /** Stable id, e.g. "database", "provider:<id>", "bridge:discord". */
+  id: string;
+  /** Database | Models | Chat bridges | Shipyard | Storage */
+  group: string;
+  name: string;
+  status: HealthStatus;
+  /** What was found, in plain words. */
+  detail: string;
+  /** What to do about a warning or failure; null when ok. */
+  hint: string | null;
+}
+
+export interface ReleaseDto {
+  /** Semver without the leading v, e.g. "1.1.0". */
+  version: string;
+  name: string;
+  /** Release notes on GitHub. */
+  url: string;
+  publishedAt: string | null;
+}
+
+export interface ReleaseCheckDto {
+  /** False when SHIPMATE_UPDATE_CHECK=off (offline installs). */
+  enabled: boolean;
+  latest: ReleaseDto | null;
+  /** The latest release is newer than the running version. */
+  updateAvailable: boolean;
+  checkedAt: string | null;
+  /** Why the check failed (offline, rate limited); the rest of the page still works. */
+  error: string | null;
+}
+
+export interface UpdatePlanDto {
+  /** The Update button can run: the Docker socket is there and the image tag can move. */
+  oneClick: boolean;
+  /** Why (or why not), in plain words. */
+  reason: string;
+  /** Shipmate's own container and image, when it runs in Docker and can see itself. */
+  container: string | null;
+  image: string | null;
+  /** The helper image the one-click update runs (a one-shot Watchtower). */
+  updaterImage: string;
+  /** Commands to update by hand, ready to copy. */
+  commands: string[];
+}
+
+export interface HealthDto {
+  version: string;
+  release: ReleaseCheckDto;
+  checks: HealthCheckDto[];
+  update: UpdatePlanDto;
+  checkedAt: string;
+}
+/**
+ * GET /api/health (admin) → { health: HealthDto } (?refresh=1 rechecks GitHub releases now;
+ *   otherwise the release check is cached for a few hours). No check makes a paid model call.
+ * POST /api/health/update (owner) { confirm: true } → { started: true, helper: string }
+ *   Starts a short-lived helper container that pulls Shipmate's image and recreates its
+ *   container with the same settings; Shipmate restarts. 409 when one-click is not possible.
+ * GET /healthz (no sign-in) → { ok: true, version } for Docker healthchecks.
  */
 
 // ---------- Telegram and Slack bridges (phase 5) ----------

@@ -39,7 +39,7 @@ export interface CliTurnInput {
   usage: UsageContext;
   emit: (event: ServerEvent) => void;
   /** The Bridge's usage writer: the turn waits for it before ending (cap checks stay exact). */
-  record: (ctx: UsageContext, model: Model<Api>, usage: Usage) => void;
+  record: (ctx: UsageContext, model: Model<Api>, usage: Usage, durationMs?: number) => void;
 }
 
 /**
@@ -132,6 +132,7 @@ export class ClaudeCliTurns {
     };
 
     try {
+      const startedAt = performance.now();
       const result = await runClaudeCli({
         cwd,
         prompt: input.prompt,
@@ -154,6 +155,8 @@ export class ClaudeCliTurns {
           input.usage,
           cliModel(result.model ?? model ?? "default"),
           cliUsage(result.usage, result.costUsd),
+          // One CLI run can make several model calls; its wall time is the closest measure.
+          performance.now() - startedAt,
         );
       }
       if (!result.aborted && result.isError) {

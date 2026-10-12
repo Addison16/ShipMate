@@ -54,7 +54,18 @@ it (NFS), then set it up under **Settings → Shipyard sandbox** in Shipmate (or
 [docs/shipyard.md](../../docs/shipyard.md#sandboxes-without-the-docker-socket).
 
 Start it, open the Web UI, and create the owner account. Migrations run on every start, so
-updating is "Check for updates → Apply update".
+updating is "Check for updates → Apply update". The **Health** page in Shipmate shows when a
+newer release is out; it leaves the update itself to Unraid so the template stays in step.
+
+## Local models (optional)
+
+To run models on the server with no API key, add Ollama as a third container (Community
+Applications: search "ollama", or Repository `ollama/ollama`, with a path such as
+`/mnt/user/appdata/ollama` → `/root/.ollama` and port `11434`). Then set Shipmate's
+**SHIPMATE_OLLAMA_URL** (advanced view) to `http://<unraid-ip>:11434`, or to
+`http://ollama:11434` when both are on the same custom Docker network. As the owner, open
+**Providers → Local model (Ollama)**, download a model (progress shows on the page) and press
+**Use this model**. See [docs/local-models.md](../../docs/local-models.md) for which to pick.
 
 ## Backups
 

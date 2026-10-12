@@ -34,6 +34,7 @@ export type IconName =
   | "users"
   | "bridges"
   | "settings"
+  | "health"
   | "light"
   | "dark"
   | "auto"
@@ -123,6 +124,8 @@ const paths: Record<IconName, ReactNode> = {
       <circle cx="17" cy="18" r="2" />
     </>
   ),
+  // Heartbeat line.
+  health: <path d="M3 12h4l2.5-6 4 12 2.5-6H21" />,
   light: (
     <>
       <circle cx="12" cy="12" r="4" />

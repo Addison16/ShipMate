@@ -44,6 +44,8 @@ export async function testApp(
     weather?: WeatherService;
     pushFetch?: PushFetch;
     voiceFetch?: VoiceFetch;
+    /** Extra config variables (e.g. SHIPMATE_UPDATE_CHECK). */
+    env?: Record<string, string>;
   } = {},
 ) {
   await resetDatabase(url);
@@ -52,6 +54,9 @@ export async function testApp(
     DATABASE_URL: url,
     SHIPMATE_DATA_DIR: dataDir,
     SHIPMATE_MCP: "off",
+    // Never ask the real GitHub for releases from tests.
+    SHIPMATE_UPDATE_CHECK: "off",
+    ...options.env,
   });
   const modelRuntime = await ModelRuntime.create({
     authPath: join(dataDir, "auth.json"),

@@ -25,6 +25,8 @@ services:
       # DOCKER_TLS_VERIFY: "1"
       # DOCKER_CERT_PATH: /data/sandbox-certs
       # SHIPMATE_SANDBOX_WORKSPACES: /mnt/shipmate/workspaces
+      # Optional: local models. Uncomment the ollama service below; this is its address.
+      SHIPMATE_OLLAMA_URL: http://ollama:11434
     volumes:
       - /mnt/tank/apps/shipmate/data:/data
       # Optional: sandboxes for the Shipyard. Remove to keep the Shipyard off, or to use a
@@ -36,6 +38,14 @@ services:
       db:
         condition: service_healthy
     restart: unless-stopped
+
+  # Optional: local models with no API key. Uncomment, create a dataset for the models
+  # (they are large), then pick a model in Shipmate under Providers → Local model.
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   volumes:
+  #     - /mnt/tank/apps/shipmate/ollama:/root/.ollama
+  #   restart: unless-stopped
 
   db:
     image: postgres:17-alpine

@@ -237,9 +237,25 @@ describe.skipIf(!db)("Shipmate phase 4: cost ceilings and the cost page", () => 
     expect(todays.costMicroUsd).toBe(usage.totals.costMicroUsd);
     expect(todays.calls).toBe(usage.totals.calls);
 
+    // Real (free, faux) model calls record how long they took; rows inserted by spend() do not.
+    const timed = await sql`select duration_ms from usage_events where cost_micro_usd = 0`;
+    expect(timed.length).toBeGreaterThan(0);
+    expect(timed.every((r) => typeof r.duration_ms === "number" && r.duration_ms >= 0)).toBe(true);
+    const faux = usage.byModel.find((m: { model: string }) => m.model === "faux/m");
+    expect(faux.avgResponseMs).toEqual(expect.any(Number));
+    expect(faux.p95ResponseMs).toBeGreaterThanOrEqual(0);
+    expect(todays.avgResponseMs).toEqual(expect.any(Number));
+
     const past = (await api("GET", "/api/usage?month=2026-09&scope=all")).json();
+    expect(past.totals.avgResponseMs).toBeNull();
     expect(past.daily).toHaveLength(30);
-    expect(past.daily[14]).toEqual({ date: "2026-09-15", costMicroUsd: 250_000, calls: 1 });
+    expect(past.daily[14]).toEqual({
+      date: "2026-09-15",
+      costMicroUsd: 250_000,
+      calls: 1,
+      tokens: 15,
+      avgResponseMs: null,
+    });
     expect(past.daily.filter((d: { calls: number }) => d.calls > 0)).toHaveLength(1);
     expect(past.byWatch).toEqual([]);
 
@@ -262,7 +278,7 @@ describe.skipIf(!db)("Shipmate phase 4: cost ceilings and the cost page", () => 
     );
     const lines = res.body.trimEnd().split("\r\n");
     expect(lines[0]).toBe(
-      "time,person,crew,watch,watch_id,conversation_id,model,input_tokens,output_tokens,cache_read_tokens,cache_write_tokens,cost_usd",
+      "time,person,crew,watch,watch_id,conversation_id,model,input_tokens,output_tokens,cache_read_tokens,cache_write_tokens,cost_usd,response_ms",
     );
     const usage = (await api("GET", "/api/usage?scope=all")).json();
     expect(lines).toHaveLength(usage.totals.calls + 1);

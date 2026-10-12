@@ -103,6 +103,11 @@ export class DockerClient {
       typeof endpoint === "string" ? { kind: "socket", socketPath: endpoint } : endpoint;
   }
 
+  /** The unix socket this client talks to; "" for a TCP endpoint. */
+  get socketPath(): string {
+    return this.endpoint.kind === "socket" ? this.endpoint.socketPath : "";
+  }
+
   /** Engine name and versions from GET /version (Docker or Podman). */
   async version(timeoutMs = 5000): Promise<{
     engine: string;

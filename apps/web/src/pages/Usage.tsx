@@ -18,11 +18,14 @@ import {
 } from "../components/ui.js";
 import { currentMonth, formatCents, formatCost, formatTokens } from "../lib/format.js";
 import {
+  type ChartMetric,
   capTone,
   centsToMicro,
   dailyBars,
+  defaultMetric,
+  formatAxis,
+  formatDuration,
   formatPercent,
-  formatUsdShort,
   percentUsed,
   usageExportUrl,
   usdToMicro,
@@ -30,13 +33,14 @@ import {
 import { useResource } from "../lib/useResource.js";
 import { href } from "../router.js";
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <Card>
       <p className="text-xs font-medium tracking-wide text-slate-500 uppercase dark:text-slate-400">
         {label}
       </p>
       <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
+      {hint && <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{hint}</p>}
     </Card>
   );
 }
@@ -52,6 +56,8 @@ function TotalsCells({ t }: { t: UsageTotals }) {
       <td className={num}>{formatTokens(t.outputTokens)}</td>
       <td className={num}>{formatTokens(t.cacheReadTokens + t.cacheWriteTokens)}</td>
       <td className={num}>{formatCost(t.costMicroUsd)}</td>
+      <td className={num}>{formatDuration(t.avgResponseMs)}</td>
+      <td className={num}>{formatDuration(t.p95ResponseMs)}</td>
     </>
   );
 }
@@ -64,6 +70,16 @@ function TotalsHead() {
       <th className={numTh}>Output</th>
       <th className={numTh}>Cache</th>
       <th className={numTh}>Cost</th>
+      <th className={numTh}>
+        <abbr title="Average time the model took to answer" className="no-underline">
+          Avg time
+        </abbr>
+      </th>
+      <th className={numTh}>
+        <abbr title="95% of answers came at least this fast" className="no-underline">
+          p95
+        </abbr>
+      </th>
     </>
   );
 }
@@ -122,11 +138,30 @@ function CapHead() {
   );
 }
 
-/** Spend per UTC day as plain CSS bars, with a screen-reader table of the same numbers. */
-function DailyChart({ daily }: { daily: UsageResponse["daily"] }) {
+const METRICS: Array<{ id: ChartMetric; label: string; caption: string }> = [
+  { id: "cost", label: "Cost", caption: "Cost per day (UTC)." },
+  { id: "tokens", label: "Tokens", caption: "Input and output tokens per day (UTC)." },
+  {
+    id: "time",
+    label: "Response time",
+    caption: "Average time the model took to answer, per day (UTC).",
+  },
+];
+
+/** One day's numbers in every metric, for the hover title and the screen-reader table. */
+const dayCells = (d: UsageResponse["daily"][number]) => ({
+  cost: formatCost(d.costMicroUsd),
+  tokens: formatTokens(d.tokens),
+  time: formatDuration(d.avgResponseMs),
+  calls: formatTokens(d.calls),
+});
+
+/** One metric per UTC day as plain CSS bars, with a screen-reader table of the same numbers. */
+function DailyChart({ daily, metric }: { daily: UsageResponse["daily"]; metric: ChartMetric }) {
   if (daily.length === 0) return <Muted>Nothing to chart for this month yet.</Muted>;
-  const { max, bars } = dailyBars(daily);
+  const { max, bars } = dailyBars(daily, metric);
   const labelDay = (day: number) => day === 1 || day % 5 === 0 || day === bars.length;
+  const caption = METRICS.find((m) => m.id === metric)?.caption ?? "";
   return (
     <figure>
       <div className="flex gap-2">
@@ -134,9 +169,9 @@ function DailyChart({ daily }: { daily: UsageResponse["daily"] }) {
           aria-hidden="true"
           className="flex h-44 w-14 flex-col justify-between text-right text-xs text-slate-500 tabular-nums dark:text-slate-400"
         >
-          <span className="-translate-y-1/2">{formatUsdShort(max)}</span>
-          <span>{formatUsdShort(max / 2)}</span>
-          <span className="translate-y-1/2">$0</span>
+          <span className="-translate-y-1/2">{formatAxis(max, metric)}</span>
+          <span>{formatAxis(max / 2, metric)}</span>
+          <span className="translate-y-1/2">{formatAxis(0, metric)}</span>
         </div>
         <div className="min-w-0 flex-1">
           <div className="relative h-44 border-b border-l border-slate-300 dark:border-slate-600">
@@ -152,21 +187,24 @@ function DailyChart({ daily }: { daily: UsageResponse["daily"] }) {
               aria-hidden="true"
               className="absolute inset-0 flex items-end gap-px px-px sm:gap-0.5"
             >
-              {bars.map((b) => (
-                <div
-                  key={b.date}
-                  title={`${b.date}: ${formatCost(b.costMicroUsd)} · ${formatTokens(b.calls)} calls`}
-                  className="group flex h-full flex-1 items-end"
-                >
+              {bars.map((b) => {
+                const c = dayCells(b);
+                return (
                   <div
-                    className={cx(
-                      "w-full rounded-t-sm bg-accent-600 group-hover:bg-accent-500 dark:bg-accent-500 dark:group-hover:bg-accent-400",
-                      b.costMicroUsd > 0 && "min-h-px",
-                    )}
-                    style={{ height: `${b.height * 100}%` }}
-                  />
-                </div>
-              ))}
+                    key={b.date}
+                    title={`${b.date}: ${c.cost} · ${c.tokens} tokens · ${c.calls} calls · avg ${c.time}`}
+                    className="group flex h-full flex-1 items-end"
+                  >
+                    <div
+                      className={cx(
+                        "w-full rounded-t-sm bg-accent-600 group-hover:bg-accent-500 dark:bg-accent-500 dark:group-hover:bg-accent-400",
+                        b.value > 0 && "min-h-px",
+                      )}
+                      style={{ height: `${b.height * 100}%` }}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
           <div
@@ -182,28 +220,71 @@ function DailyChart({ daily }: { daily: UsageResponse["daily"] }) {
         </div>
       </div>
       <figcaption className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-        Cost per day (UTC). Hover a bar for the exact amount.
+        {caption} Hover a bar for the exact numbers.
       </figcaption>
       <table className="sr-only">
-        <caption>Cost per day</caption>
+        <caption>Usage per day</caption>
         <thead>
           <tr>
             <th>Date</th>
             <th>Cost</th>
+            <th>Tokens</th>
             <th>Calls</th>
+            <th>Average response time</th>
           </tr>
         </thead>
         <tbody>
-          {daily.map((d) => (
-            <tr key={d.date}>
-              <td>{d.date}</td>
-              <td>{formatCost(d.costMicroUsd)}</td>
-              <td>{d.calls}</td>
-            </tr>
-          ))}
+          {daily.map((d) => {
+            const c = dayCells(d);
+            return (
+              <tr key={d.date}>
+                <td>{d.date}</td>
+                <td>{c.cost}</td>
+                <td>{c.tokens}</td>
+                <td>{c.calls}</td>
+                <td>{c.time}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </figure>
+  );
+}
+
+/** A small segmented control (the scope and the chart metric). */
+function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: Array<{ id: T; label: string }>;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <fieldset className="inline-flex rounded-md border border-slate-300 p-0.5 dark:border-slate-600">
+      <legend className="sr-only">{label}</legend>
+      {options.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          aria-pressed={value === o.id}
+          onClick={() => onChange(o.id)}
+          className={cx(
+            "rounded px-3 py-1.5 text-sm font-medium",
+            focusRing,
+            value === o.id
+              ? "bg-accent-700 text-white dark:bg-accent-600"
+              : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </fieldset>
   );
 }
 
@@ -231,17 +312,21 @@ export function UsagePage() {
   const admin = isAdmin(user);
   const [month, setMonth] = useState(currentMonth());
   const [scope, setScope] = useState<"me" | "all">("me");
+  // null: pick for the data (tokens when everything was free, as with local models).
+  const [chosenMetric, setMetric] = useState<ChartMetric | null>(null);
   const usage = useResource(
     () => (/^\d{4}-\d{2}$/.test(month) ? api.usage(month, scope) : Promise.resolve(null)),
     [month, scope],
   );
   const data = usage.data;
+  const metric = chosenMetric ?? (data ? defaultMetric(data.totals) : "cost");
+  const free = data !== null && data.totals.calls > 0 && data.totals.costMicroUsd === 0;
 
   return (
     <Page wide>
       <PageHeader
         title="Usage and cost"
-        description="Spend, tokens and monthly ceilings per calendar month (UTC)."
+        description="Spend, tokens, response times and monthly ceilings per calendar month (UTC)."
         actions={
           /^\d{4}-\d{2}$/.test(month) && (
             <a
@@ -266,28 +351,20 @@ export function UsagePage() {
           onChange={(e) => setMonth(e.target.value || currentMonth())}
         />
         {admin && (
-          <fieldset>
-            <legend className="mb-1 text-sm font-medium">Scope</legend>
-            <div className="inline-flex rounded-md border border-slate-300 p-0.5 dark:border-slate-600">
-              {(["me", "all"] as const).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  aria-pressed={scope === s}
-                  onClick={() => setScope(s)}
-                  className={cx(
-                    "rounded px-3 py-1.5 text-sm font-medium",
-                    focusRing,
-                    scope === s
-                      ? "bg-accent-700 text-white dark:bg-accent-600"
-                      : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
-                  )}
-                >
-                  {s === "me" ? "Just me" : "Everyone"}
-                </button>
-              ))}
-            </div>
-          </fieldset>
+          <div>
+            <p aria-hidden="true" className="mb-1 text-sm font-medium">
+              Scope
+            </p>
+            <Segmented
+              label="Scope"
+              value={scope}
+              options={[
+                { id: "me", label: "Just me" },
+                { id: "all", label: "Everyone" },
+              ]}
+              onChange={setScope}
+            />
+          </div>
         )}
       </div>
 
@@ -295,16 +372,40 @@ export function UsagePage() {
       {usage.loading && !data && <Muted>Loading…</Muted>}
       {data && (
         <div className="space-y-8">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Stat label="Cost" value={formatCost(data.totals.costMicroUsd)} />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <Stat
+              label="Cost"
+              value={formatCost(data.totals.costMicroUsd)}
+              {...(free ? { hint: "Free models only" } : {})}
+            />
             <Stat label="Calls" value={formatTokens(data.totals.calls)} />
             <Stat label="Input tokens" value={formatTokens(data.totals.inputTokens)} />
             <Stat label="Output tokens" value={formatTokens(data.totals.outputTokens)} />
+            <Stat
+              label="Avg response"
+              value={formatDuration(data.totals.avgResponseMs)}
+              {...(data.totals.p95ResponseMs !== null
+                ? { hint: `p95 ${formatDuration(data.totals.p95ResponseMs)}` }
+                : {})}
+            />
           </div>
 
           <Card>
-            <h2 className="mb-3 font-semibold">Daily spend</h2>
-            <DailyChart daily={data.daily} />
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-semibold">Daily usage</h2>
+              <Segmented
+                label="Chart"
+                value={metric}
+                options={METRICS.map((m) => ({ id: m.id, label: m.label }))}
+                onChange={setMetric}
+              />
+            </div>
+            {free && chosenMetric === null && (
+              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                Everything this month ran on free (local) models, so the chart shows tokens.
+              </p>
+            )}
+            <DailyChart daily={data.daily} metric={metric} />
           </Card>
 
           <Section title="By person" empty={data.byUser.length === 0}>

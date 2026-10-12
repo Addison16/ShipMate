@@ -11,6 +11,8 @@ services:
       DATABASE_URL: postgres://shipmate:${POSTGRES_PASSWORD:-shipmate}@db:5432/shipmate
       # Leave unset to generate once on first boot (kept in the data volume).
       SHIPMATE_SECRET: ${SHIPMATE_SECRET:-}
+      # Where to look for Ollama (the optional service below, or one you run elsewhere).
+      SHIPMATE_OLLAMA_URL: ${SHIPMATE_OLLAMA_URL:-http://ollama:11434}
     volumes:
       - shipmate-data:/data
       # Sandboxes for the Shipyard run as sibling containers through the Docker socket.
@@ -48,7 +50,44 @@ services:
       - shipmate-voice:/home/ubuntu/.cache/huggingface/hub
     restart: unless-stopped
 
+  # Optional local models, off by default. Start with:
+  #   docker compose --profile local-ai up -d
+  # then pick the model in Shipmate (first-run setup, or Providers → Local model).
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["local-ai"]
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    # NVIDIA GPU (needs the NVIDIA Container Toolkit on the host): uncomment.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # Downloads one starter model into the ollama service once, then exits.
+  # Choose another with SHIPMATE_LOCAL_MODEL (e.g. qwen3:8b); see docs/local-models.md.
+  ollama-pull:
+    image: ollama/ollama:latest
+    profiles: ["local-ai"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "${SHIPMATE_LOCAL_MODEL:-qwen3:4b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
 volumes:
   shipmate-data:
   shipmate-db:
   shipmate-voice:
+  ollama-models:

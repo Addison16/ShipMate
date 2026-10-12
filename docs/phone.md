@@ -55,7 +55,7 @@ conversation.
 
 - **Photos** go to the crew member's model as images. If that model cannot see images, Shipmate
   hands that one message to a model that can and says so in the chat. Pick which one under
-  **Settings → Photos** (owner); **Automatic** prefers a model from the same provider, then the
+  **Settings → Photos and voice** (owner); **Automatic** prefers a model from the same provider, then the
   default model. Without any vision-capable model the crew member only hears the file names.
 - **PDFs** are read on the server and their text is passed along (a scanned PDF without a text
   layer has no text; send photos of the pages instead). **Text files** are passed as text.
@@ -77,7 +77,7 @@ conversation's header) reads every reply aloud as it arrives and sends what you 
 away, so you can talk to the Captain while cooking or driving. Code in replies is skipped when
 reading aloud.
 
-The owner chooses where speech goes in **Settings → Voice**:
+The owner chooses where speech goes in **Settings → Photos and voice**:
 
 | | Choices |
 | --- | --- |
@@ -109,7 +109,7 @@ docker compose --profile voice up -d
 ```
 
 The first start downloads the Whisper and Kokoro models (about 1 GB) into the `shipmate-voice`
-volume. Then, in **Settings → Voice**, pick **A speech server** for both directions with the
+volume. Then, in **Settings → Photos and voice**, pick **A speech server** for both directions with the
 address `http://voice:8000/v1` and press **Try the voice**. For other languages, use a
 multilingual Whisper model such as `Systran/faster-whisper-small` (add it to `PRELOAD_MODELS`
 and type it as the model). With an NVIDIA GPU, use the `latest-cuda` image instead.

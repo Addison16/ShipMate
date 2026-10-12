@@ -94,6 +94,7 @@ export function AuditPage() {
   return (
     <Page wide>
       <PageHeader
+        icon="audit"
         title="Audit"
         description={
           admin

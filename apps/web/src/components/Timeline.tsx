@@ -10,9 +10,24 @@ import { Markdown } from "./Markdown.js";
 import { cx } from "./ui.js";
 import { ListenButton } from "./Voice.js";
 
+/** Three dots that bob in turn while a crew member is working on a reply. */
+export function TypingDots({ className }: { className?: string }) {
+  return (
+    <span className={cx("inline-flex items-center gap-1", className)} aria-hidden="true">
+      {[0, 150, 300].map((delay) => (
+        <span
+          key={delay}
+          className="size-1.5 animate-typing rounded-full bg-current"
+          style={{ animationDelay: `${delay}ms` }}
+        />
+      ))}
+    </span>
+  );
+}
+
 export function HandoffLine({ handoff }: { handoff: Handoff }) {
   return (
-    <div className="my-1 flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+    <div className="my-1 flex animate-fade-in items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
       <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" aria-hidden="true" />
       <span className="max-w-[80%] text-center">
         <span className="font-medium text-accent-800 dark:text-accent-300">
@@ -30,7 +45,7 @@ function Chip({ chip }: { chip: ToolChip }) {
     <span
       title={chip.summary}
       className={cx(
-        "inline-flex max-w-full items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs",
+        "inline-flex max-w-full animate-scale-in items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs",
         chip.isError
           ? "border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/50 dark:text-red-200"
           : "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
@@ -98,12 +113,22 @@ function Bubble({
   actions?: ReactNode;
 }) {
   return (
-    <div className={cx("flex flex-col", mine ? "items-end" : "items-start")}>
+    <div
+      className={cx(
+        "flex flex-col",
+        mine ? "animate-msg-in-mine items-end" : "animate-msg-in items-start",
+      )}
+    >
       <div className="mb-1 flex items-center gap-2 px-1 text-xs text-slate-500 dark:text-slate-400">
         {!mine && <Avatar name={name} size="sm" />}
         <span className="font-medium text-slate-700 dark:text-slate-200">{name}</span>
         {time && <time>{time}</time>}
-        {live && <span className="text-accent-700 dark:text-accent-300">typing…</span>}
+        {live && (
+          <span className="flex items-center gap-1.5 text-accent-700 dark:text-accent-300">
+            <TypingDots />
+            <span className="sr-only">typing…</span>
+          </span>
+        )}
         {actions}
       </div>
       {tools.length > 0 && (
@@ -192,8 +217,8 @@ export function TimelineView({ items, selfId }: { items: TimelineItem[]; selfId:
             {it.text ? (
               <Markdown text={it.text} />
             ) : (
-              <span className="text-slate-500 dark:text-slate-400">
-                <span aria-hidden="true">…</span>
+              <span className="flex h-6 items-center text-slate-500 dark:text-slate-400">
+                <TypingDots />
                 <span className="sr-only">Thinking</span>
               </span>
             )}

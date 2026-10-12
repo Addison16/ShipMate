@@ -59,6 +59,7 @@ export function UsersPage() {
   return (
     <Page wide>
       <PageHeader
+        icon="users"
         title="Users"
         description="Everyone shares the same crew and providers; each person has their own conversations."
       />

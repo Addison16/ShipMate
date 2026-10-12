@@ -9,6 +9,7 @@ import {
   cx,
   ErrorText,
   focusRing,
+  Loading,
   Muted,
   Notice,
   Page,
@@ -123,6 +124,7 @@ function SkillList() {
   return (
     <Page wide>
       <PageHeader
+        icon="skills"
         title="Skills"
         description="Reusable instructions crew members load when a task calls for them. Skills a crew member writes itself wait for approval before they are used."
         actions={
@@ -139,7 +141,7 @@ function SkillList() {
           </Notice>
         )}
         <ErrorText>{skills.error ?? error}</ErrorText>
-        {skills.loading && !skills.data && <Muted>Loading…</Muted>}
+        {skills.loading && !skills.data && <Loading />}
         {skills.data && (
           <>
             <Card>
@@ -358,7 +360,7 @@ function SkillDetail({ id }: { id: string }) {
         ← Skills
       </a>
       {detail.error && !skill && <ErrorText>{detail.error}</ErrorText>}
-      {!skill && !detail.error && <Muted>Loading…</Muted>}
+      {!skill && !detail.error && <Loading />}
       {skill && (
         <>
           <header className="mt-2 mb-4 flex flex-wrap items-start justify-between gap-3">

@@ -11,13 +11,17 @@ import { type FormEvent, type ReactNode, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { isAdmin, useUser } from "../auth.js";
 import { CopyField } from "../components/CopyField.js";
+import { NavIcon } from "../components/icons.js";
 import {
   Badge,
   Button,
   Card,
   cx,
+  EmptyState,
   ErrorText,
   focusRing,
+  Loading,
+  LoadingCards,
   Muted,
   Notice,
   Page,
@@ -160,7 +164,7 @@ function StatusBanner({ status }: { status: ShipyardStatusDto | null }) {
         {user.role === "owner" ? (
           <>
             Choose and test one under{" "}
-            <a href={href("/settings")} className="underline underline-offset-2">
+            <a href={href("/settings/sandbox")} className="underline underline-offset-2">
               Settings → Shipyard sandbox
             </a>
             .
@@ -204,6 +208,7 @@ function ProjectList() {
   return (
     <Page wide>
       <PageHeader
+        icon="shipyard"
         title="Shipyard"
         description="Software projects your crew works on: pull requests, issues, and a sandbox to run code in."
         actions={
@@ -227,18 +232,25 @@ function ProjectList() {
           />
         </Card>
       )}
-      {shipyard.loading && !shipyard.data && <Muted>Loading…</Muted>}
+      {shipyard.loading && !shipyard.data && <LoadingCards count={2} />}
       {shipyard.data && projects.length === 0 && !adding && (
-        <Card>
-          <Muted>
-            No projects yet.{" "}
-            {admin
-              ? "Add a GitHub repository or a local folder and a crew member can plan features, fix issues and review pull requests."
-              : "Ask an admin to add one."}
-          </Muted>
-        </Card>
+        <EmptyState
+          icon={<NavIcon name="shipyard" size={22} />}
+          title="No projects yet"
+          action={
+            admin && (
+              <Button variant="primary" onClick={() => setAdding(true)}>
+                Add a project
+              </Button>
+            )
+          }
+        >
+          {admin
+            ? "Add a GitHub repository or a local folder and a crew member can plan features, fix issues and review pull requests."
+            : "Ask an admin to add one."}
+        </EmptyState>
       )}
-      <ul className="grid gap-3 md:grid-cols-2">
+      <ul className="stagger grid gap-3 md:grid-cols-2">
         {projects.map((p) => {
           const sb = sandboxBadge(p.sandbox.status);
           const url = repoUrl(p.repo);
@@ -461,7 +473,7 @@ function ProjectDetail({ id, tab: tabParam }: { id: string; tab: string | null }
           ← Shipyard
         </a>
         <div className="mt-4">
-          {detail.error ? <ErrorText>{detail.error}</ErrorText> : <Muted>Loading…</Muted>}
+          {detail.error ? <ErrorText>{detail.error}</ErrorText> : <Loading />}
         </div>
       </Page>
     );
@@ -731,7 +743,7 @@ function PullsTab({ project }: { project: ProjectDto }) {
         </Button>
       </div>
       <ErrorText>{pulls.error ?? flows.error}</ErrorText>
-      {pulls.loading && !pulls.data && <Muted>Loading…</Muted>}
+      {pulls.loading && !pulls.data && <Loading />}
       {pulls.data?.length === 0 && (
         <Muted>No {state === "all" ? "" : `${state} `}pull requests.</Muted>
       )}
@@ -845,7 +857,7 @@ function IssuesTab({
         <strong>Fix</strong> starts a conversation you steer yourself.
       </p>
       <ErrorText>{issues.error ?? flows.error ?? assignError}</ErrorText>
-      {issues.loading && !issues.data && <Muted>Loading…</Muted>}
+      {issues.loading && !issues.data && <Loading />}
       {issues.data?.length === 0 && <Muted>No {state === "all" ? "" : `${state} `}issues.</Muted>}
       <ul className="space-y-2">
         {issues.data?.map((issue) => (
@@ -1082,7 +1094,7 @@ function ActivityTab({ projectId }: { projectId: string }) {
         </Button>
       </div>
       <ErrorText>{events.error}</ErrorText>
-      {events.loading && !events.data && <Muted>Loading…</Muted>}
+      {events.loading && !events.data && <Loading />}
       {events.data?.length === 0 && (
         <Muted>
           No activity yet. Events arrive from GitHub once the webhook is set up (see Settings).
@@ -1133,7 +1145,7 @@ function ChatsTab({ projectId }: { projectId: string }) {
         </Button>
       </div>
       <ErrorText>{conversations.error ?? error}</ErrorText>
-      {conversations.loading && !conversations.data && <Muted>Loading…</Muted>}
+      {conversations.loading && !conversations.data && <Loading />}
       {conversations.data?.length === 0 && (
         <Muted>No chats about this project yet. Flows you start appear here too.</Muted>
       )}

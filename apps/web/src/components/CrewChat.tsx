@@ -124,7 +124,7 @@ export function ChatLanding({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-10">
+    <div className="mx-auto flex w-full max-w-2xl animate-fade-up flex-col gap-6 px-4 py-10">
       <div className="space-y-2">
         <h1 className="text-xl font-semibold tracking-tight">Who would you like to talk to?</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -147,7 +147,7 @@ export function ChatLanding({
           <p className="text-[11px] font-semibold tracking-wider text-slate-500 uppercase dark:text-slate-400">
             Crew
           </p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="stagger grid grid-cols-1 gap-2 sm:grid-cols-2">
             {members.map((m) => (
               <MemberButton
                 key={m.slug}
@@ -214,7 +214,7 @@ export function CrewStrip({
     <div className="md:hidden">
       <ul
         aria-label="Talk to"
-        className="-mx-3 flex snap-x gap-1 overflow-x-auto px-3 pt-1 [scrollbar-width:none]"
+        className="stagger -mx-3 flex snap-x gap-1 overflow-x-auto px-3 pt-1 [scrollbar-width:none]"
       >
         {people.map((m) => (
           <li key={m.slug} className="snap-start">

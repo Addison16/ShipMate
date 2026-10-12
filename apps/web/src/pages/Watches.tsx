@@ -15,6 +15,7 @@ import { useApprovals } from "../approvals.js";
 import { isAdmin, useUser } from "../auth.js";
 import { ApprovalCard } from "../components/ApprovalCard.js";
 import { CopyField } from "../components/CopyField.js";
+import { NavIcon } from "../components/icons.js";
 import { Markdown } from "../components/Markdown.js";
 import { TimelineView } from "../components/Timeline.js";
 import {
@@ -22,8 +23,11 @@ import {
   Button,
   Card,
   cx,
+  EmptyState,
   ErrorText,
   focusRing,
+  IconButton,
+  Loading,
   Muted,
   Page,
   PageHeader,
@@ -49,10 +53,18 @@ import {
 import { href, navigate } from "../router.js";
 import { useServerEvents } from "../ws.js";
 
-export function WatchesPage({ watchId, runId }: { watchId: string | null; runId: string | null }) {
+export function WatchesPage({
+  watchId,
+  runId,
+  edit = false,
+}: {
+  watchId: string | null;
+  runId: string | null;
+  edit?: boolean;
+}) {
   if (watchId === "new") return <NewWatch />;
   if (watchId && runId) return <RunTranscript key={runId} watchId={watchId} runId={runId} />;
-  if (watchId) return <WatchDetail key={watchId} id={watchId} />;
+  if (watchId) return <WatchDetail key={watchId} id={watchId} startEditing={edit} />;
   return <WatchList />;
 }
 
@@ -164,6 +176,39 @@ function EnabledToggle({
   );
 }
 
+function DeleteWatchButton({ watch, onDeleted }: { watch: WatchDto; onDeleted: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function remove() {
+    if (!window.confirm(`Delete the watch "${watch.name}"? Its run history goes too.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.deleteWatch(watch.id);
+      onDeleted();
+    } catch (err) {
+      setError(errorMessage(err));
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <IconButton
+        icon="trash"
+        label={`Delete ${watch.name}`}
+        tone="danger"
+        disabled={busy}
+        onClick={() => void remove()}
+      />
+      {error && (
+        <span role="alert" className="text-xs text-red-700 dark:text-red-300">
+          {error}
+        </span>
+      )}
+    </>
+  );
+}
+
 function RunNow({ watch, onRun }: { watch: WatchDto; onRun?: (run: WatchRunDto) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -206,6 +251,7 @@ function WatchList() {
   return (
     <Page wide>
       <PageHeader
+        icon="watches"
         title="Watches"
         description="Jobs a crew member runs on a schedule, on a webhook, or after another watch finishes."
         actions={
@@ -217,22 +263,20 @@ function WatchList() {
       <RoutineApprovals />
       <WatchTemplates crew={crew} existing={all} />
       <ErrorText>{watches.error}</ErrorText>
-      {watches.loading && !watches.data && <Muted>Loading…</Muted>}
+      {watches.loading && !watches.data && <Loading lines={4} />}
       {watches.data?.length === 0 && (
-        <Card>
-          <Muted>
-            No watches yet. A watch could send you a morning brief every weekday, plan meals each
-            Monday, or triage a repository every night.
-          </Muted>
-        </Card>
+        <EmptyState icon={<NavIcon name="watches" size={22} />} title="No watches yet">
+          A watch could send you a morning brief every weekday, plan meals each Monday, or triage a
+          repository every night.
+        </EmptyState>
       )}
-      <ul className="space-y-3">
+      <ul className="stagger space-y-3">
         {all.map((w) => {
           const editable = canEdit(w, user);
           return (
             <li key={w.id}>
               <Card>
-                <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <a
@@ -272,6 +316,19 @@ function WatchList() {
                   <div className="flex flex-wrap items-center gap-3">
                     <EnabledToggle watch={w} disabled={!editable} onChange={replace} />
                     {editable && <RunNow watch={w} onRun={() => void watches.reload()} />}
+                    {editable && (
+                      <span className="flex gap-0.5">
+                        <IconButton
+                          icon="pencil"
+                          label={`Edit ${w.name}`}
+                          onClick={() => navigate(`/watches/${w.id}/edit`)}
+                        />
+                        <DeleteWatchButton
+                          watch={w}
+                          onDeleted={() => watches.setData(all.filter((x) => x.id !== w.id))}
+                        />
+                      </span>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -793,13 +850,12 @@ function WebhookCopyField({ label, value }: { label: string; value: string }) {
   );
 }
 
-function WatchDetail({ id }: { id: string }) {
+function WatchDetail({ id, startEditing }: { id: string; startEditing: boolean }) {
   const projects = useGitHubProjects();
   const user = useUser();
   const watches = useWatches();
   const crew = useCrew();
   const runs = useResource(() => api.watchRuns(id, 25).then((r) => r.runs), [id]);
-  const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useServerEvents((ev) => {
     if (ev.type === "watch_run" && ev.run.watchId === id) void runs.reload();
@@ -808,6 +864,10 @@ function WatchDetail({ id }: { id: string }) {
   const all = watches.data ?? [];
   const watch = all.find((w) => w.id === id) ?? null;
   const editable = watch ? canEdit(watch, user) : false;
+  // The editor lives at #/watches/<id>/edit so the address always matches what is shown, and
+  // only people who may change the watch get it.
+  const editing = startEditing && editable;
+  const setEditing = (on: boolean) => navigate(on ? `/watches/${id}/edit` : `/watches/${id}`);
   const crewName = (slug: string) => crew.find((c) => c.slug === slug)?.name ?? slug;
 
   async function remove() {
@@ -832,7 +892,7 @@ function WatchDetail({ id }: { id: string }) {
         ← Watches
       </a>
       {watches.error && !watch && <ErrorText>{watches.error}</ErrorText>}
-      {!watch && watches.loading && <Muted>Loading…</Muted>}
+      {!watch && watches.loading && <Loading />}
       {!watch && watches.data && <Muted>This watch no longer exists.</Muted>}
       {watch && (
         <>
@@ -924,7 +984,7 @@ function RunHistory({
     <Card>
       <h2 className="mb-3 font-semibold">Run history</h2>
       <ErrorText>{error}</ErrorText>
-      {loading && !runs && <Muted>Loading…</Muted>}
+      {loading && !runs && <Loading />}
       {runs?.length === 0 && <Muted>No runs yet.</Muted>}
       <ul className="divide-y divide-slate-200 dark:divide-slate-800">
         {runs?.map((r) => (
@@ -1015,7 +1075,7 @@ function RunTranscript({ watchId, runId }: { watchId: string; runId: string }) {
         }
       />
       <ErrorText>{data.error}</ErrorText>
-      {data.loading && !data.data && <Muted>Loading…</Muted>}
+      {data.loading && !data.data && <Loading />}
       {data.data && !run && <Muted>This run is no longer in the history.</Muted>}
       {run && !run.conversationId && <Muted>This run has no transcript.</Muted>}
       {run?.error && (

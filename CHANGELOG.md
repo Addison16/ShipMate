@@ -15,6 +15,26 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   the messages stay on screen below a divider. Unsent text is kept per chat when you switch.
   Crew member pages get a **Chat** button. On phones the crew sit in a row of avatars above the
   chat list, the picker opens as a bottom sheet, and Start fresh is an icon in the chat header.
+- **Motion and polish**: pages fade in as you arrive, cards and lists rise in one after another,
+  chat messages slide in from their side, and a crew member who is working shows bouncing dots
+  instead of "typing…". Loading spots show shimmering placeholders, empty pages show an icon, a
+  line of help and the next step, each page has its icon beside its title, and buttons, fields,
+  dialogs and failure notices respond with small transitions. People whose device asks for
+  reduced motion get none of it. On phones, buttons and cards show a pressed state, fields no
+  longer zoom the page when tapped, the chat's Pin, Rename and Delete become icons so its title
+  fits, and an installed app keeps the top bar, menu, message box, approvals, notices and the end of
+  every page clear of the notch and the home indicator.
+- **Simpler navigation**: the sidebar is down to six places (Bridge, Lists, Watches, Shipyard,
+  Crew, Settings), each with a one-line hint of what it is for. Settings opens on an overview of
+  every screen in four groups (You, Crew and tools, AI and cost, This Shipmate) with a filter box,
+  and each screen keeps that list beside it. Press **Ctrl K** (**⌘K** on a Mac), **/**, or the
+  Search button to jump to any page, setting or crew member by typing a few letters, such as
+  "discord" or "password". Old links like `#/providers` still work. On phones, the five
+  everyday places sit in a tab bar at the bottom, in thumb reach (hidden inside an open chat so
+  the message box keeps the room).
+- **Actions where you look for them**: every chat in the Bridge list has pin, rename and delete
+  buttons on its row (rename happens in place), list cards have rename and delete, and each
+  watch has edit and delete next to **Run now**, so nothing needs opening first to find them.
 - **The Captain coordinates on Claude Code too**: a Captain running on a Claude subscription now
   hands your messages to the right crew member with `delegate`, like one on a provider. Crew on
   Claude Code also get Shipmate's own tools (memory, lists, `ask_captain`), served to the CLI by

@@ -22,6 +22,7 @@ export async function conversationRoutes(app: FastifyInstance, s: Services) {
       .object({
         kind: z.enum(["bridge", "direct"]).optional(),
         crewSlug: z.string().optional(),
+        reuse: z.boolean().optional(),
       })
       .parse(req.body ?? {});
     return { conversation: await s.bridge.createConversation(req.user, body) };
@@ -48,6 +49,10 @@ export async function conversationRoutes(app: FastifyInstance, s: Services) {
     await s.bridge.deleteConversation(req.user, req.params.id);
     return { ok: true };
   });
+
+  app.post<{ Params: { id: string } }>("/api/conversations/:id/reset", async (req) => ({
+    message: await s.bridge.resetConversation(req.user, req.params.id),
+  }));
 
   app.get<{ Params: { id: string } }>("/api/conversations/:id/messages", async (req) => ({
     messages: await s.bridge.messages(req.user, req.params.id),

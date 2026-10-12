@@ -6,6 +6,14 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Direct chats, reworked**: the Bridge opens on "Who would you like to talk to?", with the
+  Captain and every crew member one tap away. "Chat with…" opens a searchable crew picker
+  (arrow keys and Enter work). Each crew member keeps one chat with you: talking to them again
+  continues it instead of starting another. The conversation list shows who each chat is with
+  and the latest message, and a chat's header shows its crew member, what they do and a link to
+  their settings. **Start fresh** (or typing `/new`) makes the crew forget the chat so far while
+  the messages stay on screen below a divider. Unsent text is kept per chat when you switch.
+  Crew member pages get a **Chat** button.
 - **The Captain coordinates on Claude Code too**: a Captain running on a Claude subscription now
   hands your messages to the right crew member with `delegate`, like one on a provider. Crew on
   Claude Code also get Shipmate's own tools (memory, lists, `ask_captain`), served to the CLI by

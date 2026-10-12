@@ -4,6 +4,7 @@ import { api, errorMessage } from "../api.js";
 import { isAdmin, useUser } from "../auth.js";
 import { Avatar } from "../components/Avatar.js";
 import { ExportCrewButton, ImportCrewPage } from "../components/CrewBundle.js";
+import { openDirectChat } from "../components/CrewChat.js";
 import { CrewModelSelect, ModelSelect } from "../components/ModelSelect.js";
 import { StarterCrewPicker } from "../components/StarterCrewPicker.js";
 import {
@@ -360,6 +361,20 @@ function CrewDetail({ slug }: { slug: string }) {
               </div>
             </div>
             <div className="flex flex-wrap items-start gap-2">
+              {crew.status === "active" && (
+                <Button
+                  variant="primary"
+                  onClick={() =>
+                    crew.captain
+                      ? navigate("/bridge")
+                      : void openDirectChat(crew.slug, () => {}).catch((err) =>
+                          setActionError(errorMessage(err)),
+                        )
+                  }
+                >
+                  Chat
+                </Button>
+              )}
               <ExportCrewButton slug={crew.slug} />
               {admin && crew.status === "pending_review" && (
                 <Button variant="primary" onClick={() => void approve()}>

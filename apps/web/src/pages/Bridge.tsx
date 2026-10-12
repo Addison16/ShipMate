@@ -15,6 +15,8 @@ import { useApprovals } from "../approvals.js";
 import { useUser } from "../auth.js";
 import { ApprovalCard } from "../components/ApprovalCard.js";
 import { AttachButtons, PendingFiles, useComposerFiles } from "../components/Attachments.js";
+import { Avatar } from "../components/Avatar.js";
+import { ChatLanding, CrewPicker, directCandidates, useDraft } from "../components/CrewChat.js";
 import { TimelineView } from "../components/Timeline.js";
 import { Badge, Button, cx, ErrorText, focusRing } from "../components/ui.js";
 import { MicButton, speaker, useHandsFree, useVoiceStatus } from "../components/Voice.js";
@@ -30,7 +32,7 @@ function conversationTitle(c: ConversationDto, crew: CrewDto[]): string {
   if (c.title) return c.title;
   if (c.kind === "direct") {
     const member = crew.find((m) => m.slug === c.crewSlug);
-    return `Direct: ${member?.name ?? c.crewSlug ?? "crew"}`;
+    return member?.name ?? c.crewSlug ?? "Crew member";
   }
   return "New bridge chat";
 }
@@ -85,6 +87,7 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
   const models = useResource(() => api.listModels().then((r) => r.models));
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [picking, setPicking] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const search = useConversationSearch();
 
@@ -115,14 +118,12 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
     conversations.data?.some((c) => c.projectId !== null) ?? false,
   );
 
-  async function create(kind: "bridge" | "direct", crewSlug?: string) {
+  async function createBridge() {
     setCreating(true);
     setCreateError(null);
     try {
-      const { conversation } = await api.createConversation(
-        kind === "direct" ? { kind, crewSlug } : { kind },
-      );
-      conversations.setData([conversation, ...(conversations.data ?? [])]);
+      const { conversation } = await api.createConversation({ kind: "bridge" });
+      opened(conversation);
       navigate(`/bridge/${conversation.id}`);
     } catch (err) {
       setCreateError(errorMessage(err));
@@ -131,7 +132,14 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
     }
   }
 
-  const directCandidates = crewList.filter((m) => m.status === "active" && !m.captain);
+  /** Put a just-opened conversation at the top of the list (once). */
+  function opened(conversation: ConversationDto) {
+    const rest = (conversations.data ?? []).filter((x) => x.id !== conversation.id);
+    conversations.setData([conversation, ...rest]);
+  }
+
+  const canDirect = directCandidates(crewList).length > 0;
+  const captainName = crewList.find((m) => m.captain)?.name ?? "Captain";
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -153,40 +161,26 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
           aria-label="Conversations"
         >
           <div className="space-y-2 border-b border-slate-200 p-3 dark:border-slate-800">
-            <Button
-              variant="primary"
-              className="w-full"
-              disabled={creating}
-              onClick={() => void create("bridge")}
-            >
-              New bridge chat
-            </Button>
-            {directCandidates.length > 0 && (
-              <div>
-                <label htmlFor="direct-crew" className="sr-only">
-                  Start a direct chat with a crew member
-                </label>
-                <select
-                  id="direct-crew"
-                  value=""
+            <div className="flex gap-2">
+              <Button
+                variant="primary"
+                className="flex-1"
+                disabled={creating}
+                onClick={() => void createBridge()}
+              >
+                New bridge chat
+              </Button>
+              {canDirect && (
+                <Button
                   disabled={creating}
-                  onChange={(e) => {
-                    if (e.target.value) void create("direct", e.target.value);
-                  }}
-                  className={cx(
-                    "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900",
-                    focusRing,
-                  )}
+                  title="Chat with one crew member yourself"
+                  aria-haspopup="dialog"
+                  onClick={() => setPicking(true)}
                 >
-                  <option value="">Direct chat with…</option>
-                  {directCandidates.map((m) => (
-                    <option key={m.slug} value={m.slug}>
-                      {m.name} ({m.role})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+                  Chat with…
+                </Button>
+              )}
+            </div>
             <ErrorText>{createError}</ErrorText>
             <div className="relative">
               <label htmlFor="conv-search" className="sr-only">
@@ -220,7 +214,7 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
               {conversations.error && <ErrorText>{conversations.error}</ErrorText>}
               {conversations.data?.length === 0 && (
                 <p className="p-3 text-sm text-slate-500 dark:text-slate-400">
-                  No conversations yet. Start one above.
+                  No conversations yet. Start a bridge chat, or chat with one crew member.
                 </p>
               )}
               <ul className="space-y-0.5">
@@ -232,25 +226,35 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
                       href={href(`/bridge/${c.id}`)}
                       aria-current={c.id === conversationId ? "page" : undefined}
                       className={cx(
-                        "block rounded-md px-3 py-2",
+                        "flex items-start gap-2.5 rounded-md px-2.5 py-2 transition-colors",
                         focusRing,
                         c.id === conversationId
                           ? "bg-accent-700/10 dark:bg-accent-400/10"
                           : "hover:bg-slate-100 dark:hover:bg-slate-800",
                       )}
                     >
-                      <span className="flex items-baseline justify-between gap-2">
-                        <span className="flex min-w-0 items-center gap-1 text-sm font-medium">
-                          {c.pinned && <PinGlyph />}
-                          <span className="truncate">{conversationTitle(c, crewList)}</span>
+                      <Avatar name={withWhom(c, crewList, captainName)} />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-baseline justify-between gap-2">
+                          <span className="flex min-w-0 items-center gap-1 text-sm font-medium">
+                            {c.pinned && <PinGlyph />}
+                            <span className="truncate">{conversationTitle(c, crewList)}</span>
+                          </span>
+                          <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+                            {formatTime(c.updatedAt)}
+                          </span>
                         </span>
-                        <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
-                          {formatTime(c.updatedAt)}
+                        {c.preview && (
+                          <span className="mt-0.5 block truncate text-xs text-slate-600 dark:text-slate-300">
+                            {c.preview}
+                          </span>
+                        )}
+                        <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                          {c.kind === "bridge"
+                            ? `Bridge · ${captainName}`
+                            : `Direct · ${withWhom(c, crewList, captainName)}`}
+                          <ConversationTags c={c} projectNames={projectNames} />
                         </span>
-                      </span>
-                      <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-                        {c.kind === "bridge" ? "Bridge" : "Direct"}
-                        <ConversationTags c={c} projectNames={projectNames} />
                       </span>
                     </a>
                   </li>
@@ -269,6 +273,11 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
               conversationId={conversationId}
               conversation={current}
               title={current ? conversationTitle(current, crewList) : ""}
+              member={
+                current?.kind === "direct"
+                  ? (crewList.find((m) => m.slug === current.crewSlug) ?? null)
+                  : (crewList.find((m) => m.captain) ?? null)
+              }
               tags={
                 current ? (
                   <ConversationTags c={current} projectNames={projectNames} linkProject />
@@ -288,18 +297,25 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
               }}
             />
           ) : (
-            <div className="grid flex-1 place-items-center p-6 text-center">
-              <div className="max-w-sm space-y-2">
-                <h1 className="text-lg font-semibold">The Bridge</h1>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Talk to your coordinator, who pulls in the right crew member for each job. Pick a
-                  conversation or start a new one.
-                </p>
-              </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <ChatLanding
+                crew={crewList}
+                conversations={conversations.data}
+                creating={creating}
+                onNewBridge={() => void createBridge()}
+                onOpened={opened}
+              />
             </div>
           )}
         </section>
       </div>
+      <CrewPicker
+        open={picking}
+        onClose={() => setPicking(false)}
+        crew={crewList}
+        conversations={conversations.data}
+        onOpened={opened}
+      />
     </div>
   );
 }
@@ -308,6 +324,7 @@ function Thread({
   conversationId,
   conversation,
   title,
+  member,
   tags,
   onRenamed,
   onPinned,
@@ -316,6 +333,8 @@ function Thread({
   conversationId: string;
   conversation: ConversationDto | null;
   title: string;
+  /** Who answers here: the crew member of a direct chat, or the Captain. */
+  member: CrewDto | null;
   tags: ReactNode;
   onRenamed: (c: ConversationDto) => void;
   onPinned: () => void;
@@ -327,7 +346,8 @@ function Thread({
   const readOnly = conversation !== null && conversation.surface !== "web";
   const [state, dispatch] = useReducer(timelineReducer, initialTimeline);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [text, setText] = useState("");
+  const [text, setText] = useDraft(conversationId);
+  const [resetting, setResetting] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -398,10 +418,31 @@ function Thread({
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }
 
+  /** The crew forget the chat so far; the messages stay, below a divider. */
+  async function startFresh() {
+    if (state.busy || resetting) return;
+    setResetting(true);
+    try {
+      await api.resetConversation(conversationId);
+      setSendError(null);
+      stick.current = true;
+    } catch (err) {
+      setSendError(errorMessage(err));
+    } finally {
+      setResetting(false);
+    }
+  }
+
   /** `spoken`: text from the mic in hands-free mode, sent as is (with any attached files). */
   function send(e?: FormEvent, spoken?: string) {
     e?.preventDefault();
     const body = (spoken ?? text).trim();
+    // Typing /new on its own starts fresh, like the button.
+    if (spoken === undefined && body === "/new" && !files.ids.length) {
+      setText("");
+      void startFresh();
+      return;
+    }
     if ((!body && !files.ids.length) || state.busy || files.uploading) return;
     const attachments = files.ids.length ? { attachments: files.ids } : {};
     if (!socket.send({ type: "send", conversationId, text: body, ...attachments })) {
@@ -490,9 +531,38 @@ function Thread({
           </form>
         ) : (
           <>
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <h1 className="min-w-0 truncate font-semibold">{title}</h1>
-              <span className="flex shrink-0 items-center gap-1.5">{tags}</span>
+            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+              {member && (
+                <span className="hidden sm:contents">
+                  <Avatar name={member.name} />
+                </span>
+              )}
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-2">
+                  <h1 className="min-w-0 truncate font-semibold">{title}</h1>
+                  <span className="flex shrink-0 items-center gap-1.5">{tags}</span>
+                </div>
+                {member && (
+                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                    {conversation?.kind === "direct"
+                      ? `${member.name} · ${member.role}`
+                      : `${member.name} · brings in the right crew member`}
+                  </p>
+                )}
+              </div>
+              {member && (
+                <a
+                  href={href(`/crew/${member.slug}`)}
+                  title={`${member.name}'s settings`}
+                  aria-label={`${member.name}'s settings`}
+                  className={cx(
+                    "hidden shrink-0 rounded p-1 text-slate-400 transition-colors sm:block hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200",
+                    focusRing,
+                  )}
+                >
+                  <GearGlyph />
+                </a>
+              )}
             </div>
             {voice && voice.stt !== "off" && !readOnly && (
               <Button
@@ -507,6 +577,17 @@ function Thread({
             )}
             {conversation && !readOnly && (
               <>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  // Phones have little room up here; typing /new does the same.
+                  className="max-sm:hidden"
+                  disabled={state.busy || resetting}
+                  title="Start fresh: the crew forget this chat so far, and the messages stay here. You can also type /new."
+                  onClick={() => void startFresh()}
+                >
+                  Start fresh
+                </Button>
                 <Button
                   size="sm"
                   variant="ghost"
@@ -541,9 +622,21 @@ function Thread({
         <div className="mx-auto max-w-3xl">
           {loadError && <ErrorText>{loadError}</ErrorText>}
           {state.items.length === 0 && restoredApprovals.length === 0 && !loadError && (
-            <p className="py-10 text-center text-sm text-slate-500 dark:text-slate-400">
-              No messages yet. Say hello.
-            </p>
+            <div className="flex flex-col items-center gap-2 py-12 text-center">
+              {member && <Avatar name={member.name} size="lg" />}
+              <p className="font-medium">
+                {member
+                  ? conversation?.kind === "direct"
+                    ? `This is your chat with ${member.name}`
+                    : `${member.name} is listening`
+                  : "No messages yet"}
+              </p>
+              <p className="max-w-sm text-sm text-slate-500 dark:text-slate-400">
+                {member && conversation?.kind === "direct"
+                  ? `${member.role}. Ask a question, think something through, or hand over a job.`
+                  : "Say what you need, and the right crew member is brought in."}
+              </p>
+            </div>
           )}
           <TimelineView items={state.items} selfId={user.id} />
           {restoredApprovals.length > 0 && (
@@ -626,7 +719,13 @@ function Thread({
                   e.preventDefault();
                   files.add(e.clipboardData.files);
                 }}
-                placeholder={state.busy ? "The crew is working…" : "Message the crew"}
+                placeholder={
+                  state.busy
+                    ? `${member?.name ?? "The crew"} is working…`
+                    : conversation?.kind === "direct" && member
+                      ? `Message ${member.name}`
+                      : "Message the crew"
+                }
                 className={cx(
                   "min-h-[42px] flex-1 resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-[15px] dark:border-slate-600 dark:bg-slate-950",
                   focusRing,
@@ -654,7 +753,7 @@ function Thread({
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {handsFree
                 ? "Hands-free: tap the mic, speak, tap again to send. Replies are read aloud."
-                : "Enter to send, Shift+Enter for a new line."}
+                : "Enter to send, Shift+Enter for a new line, /new to start fresh."}
             </p>
           </div>
         </form>
@@ -668,6 +767,31 @@ function ListLabel({ children }: { children: ReactNode }) {
     <p className="px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wider text-slate-500 uppercase dark:text-slate-400">
       {children}
     </p>
+  );
+}
+
+/** Who a conversation is with: its crew member, or the Captain for a bridge chat. */
+function withWhom(c: ConversationDto, crew: CrewDto[], captainName: string): string {
+  if (c.kind !== "direct") return captainName;
+  return crew.find((m) => m.slug === c.crewSlug)?.name ?? c.crewSlug ?? "Crew member";
+}
+
+function GearGlyph() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
   );
 }
 

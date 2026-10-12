@@ -299,7 +299,7 @@ function ProviderCard({
   );
 }
 
-function AddProvider({
+export function AddProvider({
   kinds,
   onAdded,
 }: {

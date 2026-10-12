@@ -1,10 +1,17 @@
-import { ColorTheme, type MeResponse, parseUserPreferences, ThemeMode } from "@shipmate/core";
+import {
+  ColorTheme,
+  freshOnboarding,
+  type MeResponse,
+  parseUserPreferences,
+  ThemeMode,
+} from "@shipmate/core";
 import { users } from "@shipmate/db";
 import { eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { HttpError, hashPassword, toUserDto, verifyPassword } from "../auth.js";
 import type { Services } from "../services.js";
+import { ONBOARDING_KEY, onboardingState } from "./onboarding.js";
 
 const Email = z.string().trim().toLowerCase().email();
 const Password = z.string().min(8, "passwords need at least 8 characters").max(200);
@@ -17,7 +24,11 @@ export async function authRoutes(app: FastifyInstance, s: Services) {
 
   app.get("/api/auth/me", async (req): Promise<MeResponse> => {
     const user = await s.sessions.user(req);
-    return { user: user ? toUserDto(user) : null, setupRequired: await setupRequired() };
+    return {
+      user: user ? toUserDto(user) : null,
+      setupRequired: await setupRequired(),
+      ...(user?.role === "owner" ? { onboarding: await onboardingState(s) } : {}),
+    };
   });
 
   /** First run: create the owner account. Only works while there are no users. */
@@ -41,6 +52,8 @@ export async function authRoutes(app: FastifyInstance, s: Services) {
       })
       .returning();
     if (!user) throw new Error("insert failed");
+    // The web app walks the owner through the rest of first launch from here.
+    await s.settings.setJson(ONBOARDING_KEY, freshOnboarding());
     if (body.captainName && body.captainName !== "Captain") {
       await s.settings.set({ captainName: body.captainName });
       await s.crew.renameCaptain(body.captainName);
@@ -59,13 +72,26 @@ export async function authRoutes(app: FastifyInstance, s: Services) {
     return { user: toUserDto(user) };
   });
 
-  /** Appearance settings belong to the signed-in user; anyone can change their own. */
+  /** Appearance settings (and the welcome being seen) belong to the signed-in user; anyone can change their own. */
   app.patch("/api/auth/preferences", async (req) => {
     const body = z
-      .object({ themeMode: ThemeMode.optional(), colorTheme: ColorTheme.optional() })
+      .object({
+        themeMode: ThemeMode.optional(),
+        colorTheme: ColorTheme.optional(),
+        welcome: z.literal("done").optional(),
+      })
       .strict()
       .parse(req.body);
-    const preferences = { ...parseUserPreferences(req.user.preferences), ...body };
+    const { welcome, ...appearance } = body;
+    // Keep keys beside the appearance ones (the pending welcome) unless this request closes them.
+    const stored = req.user.preferences;
+    const raw = stored && typeof stored === "object" ? (stored as Record<string, unknown>) : {};
+    const preferences = {
+      ...raw,
+      ...parseUserPreferences(raw),
+      ...appearance,
+      ...(welcome ? { welcome } : {}),
+    };
     const [user] = await s.db
       .update(users)
       .set({ preferences })

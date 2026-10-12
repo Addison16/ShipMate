@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { hash, verify } from "@node-rs/argon2";
-import { parseUserPreferences, type UserDto, type UserRole } from "@shipmate/core";
+import { parseUserPreferences, type UserDto, type UserRole, welcomePending } from "@shipmate/core";
 import { authSessions, type Db, users } from "@shipmate/db";
 import { and, eq, gt, lt } from "drizzle-orm";
 import type { FastifyReply, FastifyRequest } from "fastify";
@@ -21,6 +21,7 @@ export function toUserDto(u: UserRow): UserDto {
     telegramUserId: u.telegramUserId,
     slackUserId: u.slackUserId,
     preferences: parseUserPreferences(u.preferences),
+    welcomePending: welcomePending(u.preferences),
     createdAt: u.createdAt.toISOString(),
   };
 }

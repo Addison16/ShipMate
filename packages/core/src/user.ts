@@ -33,6 +33,17 @@ export function parseUserPreferences(value: unknown): UserPreferences {
   return UserPreferences.parse(value && typeof value === "object" ? value : {});
 }
 
+/**
+ * The preferences JSON also holds `welcome: "pending"` for someone added after first launch who
+ * has not seen the short welcome yet. Missing means done, so people who were aboard before the
+ * welcome existed never see it.
+ */
+export function welcomePending(value: unknown): boolean {
+  return (
+    !!value && typeof value === "object" && (value as { welcome?: unknown }).welcome === "pending"
+  );
+}
+
 const text = (max: number) => z.string().max(max).catch("");
 
 /**

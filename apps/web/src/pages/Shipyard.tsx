@@ -285,7 +285,7 @@ function ProjectList() {
   );
 }
 
-function NewProjectForm({
+export function NewProjectForm({
   crew,
   defaultImage,
   onCreated,

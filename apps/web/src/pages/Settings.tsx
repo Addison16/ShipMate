@@ -28,6 +28,7 @@ export function SettingsPage() {
         <ProfileSettings />
         <PushSettings />
         <InstanceSettings />
+        <SetupGuide />
         <PhotoSettings />
         <VoiceSettings />
         <OidcSettings />
@@ -118,6 +119,41 @@ function InstanceSettings() {
           )}
         </form>
       )}
+    </Card>
+  );
+}
+
+/** Owner: open the first-launch guide again (it skips the account step). */
+function SetupGuide() {
+  const user = useUser();
+  const { setOnboarding } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (user.role !== "owner") return null;
+
+  async function restart() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { onboarding } = await api.updateOnboarding({ restart: true });
+      setOnboarding(onboarding);
+    } catch (err) {
+      setError(errorMessage(err));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <h2 className="mb-1 font-semibold">Setup guide</h2>
+      <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
+        Walk through the first-launch steps again: model, Captain, home, starter crew, notifications
+        and the Shipyard. Everything you set up stays; each step can be skipped.
+      </p>
+      <ErrorText>{error}</ErrorText>
+      <Button onClick={() => void restart()} disabled={busy}>
+        {busy ? "Opening…" : "Run the setup guide"}
+      </Button>
     </Card>
   );
 }

@@ -34,6 +34,7 @@ export async function userRoutes(app: FastifyInstance, s: Services) {
         displayName: body.displayName,
         role: body.role,
         passwordHash: await hashPassword(body.password),
+        preferences: { welcome: "pending" },
       })
       .returning();
     if (!user) throw new Error("insert failed");

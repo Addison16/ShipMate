@@ -3,6 +3,7 @@ import type {
   ApprovalDto,
   AuditEventDto,
   BridgeLinkCode,
+  CaptainSetupDto,
   ConversationDto,
   ConversationSearchResultDto,
   CreateCrewRequest,
@@ -35,6 +36,8 @@ import type {
   MeResponse,
   MessageDto,
   ModelOption,
+  OnboardingDto,
+  OnboardingUpdate,
   ProfileDto,
   ProjectDto,
   ProjectEventDto,
@@ -121,6 +124,13 @@ export const api = {
   updatePreferences: (body: UpdatePreferencesRequest) =>
     request<{ user: UserDto }>("PATCH", "/api/auth/preferences", body),
   logout: () => request<Ok>("POST", "/api/auth/logout"),
+
+  // first-launch guide (owner)
+  updateOnboarding: (body: OnboardingUpdate) =>
+    request<{ onboarding: OnboardingDto }>("PUT", "/api/onboarding", body),
+  captainSetup: () => request<CaptainSetupDto>("GET", "/api/onboarding/captain"),
+  updateCaptainSetup: (body: { name?: string; voice: string }) =>
+    request<CaptainSetupDto>("PUT", "/api/onboarding/captain", body),
 
   // users
   listUsers: () => request<{ users: UserDto[] }>("GET", "/api/users"),

@@ -1,4 +1,4 @@
-import type { UserDto } from "@shipmate/core";
+import type { OnboardingDto, UserDto } from "@shipmate/core";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
 import { api, errorMessage } from "./api.js";
 
@@ -7,11 +7,14 @@ interface AuthState {
   error: string | null;
   user: UserDto | null;
   setupRequired: boolean;
+  /** The owner's first-launch guide; null for everyone else. */
+  onboarding: OnboardingDto | null;
 }
 
 interface AuthContextValue extends AuthState {
   refresh: () => Promise<void>;
   setUser: (user: UserDto | null) => void;
+  setOnboarding: (onboarding: OnboardingDto) => void;
   logout: () => Promise<void>;
 }
 
@@ -23,12 +26,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     error: null,
     user: null,
     setupRequired: false,
+    onboarding: null,
   });
 
   const refresh = useCallback(async () => {
     try {
       const me = await api.me();
-      setState({ loading: false, error: null, user: me.user, setupRequired: me.setupRequired });
+      setState({
+        loading: false,
+        error: null,
+        user: me.user,
+        setupRequired: me.setupRequired,
+        onboarding: me.onboarding ?? null,
+      });
     } catch (err) {
       setState((s) => ({ ...s, loading: false, error: errorMessage(err) }));
     }
@@ -42,16 +52,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, user, setupRequired: user ? false : s.setupRequired }));
   }, []);
 
+  const setOnboarding = useCallback((onboarding: OnboardingDto) => {
+    setState((s) => ({ ...s, onboarding }));
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await api.logout();
     } finally {
-      setState((s) => ({ ...s, user: null }));
+      setState((s) => ({ ...s, user: null, onboarding: null }));
     }
   }, []);
 
   return (
-    <AuthContext.Provider value={{ ...state, refresh, setUser, logout }}>
+    <AuthContext.Provider value={{ ...state, refresh, setUser, setOnboarding, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -12,7 +12,7 @@ function returnRoute(hash: string): string | undefined {
 }
 
 export function LoginPage() {
-  const { setUser } = useAuth();
+  const { refresh } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(() =>
@@ -46,8 +46,9 @@ export function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      const { user } = await api.login({ email: email.trim(), password });
-      setUser(user);
+      await api.login({ email: email.trim(), password });
+      // Reload who is signed in, with the owner's setup guide state if it is still running.
+      await refresh();
     } catch (err) {
       setError(errorMessage(err));
     } finally {

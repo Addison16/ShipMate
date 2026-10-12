@@ -68,7 +68,9 @@ docker compose --profile local-ai up -d
 
 See [docs/local-models.md](docs/local-models.md) for picking a model and using a GPU.
 Set `SHIPMATE_URL` to the address people use to reach the instance; it is needed for OIDC,
-webhooks and links in chat bridges.
+webhooks and links in chat bridges. Every variable and the `/data` layout are in
+[docs/configuration.md](docs/configuration.md); behind Nginx Proxy Manager, SWAG, Traefik or
+Caddy, see [docs/reverse-proxy.md](docs/reverse-proxy.md).
 
 Images are tagged `ghcr.io/addison16/shipmate:1.0.0`, `:1.0`, `:1` and `:latest`; pin a version
 tag to control upgrades. Migrations run on boot. `:edge` follows `main`. **Health** (owners and

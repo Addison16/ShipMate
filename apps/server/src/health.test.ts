@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HealthDto } from "@shipmate/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { checkApiKey } from "./health/checks.js";
+import { addressCheck, checkApiKey } from "./health/checks.js";
 import { compareVersions, ReleaseChecker } from "./health/releases.js";
 import { HealthService } from "./health/service.js";
 import {
@@ -348,6 +348,53 @@ describe("starting an update", () => {
 
 const db = TEST_DATABASE_URL;
 
+describe("address check", () => {
+  const seen = (protocol: string, host: string, forwarded = false) => ({
+    protocol,
+    host,
+    forwarded,
+  });
+
+  it("is happy when the page was opened at SHIPMATE_URL", () => {
+    expect(
+      addressCheck("https://ship.example.com", seen("https", "ship.example.com")),
+    ).toMatchObject({ status: "ok", group: "Web address", hint: null });
+    expect(addressCheck("http://192.168.1.10:3000", seen("http", "192.168.1.10:3000")).status).toBe(
+      "ok",
+    );
+  });
+
+  it("points at the proxy when https arrives as plain http", () => {
+    const untrusted = addressCheck(
+      "https://ship.example.com",
+      seen("http", "ship.example.com", true),
+    );
+    expect(untrusted.status).toBe("warn");
+    expect(untrusted.hint).toMatch(/SHIPMATE_TRUST_PROXY/);
+    expect(addressCheck("https://ship.example.com", seen("http", "ship.example.com")).hint).toMatch(
+      /X-Forwarded-Proto/,
+    );
+  });
+
+  it("explains an address that differs from SHIPMATE_URL", () => {
+    const lan = addressCheck("https://ship.example.com", seen("http", "192.168.1.10:3000"));
+    expect(lan.status).toBe("warn");
+    expect(lan.detail).toBe(
+      "This page was opened at http://192.168.1.10:3000, but SHIPMATE_URL is https://ship.example.com",
+    );
+    expect(lan.hint).toMatch(/Sign-in only works/);
+    expect(addressCheck("http://localhost:3000", seen("http", "nas.lan:3000")).hint).toMatch(
+      /set SHIPMATE_URL to it/,
+    );
+  });
+
+  it("warns about a sub-path, which Shipmate cannot serve", () => {
+    expect(
+      addressCheck("https://example.com/shipmate", seen("https", "example.com")),
+    ).toMatchObject({ status: "warn", detail: "SHIPMATE_URL has a path (/shipmate)" });
+  });
+});
+
 describe.skipIf(!db)("the Health page", () => {
   let t: Awaited<ReturnType<typeof testApp>>;
   let github: Server;
@@ -500,6 +547,21 @@ describe.skipIf(!db)("the Health page", () => {
     const res = await api("POST", "/api/health/update", { confirm: true });
     expect(res.statusCode).toBe(409);
     expect(res.json().error).toMatch(/No Docker socket/);
+  });
+
+  it("believes a local reverse proxy about the address the browser used", async () => {
+    const viaProxy = (proto: string, host: string) =>
+      t.app.inject({
+        method: "GET",
+        url: "/api/health",
+        headers: { cookie: adminCookie, "x-forwarded-proto": proto, "x-forwarded-host": host },
+      });
+    const ok = (await viaProxy("http", "localhost:3000")).json().health as HealthDto;
+    expect(byId(ok, "address")).toMatchObject({ status: "ok", group: "Web address" });
+    const other = (await viaProxy("https", "ship.example.com")).json().health as HealthDto;
+    expect(byId(other, "address")?.detail).toBe(
+      "This page was opened at https://ship.example.com, but SHIPMATE_URL is http://localhost:3000",
+    );
   });
 
   it("keeps /healthz open for Docker healthchecks", async () => {

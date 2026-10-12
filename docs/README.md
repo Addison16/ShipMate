@@ -1,6 +1,9 @@
 # Shipmate docs
 
 - [BUILD_PLAN.md](BUILD_PLAN.md): architecture, decisions and phases.
+- [configuration.md](configuration.md): every environment variable, and what lives in `/data`.
+- [reverse-proxy.md](reverse-proxy.md): Nginx Proxy Manager, SWAG, Traefik, Caddy, nginx and
+  Cloudflare Tunnel in front of Shipmate.
 - [shipyard.md](shipyard.md): the Shipyard: issue-to-PR jobs, the Bosun reviewer, GitHub
   webhooks, and sandboxes (Docker, rootless Podman, a remote host).
 - [health-and-updates.md](health-and-updates.md): the Health page, release checks and

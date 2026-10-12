@@ -1,6 +1,6 @@
 import type { HealthDto } from "@shipmate/core";
 import { HttpError } from "../auth.js";
-import { type HealthDeps, runChecks } from "./checks.js";
+import { type HealthDeps, runChecks, type SeenAddress } from "./checks.js";
 import type { ReleaseChecker } from "./releases.js";
 import type { Updater } from "./updater.js";
 
@@ -15,10 +15,10 @@ export class HealthService {
     private readonly version: string,
   ) {}
 
-  async report(refresh = false): Promise<HealthDto> {
+  async report(refresh = false, seen?: SeenAddress): Promise<HealthDto> {
     const [release, checks] = await Promise.all([
       this.releases.check(refresh),
-      runChecks(this.deps),
+      runChecks(this.deps, seen),
     ]);
     const { self: _self, ...update } = await this.updater.plan(release.latest?.version ?? null);
     return {

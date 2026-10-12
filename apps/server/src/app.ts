@@ -51,6 +51,9 @@ const PUBLIC = new Set([
 /** Prefixes reachable without signing in; each route checks its own credential (a token). */
 const PUBLIC_PREFIXES = ["/api/hooks/", "/api/push/act/"];
 
+/** How often the Bridge's WebSocket is pinged, under common proxy idle timeouts (60 s). */
+const WS_PING_MS = 25_000;
+
 const ClientEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("send"),
@@ -85,6 +88,8 @@ export async function buildApp(
 ) {
   const app = Fastify({
     logger: options.logger === false ? false : { level: process.env.LOG_LEVEL ?? "info" },
+    // Behind a reverse proxy: the browser's address and https come from X-Forwarded-*.
+    trustProxy: config.trustProxy,
   });
   const { db, close } = createDb(config.DATABASE_URL);
   const services = await createServices(config, db, options);
@@ -193,7 +198,13 @@ export async function buildApp(
     const disconnect = services.bridge.connect(user.id, send);
     // While a tab is open, crew replies show there instead of as push notifications.
     const present = services.push.opened(user.id);
+    // Reverse proxies close quiet connections (nginx after 60 s by default); a ping every
+    // 25 s keeps the Bridge's socket open while nobody is talking.
+    const keepalive = setInterval(() => {
+      if (socket.readyState === socket.OPEN) socket.ping();
+    }, WS_PING_MS);
     socket.on("close", () => {
+      clearInterval(keepalive);
       disconnect();
       present();
     });

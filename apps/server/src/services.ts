@@ -212,6 +212,7 @@ export async function createServices(
     {
       db,
       dataDir: config.dirs.root,
+      publicUrl: config.SHIPMATE_URL,
       providers: () => providers.records(),
       chatgpt: () => providers.chatgpt.status(),
       claudeCli: async () => {

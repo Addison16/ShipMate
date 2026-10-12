@@ -1,5 +1,5 @@
-import type { CrewDetailDto } from "@shipmate/core";
-import { Fragment, useState } from "react";
+import type { ClaudeCliStatusDto, CrewDetailDto } from "@shipmate/core";
+import { Fragment, useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { isAdmin, useUser } from "../auth.js";
 import {
@@ -51,15 +51,27 @@ function DocText({ text }: { text: string }) {
  * Providers → "Claude subscription (Claude Code)" (admins): whether the official `claude` binary
  * is installed and signed in, and how to sign it in. Shipmate never handles the login itself.
  */
-export function ClaudeCliCard() {
+export function ClaudeCliCard({
+  onStatus,
+}: {
+  /** Called with each status the card loads (the setup guide follows the sign-in this way). */
+  onStatus?: (status: ClaudeCliStatusDto) => void;
+} = {}) {
   const user = useUser();
   if (!isAdmin(user)) return null;
-  return <ClaudeCliStatusCard />;
+  return <ClaudeCliStatusCard onStatus={onStatus} />;
 }
 
-function ClaudeCliStatusCard() {
+function ClaudeCliStatusCard({
+  onStatus,
+}: {
+  onStatus: ((status: ClaudeCliStatusDto) => void) | undefined;
+}) {
   const res = useResource(() => claudeCliApi.status().then((r) => r.claudeCli));
   const s = res.data;
+  useEffect(() => {
+    if (s) onStatus?.(s);
+  }, [s, onStatus]);
   const state = s ? describeStatus(s) : null;
   return (
     <Card>

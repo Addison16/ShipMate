@@ -6,6 +6,19 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **"What will you use Shipmate for?"**: the setup guide now opens by asking whether Shipmate is
+  for home life, work or both, and tailors what follows. Work gets a short "basics" step (where
+  you're based, working hours) with no family questions, and home keeps the household details
+  behind an "Add more" button. The starter crew step suggests crew that match, with the rest
+  listed underneath, and the Captain preview asks a work question for work. Two new starter
+  crew for work: **Yeoman** (to-do list, email drafts, meeting prep) and **Lookout** (web
+  research with sources). The answer is part of the household facts every crew member reads
+  and can be changed in Settings.
+- **Claude subscription in the setup guide**: when Claude Code is signed in, the model step can
+  run the Captain (and the starter crew brought aboard next) on it and continue, instead of only
+  offering "Next without a model". The Bridge no longer warns about a missing provider when the
+  Captain runs on Claude Code. Copy buttons now work when Shipmate is opened over plain http
+  (a LAN address), where browsers hide the clipboard API.
 - **First-launch guide**: a new install walks the owner through a step-by-step, skippable setup
   after creating the account: connect a model (Ollama, ChatGPT plan, Claude subscription or an API
   key) and pick the crew's default, name the Captain and choose its personality (five presets or

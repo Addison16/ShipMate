@@ -269,6 +269,7 @@ function toDto(folder: CrewFolder, row: CrewRow): CrewDto {
     role: m.role,
     model: m.model,
     captain: m.captain,
+    backend: m.backend,
     visibility: m.visibility,
     status,
     tools: m.tools,

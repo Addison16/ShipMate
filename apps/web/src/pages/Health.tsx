@@ -13,6 +13,7 @@ import {
   Page,
   PageHeader,
 } from "../components/ui.js";
+import { copyText } from "../lib/clipboard.js";
 import {
   groupChecks,
   nextProgress,
@@ -249,7 +250,7 @@ function Commands({ commands }: { commands: string[] }) {
           size="sm"
           className="absolute top-2 right-2"
           onClick={() =>
-            void navigator.clipboard.writeText(text).then(
+            void copyText(text).then(
               () => {
                 setCopied(true);
                 setTimeout(() => setCopied(false), 2000);

@@ -71,7 +71,9 @@ export async function checkApiKey(
     headers["anthropic-version"] = "2023-06-01";
     url = `${base}/v1/models?limit=1`;
   } else if (kind === "google") {
-    url = `${base}/v1beta/models?pageSize=1&key=${encodeURIComponent(key)}`;
+    // A header, not ?key=, so the key never lands in proxy or URL logs.
+    headers["x-goog-api-key"] = key;
+    url = `${base}/v1beta/models?pageSize=1`;
   } else if (kind === "openrouter") {
     url = `${base}/api/v1/key`;
     headers.authorization = `Bearer ${key}`;

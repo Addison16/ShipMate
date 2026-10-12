@@ -145,7 +145,7 @@ describe("API key checks", () => {
       const good =
         req.headers["x-api-key"] === "good" ||
         req.headers.authorization === "Bearer good" ||
-        (req.url ?? "").includes("key=good");
+        req.headers["x-goog-api-key"] === "good";
       res.writeHead(good ? 200 : (req.url ?? "").startsWith("/v1beta") ? 400 : 401);
       res.end("{}");
     });
@@ -165,6 +165,8 @@ describe("API key checks", () => {
     expect((await checkApiKey("openai", "bad", { base })).status).toBe("fail");
     expect(seen.at(-1)?.url).toBe("/v1/models");
     expect((await checkApiKey("google", "bad", { base })).detail).toBe("The key was refused (400)");
+    expect((await checkApiKey("google", "good", { base })).status).toBe("ok");
+    expect(seen.at(-1)?.url).toBe("/v1beta/models?pageSize=1");
     expect((await checkApiKey("openrouter", "good", { base })).status).toBe("ok");
     expect(seen.at(-1)?.url).toBe("/api/v1/key");
     const down = await checkApiKey("xai", "good", { base: "http://127.0.0.1:9" });

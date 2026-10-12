@@ -190,6 +190,8 @@ describe.skipIf(!db)("local models through Ollama", () => {
       error: null,
     });
     expect(s.installed.map((m) => m.name)).toContain("qwen3:4b");
+    // Pulls belong to their server: another server lists none of them.
+    expect((await status("http://127.0.0.1:9")).pulls).toEqual([]);
 
     await api("POST", "/api/local-ai/pull", { url: ollamaUrl, model: "nope:1b" });
     await until(async () =>
@@ -233,5 +235,10 @@ describe.skipIf(!db)("local models through Ollama", () => {
     const s = (await api("GET", "/api/local-ai")).json().localAi as LocalAiStatusDto;
     expect(s.url).toBe(ollamaUrl);
     expect(s.providerId).toBe(res.json().provider.id);
+
+    // A server without qwen3 (as after switching servers) drops it from the provider.
+    installed.delete("qwen3:4b");
+    const moved = await api("POST", "/api/local-ai/use", { url: ollamaUrl, model: "llama3.2" });
+    expect(moved.json().provider.models).toEqual(["llama3.2:latest"]);
   });
 });

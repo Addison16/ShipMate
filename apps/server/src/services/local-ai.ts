@@ -46,6 +46,8 @@ export const MODEL_NAME_RE = /^[a-z0-9][a-z0-9._-]*(\/[a-z0-9][a-z0-9._-]*)*(:[a
 const KEEP_FINISHED_MS = 10 * 60_000;
 
 interface Pull extends LocalModelPullDto {
+  /** The Ollama server it runs on; pulls are tracked per server and model. */
+  url: string;
   finishedAt: number | null;
   layers: Map<string, { total: number; completed: number }>;
 }
@@ -91,7 +93,7 @@ export class LocalAiService {
       recommended: RECOMMENDED_MODELS,
       providerId: provider?.id ?? null,
       defaultModel: settings.defaultModel,
-      pulls: this.#listPulls(),
+      pulls: this.#listPulls(url),
     };
     try {
       const version = await this.#json<{ version?: string }>(url, "/api/version");
@@ -121,13 +123,15 @@ export class LocalAiService {
     }
   }
 
-  /** Start pulling a model; a pull of the same model already running is returned as is. */
+  /** Start pulling a model; a pull of the same model on that server already running is returned as is. */
   async pull(model: string, requested?: string): Promise<LocalModelPullDto> {
     const name = checkName(model);
     const url = await this.url(requested);
-    const running = this.#pulls.get(withTag(name));
+    const key = `${url} ${withTag(name)}`;
+    const running = this.#pulls.get(key);
     if (running?.status === "pulling") return toDto(running);
     const pull: Pull = {
+      url,
       model: withTag(name),
       status: "pulling",
       detail: "starting",
@@ -138,7 +142,7 @@ export class LocalAiService {
       finishedAt: null,
       layers: new Map(),
     };
-    this.#pulls.set(pull.model, pull);
+    this.#pulls.set(key, pull);
     void this.#run(url, name, pull);
     return toDto(pull);
   }
@@ -163,11 +167,13 @@ export class LocalAiService {
     const listed = installed.includes(name) ? name : withTag(name);
     const baseUrl = `${url}/v1`;
     const existing = await this.#provider();
+    // Keep only models this server has, so switching servers drops the old server's models.
+    const kept = existing?.models.filter((m) => installed.includes(m)) ?? [];
     const provider = existing
       ? await this.providers.update(existing.id, {
           baseUrl,
           enabled: true,
-          models: [...new Set([...existing.models, listed])],
+          models: [...new Set([...kept, listed])],
         })
       : await this.providers.create({ kind: "ollama", label: "Ollama", baseUrl, models: [listed] });
     if (options.makeDefault) await this.settings.set({ defaultModel: `ollama/${listed}` });
@@ -183,12 +189,12 @@ export class LocalAiService {
     return (await this.providers.list()).find((p) => p.kind === "ollama");
   }
 
-  #listPulls(): LocalModelPullDto[] {
+  #listPulls(url: string): LocalModelPullDto[] {
     const now = Date.now();
     for (const [key, p] of this.#pulls) {
       if (p.finishedAt !== null && now - p.finishedAt > KEEP_FINISHED_MS) this.#pulls.delete(key);
     }
-    return [...this.#pulls.values()].map(toDto);
+    return [...this.#pulls.values()].filter((p) => p.url === url).map(toDto);
   }
 
   async #json<T>(url: string, path: string): Promise<T> {

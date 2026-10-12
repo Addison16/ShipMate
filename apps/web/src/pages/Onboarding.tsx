@@ -620,8 +620,8 @@ function ModelStep({ nav }: { nav: StepNav }) {
             <span className="block font-medium">Run the Captain on your Claude subscription</span>
             <span className="block text-slate-600 dark:text-slate-400">
               Claude Code is signed in. The Captain will answer through it, and so will the starter
-              crew you bring aboard next. On Claude Code the Captain chats and uses its own tools,
-              but cannot hand work to other crew members; add a provider too for that.
+              crew you bring aboard next. The Captain still hands your messages to the right crew
+              member.
             </span>
           </span>
         </label>

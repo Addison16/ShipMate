@@ -1,5 +1,5 @@
 import type { ProviderAuth, ProviderDto, ProviderKindDto } from "@shipmate/core";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useCallback, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { useUser } from "../auth.js";
 import { ChatGptCard } from "../components/ChatGptCard.js";
@@ -20,6 +20,7 @@ import {
   td,
   th,
 } from "../components/ui.js";
+import { usableModels } from "../lib/claude-cli.js";
 import { useResource } from "../lib/useResource.js";
 
 const OLLAMA_URL = "http://localhost:11434/v1";
@@ -42,6 +43,9 @@ export function ProvidersPage() {
   const providers = useResource(() => api.listProviders());
   const models = useResource(() => api.listModels().then((r) => r.models));
   const kinds = providers.data?.kinds ?? [];
+  const [cliSignedIn, setCliSignedIn] = useState(false);
+  const onCliStatus = useCallback((s: { signedIn: boolean }) => setCliSignedIn(s.signedIn), []);
+  const usable = models.data ? usableModels(models.data, cliSignedIn) : null;
 
   const reloadAll = async () => {
     await Promise.all([providers.reload(), models.reload()]);
@@ -88,33 +92,40 @@ export function ProvidersPage() {
         <div className="mb-4">
           <ChatGptCard onChanged={reloadAll} />
         </div>
-        <ClaudeCliCard />
+        <ClaudeCliCard onStatus={onCliStatus} />
       </div>
 
-      <h2 className="mt-10 mb-3 text-lg font-semibold">Models</h2>
+      <h2 className="mt-10 mb-1 text-lg font-semibold">Models</h2>
+      <Muted>Models the crew can use with the providers and sign-ins above.</Muted>
       <ErrorText>{models.error}</ErrorText>
-      {models.data && models.data.length === 0 && <Muted>No models known yet.</Muted>}
-      {models.data && models.data.length > 0 && (
-        <Table>
-          <thead>
-            <tr>
-              <th className={th}>Model</th>
-              <th className={th}>Reference</th>
-              <th className={th}>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {models.data.map((m) => (
-              <tr key={m.ref}>
-                <td className={td}>{m.name}</td>
-                <td className={`${td} font-mono text-xs`}>{m.ref}</td>
-                <td className={td}>
-                  {m.available ? <Badge tone="ok">available</Badge> : <Badge>not configured</Badge>}
-                </td>
+      {usable && usable.length === 0 && (
+        <div className="mt-3">
+          <Muted>No models yet. Add a provider or sign in above and its models show up here.</Muted>
+        </div>
+      )}
+      {usable && usable.length > 0 && (
+        <div className="mt-3">
+          <Table>
+            <thead>
+              <tr>
+                <th className={th}>Model</th>
+                <th className={th}>Reference</th>
+                <th className={th}>From</th>
               </tr>
-            ))}
-          </tbody>
-        </Table>
+            </thead>
+            <tbody>
+              {usable.map((m) => (
+                <tr key={m.ref}>
+                  <td className={td}>{m.name}</td>
+                  <td className={`${td} font-mono text-xs`}>{m.ref}</td>
+                  <td className={td}>
+                    <Badge tone="ok">{m.source}</Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </div>
       )}
     </Page>
   );

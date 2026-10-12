@@ -9,6 +9,7 @@ export const CLAUDE_CLI_DOCS = [
   CLAUDE_CLI_SIGN_IN_HINT,
   "The CLI keeps and renews its own login in CLAUDE_CONFIG_DIR (on the /data volume in the Shipmate image), so you sign in once; Shipmate does not ping it to keep it alive.",
   'Tools: by default the CLI may only read files in the crew member\'s folder. Allow more with `cli.allowedTools` (e.g. [Read, Edit, "Bash(git *)"]) or `cli.permissionMode: acceptEdits` in crew.yaml.',
+  "Shipmate's own tools (memory, lists, and for the Captain `delegate` and the other crew tools) reach the CLI as the `mcp__shipmate__*` tools, under the crew member's approval rules.",
 ].join("\n\n");
 
 /** Status of the Claude Code CLI backend (no `_services` needed: it only asks the binary). */

@@ -14,7 +14,10 @@ export function ModelSelect({
   label?: string;
   disabled?: boolean;
 }) {
-  const known = models?.some((m) => m.ref === value);
+  // Only models something signed in or configured can run; a saved choice that no longer can
+  // stays listed so the field still shows it.
+  const usable = models?.filter((m) => m.available) ?? [];
+  const current = models?.find((m) => m.ref === value);
   return (
     <SelectField
       label={label}
@@ -23,10 +26,14 @@ export function ModelSelect({
       disabled={disabled}
     >
       {!value && <option value="">Choose a model…</option>}
-      {value && !known && <option value={value}>{value}</option>}
-      {models?.map((m) => (
+      {value && !usable.some((m) => m.ref === value) && (
+        <option value={value}>
+          {current ? `${current.name} (${value})` : value} (not configured)
+        </option>
+      )}
+      {usable.map((m) => (
         <option key={m.ref} value={m.ref}>
-          {m.name} ({m.ref}){m.available ? "" : " (not configured)"}
+          {m.name} ({m.ref})
         </option>
       ))}
     </SelectField>

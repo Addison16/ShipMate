@@ -6,6 +6,12 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Subscription use is not spend**: calls through the Claude Code CLI (on a Claude
+  subscription) or a ChatGPT plan no longer count as cost or towards monthly caps. The Cost page
+  shows real API spend apart from a "Saved by subscriptions" estimate of what that use would have
+  cost at API prices, with a column per person, crew member and model, a daily chart and two new
+  CSV columns (`billing`, `api_equivalent_usd`). A CLI signed in with an API key still counts as
+  spend. Existing Claude Code and ChatGPT usage is moved over on upgrade.
 - **The Captain coordinates on Claude Code too**: a Captain running on a Claude subscription now
   hands your messages to the right crew member with `delegate`, like one on a provider. Crew on
   Claude Code also get Shipmate's own tools (memory, lists, `ask_captain`), served to the CLI by

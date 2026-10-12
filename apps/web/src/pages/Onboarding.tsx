@@ -4,7 +4,7 @@ import type {
   OnboardingStep,
   ProjectDto,
 } from "@shipmate/core";
-import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { useAuth } from "../auth.js";
 import { AppearanceSettings } from "../components/AppearanceSettings.js";
@@ -66,18 +66,26 @@ export function OnboardingPage() {
     if (user && onboarding && step === "account") setStep(onboarding.step);
   }, [user, onboarding, step]);
 
+  // One guide update at a time: each is a read-modify-write of the saved state on the server.
+  const moving = useRef(false);
+
   async function go(
     to: OnboardingStep,
     mark?: { done?: OnboardingStep; skipped?: OnboardingStep },
   ) {
-    setStep(to);
+    if (moving.current) return;
+    moving.current = true;
     setError(null);
-    window.scrollTo({ top: 0 });
     try {
+      // Move only once the server has the new position, so a reload never jumps backward.
       const { onboarding: next } = await api.updateOnboarding({ step: to, ...mark });
       setOnboarding(next);
+      setStep(to);
+      window.scrollTo({ top: 0 });
     } catch (err) {
       setError(errorMessage(err));
+    } finally {
+      moving.current = false;
     }
   }
 

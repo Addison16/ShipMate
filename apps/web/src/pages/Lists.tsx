@@ -463,7 +463,7 @@ function AddItem({ list, onAdded }: { list: ListDetailDto; onAdded: (l: ListDeta
           placeholder={itemPlaceholder(list.kind)}
           onChange={(e) => setText(e.target.value)}
           className={cx(
-            "min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900",
+            "min-w-0 flex-1 rounded-md border border-control bg-white px-3 py-2 text-sm dark:bg-slate-900",
             focusRing,
           )}
         />
@@ -540,7 +540,7 @@ function ItemRow({
           htmlFor={id}
           className={cx(
             "block cursor-pointer text-[15px] break-words",
-            item.checked && "text-slate-400 line-through dark:text-slate-500",
+            item.checked && "text-slate-500 line-through dark:text-slate-400",
           )}
         >
           {item.text}
@@ -557,7 +557,7 @@ function ItemRow({
         title="Remove"
         onClick={() => void apply(() => api.deleteListItem(listId, item.id))}
         className={cx(
-          "rounded px-1.5 text-lg leading-none text-slate-400 hover:bg-slate-100 hover:text-red-700 dark:hover:bg-slate-800 dark:hover:text-red-300",
+          "rounded px-1.5 text-lg leading-none text-slate-500 hover:bg-slate-100 dark:text-slate-400 hover:text-red-700 dark:hover:bg-slate-800 dark:hover:text-red-300",
           focusRing,
         )}
       >

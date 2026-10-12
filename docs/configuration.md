@@ -74,7 +74,7 @@ These are read by `docker-compose.yml`, not by Shipmate, so put them in a `.env`
 | Variable | Default | What it does |
 |---|---|---|
 | `POSTGRES_PASSWORD` | `shipmate` | Password of the bundled Postgres; change it before the first start. |
-| `SHIPMATE_URL`, `SHIPMATE_SECRET`, `SHIPMATE_OLLAMA_URL`, `SHIPMATE_LOCAL_MODEL` | as above | Passed through to the containers. |
+| `SHIPMATE_URL`, `SHIPMATE_SECRET`, `SHIPMATE_TRUST_PROXY`, `SHIPMATE_OLLAMA_URL`, `SHIPMATE_LOCAL_MODEL` | as above | Passed through to the containers. |
 
 ## Volumes and the `/data` layout
 

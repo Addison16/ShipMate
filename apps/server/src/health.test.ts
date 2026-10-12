@@ -388,6 +388,16 @@ describe("address check", () => {
     );
   });
 
+  it("warns about a query or fragment, which would swallow appended paths", () => {
+    for (const url of [
+      "https://ship.example.com/#x",
+      "https://ship.example.com?",
+      "https://ship.example.com/?a=1",
+    ]) {
+      expect(addressCheck(url, seen("https", "ship.example.com")).status).toBe("warn");
+    }
+  });
+
   it("warns about a sub-path, which Shipmate cannot serve", () => {
     expect(
       addressCheck("https://example.com/shipmate", seen("https", "example.com")),

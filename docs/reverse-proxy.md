@@ -30,7 +30,8 @@ Shipmate believes `X-Forwarded-*` headers only from proxies listed in `SHIPMATE_
 The default (`loopback,linklocal,uniquelocal`) covers a proxy on the same machine, on a Docker
 network, or elsewhere on a private LAN, which is nearly every home setup. If your proxy reaches
 Shipmate from a public address (a VPS in front of a home server, for example), list that address:
-`SHIPMATE_TRUST_PROXY=203.0.113.7`. To trust no proxy at all, set it to `off`.
+`SHIPMATE_TRUST_PROXY=203.0.113.7` (with docker-compose, in the `.env` file next to
+`docker-compose.yml`). To trust no proxy at all, set it to `off`.
 
 ### Opening it on the LAN as well
 

@@ -180,7 +180,19 @@ export function addressCheck(publicUrl: string, seen: SeenAddress): Check {
   } catch {
     return check("address", G, name, "fail", `SHIPMATE_URL is not a URL: ${publicUrl}`, "Set it.");
   }
-  if (want.pathname !== "/" || want.search) {
+  // Links are built by appending paths, so a query or fragment (even an empty "?" or "#")
+  // would swallow them.
+  if (/[?#]/.test(publicUrl)) {
+    return check(
+      "address",
+      G,
+      name,
+      "warn",
+      `SHIPMATE_URL has a query or fragment (${publicUrl})`,
+      "Set SHIPMATE_URL to the plain address, e.g. https://shipmate.example.com, and restart.",
+    );
+  }
+  if (want.pathname !== "/") {
     return check(
       "address",
       G,

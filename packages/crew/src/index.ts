@@ -16,6 +16,7 @@ export {
   type ClaudeCliUsage,
   childEnv,
   claudeCliArgs,
+  claudeCliBilling,
   claudeCliBin,
   claudeCliStatus,
   claudeConfigDir,

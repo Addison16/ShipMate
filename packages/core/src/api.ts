@@ -337,7 +337,15 @@ export interface UsageTotals {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /** Real API spend. Calls covered by a Claude or ChatGPT subscription add nothing here. */
   costMicroUsd: number;
+  /** Calls that ran on a subscription instead of an API key. */
+  subscriptionCalls: number;
+  /**
+   * Estimate of what the subscription calls would have cost at API prices (the "saved by your
+   * subscription" figure). Not spend, and never counted towards caps.
+   */
+  apiEquivalentMicroUsd: number;
   /**
    * How long the model took to answer, averaged and at the 95th percentile, in ms. Null when no
    * call in the group has a recorded response time (calls from before it was recorded).
@@ -362,6 +370,8 @@ export interface UsageResponse {
   daily: Array<{
     date: string;
     costMicroUsd: number;
+    /** Subscription calls priced at API rates (an estimate, not spend). */
+    apiEquivalentMicroUsd: number;
     calls: number;
     /** Input plus output tokens. */
     tokens: number;

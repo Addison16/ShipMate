@@ -3,11 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { CrewManifest, type ServerEvent } from "@shipmate/core";
-import { claudeCliArgs, runClaudeCli } from "@shipmate/crew";
+import { claudeCliArgs, claudeCliBilling, runClaudeCli } from "@shipmate/crew";
 import type { Db } from "@shipmate/db";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ClaudeCliTurns, cliModelFromRef } from "./claude-cli-turn.js";
+import { chatGptProvider } from "./services/chatgpt.js";
+import { callCost } from "./services/usage.js";
 import { TEST_DATABASE_URL, testApp } from "./testing.js";
 
 const db = TEST_DATABASE_URL;
@@ -36,7 +38,7 @@ process.stdin.on("end", () => {
   const sid = resume || "sess-" + Math.random().toString(36).slice(2, 8);
   log({ args, cwd: process.cwd(), prompt, pid: process.pid, leaked: Object.keys(process.env).filter((k) => k.startsWith("SHIPMATE_")) });
   const out = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
-  out({ type: "system", subtype: "init", session_id: sid, model: "claude-fake-1", tools: ["Read"] });
+  out({ type: "system", subtype: "init", session_id: sid, model: "claude-fake-1", tools: ["Read"], apiKeySource: process.env.FAKE_CLAUDE_KEY_SOURCE || "none" });
   if (prompt.includes("hang")) { setInterval(() => {}, 1000); return; }
   if (prompt.includes("fail")) {
     out({ type: "result", subtype: "success", is_error: true, result: "Invalid API key · Please run /login", session_id: sid, total_cost_usd: 0, usage: {} });
@@ -150,9 +152,61 @@ describe("claude-code-cli backend: manifest and runner", () => {
       isError: false,
       costUsd: 0.0123,
       model: "claude-fake-1",
+      apiKeySource: "none",
       usage: { input: 100, output: 20, cacheRead: 5, cacheWrite: 7 },
     });
     expect(r.sessionId).toMatch(/^sess-/);
+  });
+
+  it("tells subscription runs from API-key runs", async () => {
+    const run = (source?: string) =>
+      runClaudeCli({
+        bin: fakeBin,
+        cwd: dir,
+        prompt: "hi",
+        env: { ...process.env, ...(source ? { FAKE_CLAUDE_KEY_SOURCE: source } : {}) },
+      });
+    expect(claudeCliBilling(await run())).toBe("subscription");
+    const keyed = await run("ANTHROPIC_API_KEY");
+    expect(keyed.apiKeySource).toBe("ANTHROPIC_API_KEY");
+    expect(claudeCliBilling(keyed)).toBe("api");
+    // Older CLIs do not report a source: this backend is for subscriptions.
+    expect(claudeCliBilling({ apiKeySource: null })).toBe("subscription");
+  });
+
+  it("prices subscription calls at API rates without counting them as spend", () => {
+    const usage = {
+      input: 1_000_000,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 1_000_000,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    };
+    // ChatGPT-plan models are registered at zero cost; the estimate uses OpenAI's API prices.
+    const plan = chatGptProvider({ accessToken: async () => "", configures: () => false })
+      .getModels()
+      .find((m) => m.cost.input === 0 && m.id.startsWith("gpt-"));
+    expect(plan).toBeDefined();
+    const c = callCost(plan as NonNullable<typeof plan>, usage);
+    expect(c.billing).toBe("subscription");
+    expect(c.costMicroUsd).toBe(0);
+    expect(c.apiEquivalentMicroUsd).toBeGreaterThan(0);
+    // The Claude Code CLI's own reported cost is the estimate; on an API key it is spend.
+    const cli = { provider: "claude-code", id: "opus", cost: usage.cost } as unknown as Parameters<
+      typeof callCost
+    >[0];
+    const reported = { ...usage, cost: { ...usage.cost, total: 0.25 } };
+    expect(callCost(cli, reported)).toEqual({
+      billing: "subscription",
+      costMicroUsd: 0,
+      apiEquivalentMicroUsd: 250_000,
+    });
+    expect(callCost(cli, reported, "api")).toEqual({
+      billing: "api",
+      costMicroUsd: 250_000,
+      apiEquivalentMicroUsd: 0,
+    });
   });
 
   it("refuses Shipyard project conversations (it would run outside the sandbox)", async () => {
@@ -269,8 +323,10 @@ describe.skipIf(!db)("claude-code-cli backend through the Bridge", () => {
     });
 
     const [usage] = await sql`select * from usage_events where conversation_id = ${convId}`;
-    expect(usage).toMatchObject({ model: "claude-code/claude-fake-1" });
-    expect(Number(usage?.cost_micro_usd)).toBe(12300);
+    // Signed in with a Claude subscription: not spend, but its API-price estimate is kept.
+    expect(usage).toMatchObject({ model: "claude-code/claude-fake-1", billing: "subscription" });
+    expect(Number(usage?.cost_micro_usd)).toBe(0);
+    expect(Number(usage?.api_equivalent_micro_usd)).toBe(12300);
     expect(Number(usage?.input_tokens)).toBe(100);
     expect(Number(usage?.cache_write_tokens)).toBe(7);
 

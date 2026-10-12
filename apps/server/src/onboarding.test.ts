@@ -43,7 +43,7 @@ describe.skipIf(!db)("First-launch onboarding", () => {
     ownerCookie = cookieOf(setup);
 
     const me = (await api("GET", "/api/auth/me")).json();
-    expect(me.onboarding).toMatchObject({ step: "model", done: ["account"], pending: true });
+    expect(me.onboarding).toMatchObject({ step: "purpose", done: ["account"], pending: true });
 
     const moved = await api("PUT", "/api/onboarding", { step: "captain", skipped: "model" });
     expect(moved.statusCode).toBe(200);
@@ -96,7 +96,7 @@ describe.skipIf(!db)("First-launch onboarding", () => {
     expect((await api("GET", "/api/auth/me")).json().onboarding.pending).toBe(false);
 
     const restart = await api("PUT", "/api/onboarding", { restart: true });
-    expect(restart.json().onboarding).toMatchObject({ step: "model", pending: true });
+    expect(restart.json().onboarding).toMatchObject({ step: "purpose", pending: true });
     await api("PUT", "/api/onboarding", { finish: true });
   });
 

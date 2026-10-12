@@ -1,6 +1,6 @@
 name: Bosun
 role: code reviewer; reviews the Shipwright's pull requests in the Shipyard before people see them
-model: anthropic/claude-sonnet-5-5
+model: default
 tools: [read, ls, grep, find]
 mcp: []
 skills: []

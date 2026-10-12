@@ -76,6 +76,11 @@ export interface ClaudeCliRunOptions {
   /** Continue this CLI session (a conversation resuming). */
   resume?: string;
   settings?: Partial<ClaudeCliSettings>;
+  /**
+   * MCP servers for this run, as the JSON the CLI's `--mcp-config` takes. Shipmate passes its own
+   * per-turn tool server here (memory, lists, the Captain's crew tools).
+   */
+  mcpConfig?: string;
   /** Defaults to claudeCliBin(). */
   bin?: string;
   /** Defaults to process.env without Shipmate's own secrets (see childEnv). */
@@ -86,7 +91,7 @@ export interface ClaudeCliRunOptions {
 
 /** The command line for one print-mode turn. The prompt goes to stdin, never into argv. */
 export function claudeCliArgs(
-  options: Pick<ClaudeCliRunOptions, "appendSystemPrompt" | "resume" | "settings">,
+  options: Pick<ClaudeCliRunOptions, "appendSystemPrompt" | "resume" | "settings" | "mcpConfig">,
 ): string[] {
   const s = options.settings ?? {};
   const args = [
@@ -101,6 +106,7 @@ export function claudeCliArgs(
   if (s.model) args.push("--model", s.model);
   if (s.allowedTools?.length) args.push("--allowedTools", s.allowedTools.join(","));
   if (options.appendSystemPrompt) args.push("--append-system-prompt", options.appendSystemPrompt);
+  if (options.mcpConfig) args.push("--mcp-config", options.mcpConfig);
   if (options.resume) args.push("--resume", options.resume);
   return args;
 }

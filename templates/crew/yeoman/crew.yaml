@@ -1,0 +1,8 @@
+name: Yeoman
+role: work admin; keeps the to-do list, drafts emails and documents, and preps meetings
+model: default
+tools: [read, write, edit]
+mcp: [time, google-workspace, fetch]
+skills: []
+approval: ask
+visibility: shared

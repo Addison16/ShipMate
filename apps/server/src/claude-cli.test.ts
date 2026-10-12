@@ -40,6 +40,37 @@ process.stdin.on("end", () => {
   const out = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
   out({ type: "system", subtype: "init", session_id: sid, model: "claude-fake-1", tools: ["Read"], apiKeySource: process.env.FAKE_CLAUDE_KEY_SOURCE || "none" });
   if (prompt.includes("hang")) { setInterval(() => {}, 1000); return; }
+  // "route <slug> <task>": call Shipmate's delegate tool over the MCP server in --mcp-config.
+  const mcp = at("--mcp-config");
+  if (prompt.startsWith("route ")) {
+    const srv = mcp ? JSON.parse(mcp).mcpServers.shipmate : null;
+    const say = (id, text) => out({ type: "assistant", session_id: sid, message: { id, content: [{ type: "text", text }] } });
+    if (!srv) {
+      say("m1", "No tools.");
+      out({ type: "result", subtype: "success", is_error: false, result: "No tools.", session_id: sid, total_cost_usd: 0, usage: {} });
+      return;
+    }
+    const rpc = async (method, params, id) => {
+      const res = await fetch(srv.url, { method: "POST", headers: { ...srv.headers, "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", ...(id ? { id } : {}), method, params }) });
+      return res.status === 202 ? null : res.json();
+    };
+    (async () => {
+      const init = await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "fake", version: "1" } }, 1);
+      await rpc("notifications/initialized", {});
+      const list = await rpc("tools/list", {}, 2);
+      const names = list.result.tools.map((t) => t.name).sort().join(",");
+      const [, crew, ...task] = prompt.trim().split(" ");
+      say("m1", "Routing to " + crew + ".");
+      out({ type: "assistant", session_id: sid, message: { id: "m2", content: [{ type: "tool_use", id: "tu9", name: "mcp__shipmate__delegate", input: { crew, task: task.join(" ") } }] } });
+      const r = await rpc("tools/call", { name: "delegate", arguments: { crew, task: task.join(" ") } }, 3);
+      const reply = r.result.content[0].text;
+      out({ type: "user", session_id: sid, message: { content: [{ type: "tool_result", tool_use_id: "tu9", content: reply, is_error: r.result.isError }] } });
+      const final = "Wrapped up (" + init.result.serverInfo.name + ": " + names + "): " + reply;
+      say("m3", final);
+      out({ type: "result", subtype: "success", is_error: false, result: final, session_id: sid, total_cost_usd: 0.001, usage: { input_tokens: 1, output_tokens: 1 } });
+    })();
+    return;
+  }
   if (prompt.includes("fail")) {
     out({ type: "result", subtype: "success", is_error: true, result: "Invalid API key · Please run /login", session_id: sid, total_cost_usd: 0, usage: {} });
     return;
@@ -336,7 +367,13 @@ describe.skipIf(!db)("claude-code-cli backend through the Bridge", () => {
     expect(call?.leaked).toEqual([]);
     const args = call?.args ?? [];
     expect(args[args.indexOf("--model") + 1]).toBe("sonnet");
-    expect(args[args.indexOf("--allowedTools") + 1]).toBe("Read");
+    const allowed = (args[args.indexOf("--allowedTools") + 1] ?? "").split(",");
+    // Its own tools, plus reading its own folder and web lookups out of the box.
+    expect(allowed).toContain("Read");
+    expect(allowed).toContain("WebSearch");
+    expect(allowed.find((a) => a.startsWith("Read(//"))).toMatch(
+      /^Read\(\/\/.*scribe\/cli-workspace\/\*\*\)$/,
+    );
     expect(args[args.indexOf("--append-system-prompt") + 1]).toContain("You write things down.");
     expect(args).not.toContain("--resume");
   });
@@ -411,6 +448,94 @@ describe.skipIf(!db)("claude-code-cli backend through the Bridge", () => {
       "captain",
     ]);
     expect(msgs[2].content).toContain("Done: note the date");
+  });
+
+  it("lets a Captain on the CLI route a message to a crew member", async () => {
+    await t.app.listen({ port: 0, host: "127.0.0.1" });
+    const deck = await api("POST", "/api/crew", {
+      slug: "deckhand",
+      manifestYaml: "name: Deckhand\nrole: odd jobs\nmodel: faux/m\n",
+      persona: "# Deckhand",
+    });
+    expect(deck.statusCode).toBe(200);
+    const detail = (await api("GET", "/api/crew/captain")).json().crew;
+    const yaml = `${detail.manifestYaml.replace(/^backend:.*\n?/m, "").trimEnd()}\nbackend: claude-code-cli\n`;
+    expect((await api("PUT", "/api/crew/captain", { manifestYaml: yaml })).statusCode).toBe(200);
+    try {
+      const conv = (await api("POST", "/api/conversations", {})).json().conversation;
+      t.faux.setResponses([fauxAssistantMessage("Deck swabbed.")]);
+      const before = calls().length;
+      const { events, ws } = await turn(conv.id, "route deckhand swab the deck");
+      ws.terminate();
+      expect(events.find((e) => e.type === "error")).toBeUndefined();
+      expect(events.find((e) => e.type === "handoff")).toMatchObject({
+        from: { slug: "captain" },
+        to: { slug: "deckhand" },
+        task: "swab the deck",
+      });
+      // The hand-off shows as bubbles, not as a tool chip.
+      expect(events.some((e) => e.type === "tool" && e.toolName.includes("delegate"))).toBe(false);
+
+      const msgs = (await api("GET", `/api/conversations/${conv.id}/messages`)).json().messages;
+      expect(
+        msgs.map((m: { author: { slug?: string }; content: string }) => [
+          m.author.slug ?? "user",
+          m.content,
+        ]),
+      ).toEqual([
+        ["user", "route deckhand swab the deck"],
+        ["captain", "Routing to deckhand."],
+        ["deckhand", "Deck swabbed."],
+        [
+          "captain",
+          expect.stringMatching(
+            /^Wrapped up \(shipmate: .*delegate.*list_crew.*\): Deck swabbed\.$/,
+          ),
+        ],
+      ]);
+
+      const args = calls()[before]?.args ?? [];
+      expect(args[args.indexOf("--allowedTools") + 1]).toContain("mcp__shipmate");
+      expect(args[args.indexOf("--append-system-prompt") + 1]).toMatch(
+        /deckhand: Deckhand, odd jobs[\s\S]*`delegate`/,
+      );
+      // The turn's token stops working once the turn ends.
+      const config = JSON.parse(args[args.indexOf("--mcp-config") + 1] ?? "{}");
+      const server = config.mcpServers.shipmate;
+      const late = await t.app.inject({
+        method: "POST",
+        url: "/api/cli-mcp",
+        headers: server.headers,
+        payload: { jsonrpc: "2.0", id: 1, method: "tools/list" },
+      });
+      expect(late.statusCode).toBe(404);
+
+      // A crew member's ask_captain reaches the CLI Captain as a one-off answer.
+      const direct = (
+        await api("POST", "/api/conversations", { kind: "direct", crewSlug: "deckhand" })
+      ).json().conversation;
+      t.faux.setResponses([
+        fauxAssistantMessage([fauxToolCall("ask_captain", { question: "port or starboard?" })]),
+        fauxAssistantMessage("Starboard it is."),
+      ]);
+      const asked = calls().length;
+      const consult = await turn(direct.id, "which side?");
+      consult.ws.terminate();
+      expect(consult.events.find((e) => e.type === "error")).toBeUndefined();
+      const call = calls()[asked];
+      expect(call?.prompt).toContain("port or starboard?");
+      expect(call?.args).not.toContain("--resume");
+      expect(call?.args).not.toContain("--mcp-config");
+      const dm = (await api("GET", `/api/conversations/${direct.id}/messages`)).json().messages;
+      expect(dm.map((m: { author: { slug?: string } }) => m.author.slug ?? "user")).toEqual([
+        "user",
+        "captain",
+        "deckhand",
+      ]);
+      expect(dm[1].content).toContain("Done:");
+    } finally {
+      await api("PUT", "/api/crew/captain", { manifestYaml: detail.manifestYaml });
+    }
   });
 
   it("reports CLI status to admins only", async () => {

@@ -61,8 +61,18 @@ export const PersonProfile = z.object({
 });
 export type PersonProfile = z.infer<typeof PersonProfile>;
 
+/** What this Shipmate is mainly for. It shapes the setup guide and which starter crew it suggests. */
+export const SHIPMATE_USES = ["home", "work", "both"] as const;
+export const ShipmateUse = z.enum(SHIPMATE_USES);
+export type ShipmateUse = z.infer<typeof ShipmateUse>;
+
 /** Facts about the whole household, kept by the owner and admins, read by everyone. */
 export const HouseholdFacts = z.object({
+  /** What the crew is mainly for; "" when nobody has said. */
+  use: z
+    .enum(["", ...SHIPMATE_USES])
+    .default("")
+    .catch(""),
   /** Home town or address used for weather and travel, e.g. "Austin, TX". */
   location: text(200).default(""),
   timezone: text(64).default(""),

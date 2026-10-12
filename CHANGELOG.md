@@ -11,6 +11,10 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   Claude Code also get Shipmate's own tools (memory, lists, `ask_captain`), served to the CLI by
   a small per-turn MCP endpoint over loopback and gated by the same approval rules. A Captain on
   Claude Code also answers crew members' `ask_captain` questions instead of declining.
+- **One crew default model**: crew.yaml can say `model: default`, which means the crew default
+  picked in Settings, and follows it when it changes. New crew, starters and recruits start on
+  it. Settings has "Put everyone on the crew default" for existing crew, and each crew member's
+  Manifest tab has a model picker for giving one its own model.
 - **Only usable models**: the Providers page lists the models you can run with what is signed in
   or configured (including the Claude Code models when it is signed in), not every model pi
   knows. Model pickers leave out models nothing is configured for.

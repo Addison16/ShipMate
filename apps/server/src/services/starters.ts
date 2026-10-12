@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CrewDto, InstallStartersResponse, StarterCrewDto, WatchDto } from "@shipmate/core";
-import { CREW_FILES, CrewSlug } from "@shipmate/core";
+import { CREW_FILES, CrewSlug, DEFAULT_MODEL } from "@shipmate/core";
 import { parseManifestYaml } from "@shipmate/crew";
 import { loadCatalog } from "@shipmate/mcp-catalog";
 import { parse as parseYaml } from "yaml";
@@ -9,7 +9,6 @@ import { z } from "zod";
 import { HttpError, type UserRow } from "../auth.js";
 import type { CrewService } from "./crew.js";
 import type { McpService } from "./mcp.js";
-import type { SettingsService } from "./settings.js";
 import type { WatchService } from "./watches.js";
 
 /** Per-template extras in `starter.yaml`; a template without one is not a starter pack. */
@@ -39,13 +38,12 @@ interface Starter {
 /**
  * Starter crew packs: ready-made crew members (Galley, Purser, Navigator, ...) offered at first
  * run and on the Crew page. Each comes from templates/crew/<slug> with a `starter.yaml` and gets
- * the instance's default model, so a fresh install is useful without writing personas by hand.
+ * the crew default model (`model: default`), so a fresh install is useful without writing personas by hand.
  */
 export class StarterService {
   constructor(
     private readonly templatesDir: string,
     private readonly crew: CrewService,
-    private readonly settings: SettingsService,
     private readonly mcp: McpService,
     private readonly watches: WatchService,
   ) {}
@@ -94,7 +92,6 @@ export class StarterService {
     if (input.timezone && !isTimeZone(input.timezone)) {
       throw new HttpError(400, `unknown timezone "${input.timezone}"`);
     }
-    const { defaultModel } = await this.settings.get();
     const catalog = new Map(loadCatalog().map((e) => [e.id, e]));
     const crew: CrewDto[] = [];
     const watches: WatchDto[] = [];
@@ -112,10 +109,10 @@ export class StarterService {
         readFileSync(join(starter.dir, CREW_FILES.manifest), "utf8"),
       );
       const persona = readFileSync(join(starter.dir, CREW_FILES.persona), "utf8");
-      // The default model is the one the owner picked for new crew; it is likely to work here.
+      // Starters follow the crew default, so changing it in Settings moves them all.
       const created = await this.crew.create({
         slug,
-        manifest: { ...manifest, model: defaultModel },
+        manifest: { ...manifest, model: DEFAULT_MODEL },
         persona,
         createdById: user.id,
         status: "active",

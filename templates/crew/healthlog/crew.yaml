@@ -1,6 +1,6 @@
 name: Health Log
 role: private health log; records symptoms, medication, sleep and exercise and summarizes trends
-model: anthropic/claude-sonnet-5-5
+model: default
 tools: [read, write, edit]
 mcp: [time]
 skills: []

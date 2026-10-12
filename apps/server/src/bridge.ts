@@ -8,6 +8,7 @@ import type {
 import {
   type ConversationDto,
   type ConversationSearchResultDto,
+  DEFAULT_MODEL,
   type MessageDto,
   SEARCH_MARK,
   type ServerEvent,
@@ -1220,13 +1221,12 @@ export class Bridge {
   }
 
   async #recruit(user: UserRow, spec: Parameters<CaptainHost["recruit"]>[0]) {
-    const settings = await this.deps.settings.get();
     const d = await this.deps.crew.create({
       slug: spec.slug,
       manifest: {
         name: spec.name,
         role: spec.role,
-        model: spec.model ?? settings.defaultModel,
+        model: spec.model ?? DEFAULT_MODEL,
         tools: spec.tools ?? ["read", "write", "edit"],
         mcp: spec.mcp ?? [],
       },

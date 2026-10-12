@@ -151,7 +151,7 @@ export function CrewBackendSelect({
         onChange={(e) => void change(e.target.value as CrewBackendName)}
         hint={
           current === "claude-code-cli"
-            ? "Runs the official claude binary signed in with your own Claude account (see Providers). Shipmate approval cards do not apply: cli.allowedTools and cli.permissionMode (default dontAsk) decide which tools it may use. Not available in Shipyard projects."
+            ? "Runs the official claude binary signed in with your own Claude account (see Providers). Its own tools follow cli.allowedTools and cli.permissionMode (default dontAsk); Shipmate's tools (memory, lists, delegating) still ask for approval as usual. Not available in Shipyard projects."
             : "Uses the model in crew.yaml through the instance's providers."
         }
       >

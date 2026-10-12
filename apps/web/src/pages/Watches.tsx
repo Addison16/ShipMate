@@ -854,7 +854,6 @@ function WatchDetail({ id, startEditing }: { id: string; startEditing: boolean }
   const watches = useWatches();
   const crew = useCrew();
   const runs = useResource(() => api.watchRuns(id, 25).then((r) => r.runs), [id]);
-  const [editing, setEditing] = useState(startEditing);
   const [error, setError] = useState<string | null>(null);
   useServerEvents((ev) => {
     if (ev.type === "watch_run" && ev.run.watchId === id) void runs.reload();
@@ -863,6 +862,10 @@ function WatchDetail({ id, startEditing }: { id: string; startEditing: boolean }
   const all = watches.data ?? [];
   const watch = all.find((w) => w.id === id) ?? null;
   const editable = watch ? canEdit(watch, user) : false;
+  // The editor lives at #/watches/<id>/edit so the address always matches what is shown, and
+  // only people who may change the watch get it.
+  const editing = startEditing && editable;
+  const setEditing = (on: boolean) => navigate(on ? `/watches/${id}/edit` : `/watches/${id}`);
   const crewName = (slug: string) => crew.find((c) => c.slug === slug)?.name ?? slug;
 
   async function remove() {

@@ -8,7 +8,12 @@ export async function healthRoutes(app: FastifyInstance, s: Services) {
   app.get("/api/health", async (req): Promise<{ health: HealthDto }> => {
     requireRole(req.user, "admin");
     const { refresh } = z.object({ refresh: z.enum(["0", "1"]).optional() }).parse(req.query);
-    return { health: await s.health.report(refresh === "1") };
+    const seen = {
+      protocol: req.protocol,
+      host: req.host,
+      forwarded: Boolean(req.headers["x-forwarded-proto"] || req.headers["x-forwarded-host"]),
+    };
+    return { health: await s.health.report(refresh === "1", seen) };
   });
 
   /** Owner only, and only after the page's confirm: Shipmate restarts. */

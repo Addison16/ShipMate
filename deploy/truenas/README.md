@@ -40,6 +40,13 @@ on every start. The **Health** page in Shipmate shows when a newer release is ou
 database, providers, bridges, Docker socket, disk and backups; it leaves the update itself to
 TrueNAS.
 
+## Reverse proxy
+
+Give Shipmate its own subdomain, set `SHIPMATE_URL` to its https address and redeploy. Configs
+for Nginx Proxy Manager, Traefik, Caddy and others are in
+[docs/reverse-proxy.md](../../docs/reverse-proxy.md); every variable is in
+[docs/configuration.md](../../docs/configuration.md).
+
 ## Local models (optional)
 
 To run models on the NAS with no API key, create one more dataset (e.g.

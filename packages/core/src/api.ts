@@ -919,7 +919,7 @@ export type HealthStatus = "ok" | "warn" | "fail";
 export interface HealthCheckDto {
   /** Stable id, e.g. "database", "provider:<id>", "bridge:discord". */
   id: string;
-  /** Database | Models | Chat bridges | Shipyard | Storage */
+  /** Database | Models | Chat bridges | Shipyard | Storage | Web address */
   group: string;
   name: string;
   status: HealthStatus;

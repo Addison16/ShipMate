@@ -24,6 +24,8 @@ const check = (
 export interface HealthDeps {
   db: Db;
   dataDir: string;
+  /** SHIPMATE_URL, compared with the address the browser used. */
+  publicUrl: string;
   providers: () => Promise<ProviderRecord[]>;
   chatgpt: () => Promise<ChatGptStatusDto>;
   /** Crew backends in use, to decide whether the Claude Code CLI matters. */
@@ -142,8 +144,16 @@ async function guarded(
   }
 }
 
+/** The address a request reached Shipmate at, as the browser saw it (after trusted proxies). */
+export interface SeenAddress {
+  protocol: string;
+  host: string;
+  /** Whether a proxy in front claimed the request (X-Forwarded-* present). */
+  forwarded: boolean;
+}
+
 /** Everything the Health page lists, run in parallel. */
-export async function runChecks(d: HealthDeps): Promise<Check[]> {
+export async function runChecks(d: HealthDeps, seen?: SeenAddress): Promise<Check[]> {
   const groups = await Promise.all([
     guarded({ id: "database", group: "Database", name: "Database" }, () => database(d)),
     guarded({ id: "providers", group: "Models", name: "Model providers" }, () => providers(d)),
@@ -151,8 +161,80 @@ export async function runChecks(d: HealthDeps): Promise<Check[]> {
     guarded({ id: "sandbox", group: "Shipyard", name: "Docker socket" }, () => sandbox(d)),
     guarded({ id: "disk", group: "Storage", name: "Disk space" }, () => disk(d)),
     guarded({ id: "backups", group: "Storage", name: "Backups" }, () => backups(d)),
+    Promise.resolve(seen ? [addressCheck(d.publicUrl, seen)] : []),
   ]);
   return groups.flat();
+}
+
+/**
+ * SHIPMATE_URL against the address the page was opened at. Links in notifications, webhooks,
+ * sign-in redirects and Secure cookies all follow SHIPMATE_URL, so a mismatch shows up as
+ * broken sign-ins or links long before anyone thinks of the setting.
+ */
+export function addressCheck(publicUrl: string, seen: SeenAddress): Check {
+  const G = "Web address";
+  const name = "Shipmate's address";
+  let want: URL;
+  try {
+    want = new URL(publicUrl);
+  } catch {
+    return check("address", G, name, "fail", `SHIPMATE_URL is not a URL: ${publicUrl}`, "Set it.");
+  }
+  // Links are built by appending paths, so a query or fragment (even an empty "?" or "#")
+  // would swallow them.
+  if (/[?#]/.test(publicUrl)) {
+    return check(
+      "address",
+      G,
+      name,
+      "warn",
+      `SHIPMATE_URL has a query or fragment (${publicUrl})`,
+      "Set SHIPMATE_URL to the plain address, e.g. https://shipmate.example.com, and restart.",
+    );
+  }
+  if (want.pathname !== "/") {
+    return check(
+      "address",
+      G,
+      name,
+      "warn",
+      `SHIPMATE_URL has a path (${want.pathname})`,
+      "Shipmate must be served at the root of its own address, e.g. https://shipmate.example.com, not https://example.com/shipmate. Give it its own subdomain on the proxy.",
+    );
+  }
+  const opened = `${seen.protocol}://${seen.host}`;
+  let got: URL | null = null;
+  try {
+    got = new URL(opened);
+  } catch {
+    got = null;
+  }
+  if (got && got.origin === want.origin) {
+    return check("address", G, name, "ok", `Opened at ${want.origin}, matching SHIPMATE_URL`);
+  }
+  // https outside, plain http inside: the proxy's forwarded headers were not believed.
+  if (got && want.protocol === "https:" && got.protocol === "http:" && got.host === want.host) {
+    return check(
+      "address",
+      G,
+      name,
+      "warn",
+      `SHIPMATE_URL is ${want.origin}, but Shipmate saw this page arrive over plain http`,
+      seen.forwarded
+        ? "Your reverse proxy sends X-Forwarded-Proto, but from an address Shipmate does not trust. Add the proxy's IP or network to SHIPMATE_TRUST_PROXY."
+        : "Have the reverse proxy send X-Forwarded-Proto (see docs/reverse-proxy.md), and check SHIPMATE_TRUST_PROXY covers it.",
+    );
+  }
+  return check(
+    "address",
+    G,
+    name,
+    "warn",
+    `This page was opened at ${opened}, but SHIPMATE_URL is ${want.origin}`,
+    want.protocol === "https:" && got?.protocol === "http:"
+      ? "Sign-in only works at the SHIPMATE_URL address (its cookies are https-only). Open Shipmate there, or change SHIPMATE_URL and restart."
+      : "Links, webhooks and sign-in redirects use SHIPMATE_URL. If people open Shipmate at this address, set SHIPMATE_URL to it and restart.",
+  );
 }
 
 async function database(d: HealthDeps): Promise<Check[]> {

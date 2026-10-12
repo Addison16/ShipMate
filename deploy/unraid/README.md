@@ -57,6 +57,46 @@ Start it, open the Web UI, and create the owner account. Migrations run on every
 updating is "Check for updates → Apply update". The **Health** page in Shipmate shows when a
 newer release is out; it leaves the update itself to Unraid so the template stays in step.
 
+## What goes where
+
+| On the Unraid server | In the container | What it holds |
+|---|---|---|
+| `/mnt/user/appdata/shipmate-db` | `/var/lib/postgresql/data` (Postgres) | The database: accounts, conversations, settings, encrypted keys |
+| `/mnt/user/appdata/shipmate` | `/data` (Shipmate) | Crew folders, skills, Shipyard workspaces, chat files, sign-ins, the generated key (`.secret`) and `backups/` |
+| `/var/run/docker.sock` | `/var/run/docker.sock` | Optional: Shipyard sandboxes and one-click updates |
+| port `3000` | `3000/tcp` | Web app, API and WebSocket |
+
+Keep appdata on a pool (cache) disk with the share set to stay there (e.g. **Primary storage:
+cache, Secondary: none**, or "Prefer" on older Unraid): Postgres and the Shipyard's workspaces
+write often, and the mover must not move a running database. Shipmate runs as root inside its
+container and its files are owned by root, so there is no `PUID`/`PGID` setting; don't run
+**New Permissions** or a "Docker Safe New Perms" pass on these folders.
+
+Every variable, with its default, is in [docs/configuration.md](../../docs/configuration.md).
+The template shows the common ones; press **Show more settings** for the rest.
+
+**A custom Docker network** makes the wiring simpler: from the Unraid terminal run
+`docker network create shipmate`, then set **Network Type** to `shipmate` on Postgres, Shipmate
+(and Ollama and your reverse proxy, if you use them). Containers then reach each other by name
+(`shipmate-db`, `Shipmate`, `ollama`), and Postgres no longer needs a host port at all.
+
+## Reverse proxy
+
+Give Shipmate its own subdomain (e.g. `shipmate.example.com`; a sub-path is not supported), set
+**SHIPMATE_URL** to `https://shipmate.example.com`, and restart. Then:
+
+- **Nginx Proxy Manager**: a proxy host to `http://<unraid-ip>:3000` (or `Shipmate:3000` on a
+  shared custom network), **Websockets Support** on, a Let's Encrypt certificate with **Force
+  SSL**, and `client_max_body_size 30m;` under **Advanced**.
+- **SWAG**: a `shipmate.subdomain.conf` in `/mnt/user/appdata/swag/nginx/proxy-confs/`.
+- **Traefik**, **Caddy** and **Cloudflare Tunnel** work too.
+
+Configs for each are in [docs/reverse-proxy.md](../../docs/reverse-proxy.md). The default
+**SHIPMATE_TRUST_PROXY** already trusts a proxy on the server, on a Docker network or on the
+LAN. Afterwards, open **Health** in Shipmate: the **Web address** check confirms the address
+and https got through. With an https `SHIPMATE_URL`, sign in at that address rather than at
+`http://<unraid-ip>:3000`, since the sign-in cookie is https-only.
+
 ## Local models (optional)
 
 To run models on the server with no API key, add Ollama as a third container (Community

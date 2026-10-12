@@ -7,7 +7,17 @@ import { z } from "zod";
 const Env = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   HOST: z.string().default("0.0.0.0"),
-  SHIPMATE_URL: z.string().url().default("http://localhost:3000"),
+  SHIPMATE_URL: z
+    .string()
+    .url()
+    .default("http://localhost:3000")
+    // Links are built as `${SHIPMATE_URL}/path`, so drop a trailing slash.
+    .transform((v) => v.replace(/\/+$/, "")),
+  /**
+   * Which reverse proxies to believe about the browser's address (X-Forwarded-For/-Proto/-Host).
+   * Default: proxies on the same machine or a private network (Docker bridges, a LAN).
+   */
+  SHIPMATE_TRUST_PROXY: z.string().default("loopback,linklocal,uniquelocal"),
   DATABASE_URL: z.string().min(1),
   SHIPMATE_DATA_DIR: z.string().default("/data"),
   SHIPMATE_SECRET: z.string().optional(),
@@ -40,9 +50,25 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     SHIPMATE_SECRET: secret,
     TEMPLATES_DIR: parsed.TEMPLATES_DIR ?? defaultTemplatesDir(),
     dirs: dataDirs(parsed.SHIPMATE_DATA_DIR),
+    trustProxy: parseTrustProxy(parsed.SHIPMATE_TRUST_PROXY),
     /** Cookies get the Secure flag when the instance is served over https. */
     secureCookies: parsed.SHIPMATE_URL.startsWith("https://"),
   };
+}
+
+/**
+ * SHIPMATE_TRUST_PROXY for Fastify: "off" trusts no proxy, "all" trusts any (only when nothing
+ * but the proxy can reach the port), otherwise a comma list of addresses, CIDR ranges or the
+ * names loopback, linklocal and uniquelocal.
+ */
+export function parseTrustProxy(value: string): boolean | string[] {
+  const v = value.trim().toLowerCase();
+  if (["", "off", "false", "0", "no", "none"].includes(v)) return false;
+  if (["all", "true", "on", "yes"].includes(v)) return true;
+  return v
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 /** templates/ at the repo root, found relative to this file in both src/ and dist/. */

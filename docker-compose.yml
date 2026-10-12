@@ -13,6 +13,8 @@ services:
       SHIPMATE_SECRET: ${SHIPMATE_SECRET:-}
       # Where to look for Ollama (the optional service below, or one you run elsewhere).
       SHIPMATE_OLLAMA_URL: ${SHIPMATE_OLLAMA_URL:-http://ollama:11434}
+      # Reverse proxies to believe about https and the browser's address (docs/reverse-proxy.md).
+      SHIPMATE_TRUST_PROXY: ${SHIPMATE_TRUST_PROXY:-loopback,linklocal,uniquelocal}
     volumes:
       - shipmate-data:/data
       # Sandboxes for the Shipyard run as sibling containers through the Docker socket.

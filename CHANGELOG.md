@@ -6,6 +6,16 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Reverse proxies**: Shipmate believes `X-Forwarded-*` from proxies on the same machine,
+  Docker networks and the LAN by default (`SHIPMATE_TRUST_PROXY` to change it), keeps the
+  Bridge's WebSocket alive through proxy idle timeouts, and the Health page gains a **Web
+  address** check that spots a `SHIPMATE_URL` that doesn't match the address in use or https
+  that didn't reach Shipmate. Configs for Nginx Proxy Manager, SWAG, Traefik, Caddy, nginx and
+  Cloudflare Tunnel in [docs/reverse-proxy.md](docs/reverse-proxy.md).
+- **Configuration reference**: every environment variable and the `/data` folder layout in
+  [docs/configuration.md](docs/configuration.md); the Unraid guide gains a "what goes where"
+  table, custom network and reverse proxy steps, and the template an icon.
+
 - **Push notifications** on phones and desktops (Web Push, no third-party account): approval
   requests, watch results, and crew replies while no tab is open. Turn them on per device in
   Settings → Notifications and choose what each device gets; **Send a test** checks them all.

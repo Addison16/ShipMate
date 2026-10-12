@@ -153,8 +153,8 @@ describe.skipIf(!db)("Shipmate server", () => {
   it("lets every crew member follow the crew default model", async () => {
     // New crew start on the default; it resolves to the Settings model when they run.
     const made = await api("POST", "/api/crew", {
-      slug: "lookout",
-      name: "Lookout",
+      slug: "spotter",
+      name: "Spotter",
       role: "watches the horizon",
       persona: "# Lookout",
     });
@@ -170,12 +170,12 @@ describe.skipIf(!db)("Shipmate server", () => {
     expect(own.json().crew.model).toBe("faux/m");
     const moved = (await api("POST", "/api/crew/use-default-model")).json().changed as string[];
     expect(moved).toContain("rigger");
-    expect(moved).not.toContain("lookout");
+    expect(moved).not.toContain("spotter");
     expect((await api("GET", "/api/crew/rigger")).json().crew.manifestYaml).toMatch(
       /^model: default$/m,
     );
     expect((await api("POST", "/api/crew/use-default-model")).json().changed).toEqual([]);
-    for (const slug of ["lookout", "rigger"]) await api("DELETE", `/api/crew/${slug}`);
+    for (const slug of ["spotter", "rigger"]) await api("DELETE", `/api/crew/${slug}`);
   });
 
   it("streams a Bridge turn with recruiting, delegation, memory and usage", async () => {

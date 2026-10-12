@@ -40,3 +40,36 @@ export function describeStatus(s: ClaudeCliStatusDto): {
   if (!s.signedIn) return { label: "Not signed in", tone: "warn" };
   return { label: "Signed in", tone: "ok" };
 }
+
+/** The models a signed-in Claude Code CLI offers, as crew.yaml refs (`claude-code/<alias>`). */
+export const CLAUDE_CODE_MODELS = [
+  { ref: "claude-code/opus", name: "Claude Opus (latest)" },
+  { ref: "claude-code/sonnet", name: "Claude Sonnet (latest)" },
+  { ref: "claude-code/haiku", name: "Claude Haiku (latest)" },
+] as const;
+
+/** A row of the Providers page's model list: something a crew member can run on right now. */
+export interface UsableModel {
+  ref: string;
+  name: string;
+  /** The provider id it comes from, e.g. `anthropic` or `claude-code`. */
+  source: string;
+}
+
+/**
+ * Models usable with what is signed in or configured: the provider models the server reports as
+ * available, plus the Claude Code models when the CLI is signed in. pi's full catalog (every
+ * model of every provider it knows) is left out.
+ */
+export function usableModels(
+  models: readonly { ref: string; name: string; provider: string; available: boolean }[],
+  cliSignedIn: boolean,
+): UsableModel[] {
+  const out: UsableModel[] = models
+    .filter((m) => m.available)
+    .map((m) => ({ ref: m.ref, name: m.name, source: m.provider }));
+  if (cliSignedIn) {
+    out.push(...CLAUDE_CODE_MODELS.map((m) => ({ ...m, source: "claude-code" })));
+  }
+  return out;
+}

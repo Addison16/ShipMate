@@ -1,4 +1,5 @@
 blurb: Keeps the bills list with due dates and reminds you what is coming up.
+uses: [home]
 watch:
   name: Bills due this week
   cron: "0 8 * * 1"

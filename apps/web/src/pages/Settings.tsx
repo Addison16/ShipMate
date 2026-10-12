@@ -23,6 +23,7 @@ import {
   TextField,
 } from "../components/ui.js";
 import { VoiceSettings } from "../components/VoiceSettings.js";
+import { CREW_DEFAULT } from "../lib/models.js";
 import {
   SETTINGS_GROUPS,
   type SettingsSection,
@@ -195,6 +196,11 @@ function InstanceSettings() {
   const owner = user.role === "owner";
   const settings = useResource(() => api.getSettings());
   const models = useResource(() => api.listModels().then((r) => r.models));
+  const crew = useResource(() => api.listCrew().then((r) => r.crew));
+  const ownModel = (crew.data ?? []).filter(
+    (c) => c.backend !== "claude-code-cli" && c.model !== CREW_DEFAULT,
+  );
+  const [moving, setMoving] = useState(false);
   const [captainName, setCaptainName] = useState("");
   const [defaultModel, setDefaultModel] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -245,12 +251,40 @@ function InstanceSettings() {
             onChange={(e) => setCaptainName(e.target.value)}
           />
           <ModelSelect
-            label="Default model"
+            label="Crew default model"
+            hint="Every crew member set to Crew default uses this, and follows it when you change it. A crew member can still get its own model on its page."
             value={defaultModel}
             onChange={setDefaultModel}
             models={models.data}
             disabled={!owner}
           />
+          {owner && ownModel.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <span className="text-slate-600 dark:text-slate-400">
+                {ownModel.length === 1
+                  ? `${ownModel[0]?.name} has its own model.`
+                  : `${ownModel.length} crew members have their own model.`}
+              </span>
+              <Button
+                type="button"
+                disabled={moving}
+                onClick={async () => {
+                  setMoving(true);
+                  setError(null);
+                  try {
+                    await api.moveCrewToDefaultModel();
+                    await crew.reload();
+                  } catch (err) {
+                    setError(errorMessage(err));
+                  } finally {
+                    setMoving(false);
+                  }
+                }}
+              >
+                {moving ? "Switching…" : "Put everyone on the crew default"}
+              </Button>
+            </div>
+          )}
           <div className="flex items-center gap-2 text-sm">
             <span className="font-medium">Core MCP servers:</span>
             {settings.data.mcpEnabled ? <Badge tone="ok">enabled</Badge> : <Badge>disabled</Badge>}

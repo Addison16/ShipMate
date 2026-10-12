@@ -1,4 +1,5 @@
 blurb: Plans the week's meals around everyone's diets and keeps the grocery list.
+uses: [home]
 watch:
   name: Weekly meal plan
   cron: "0 17 * * 0"

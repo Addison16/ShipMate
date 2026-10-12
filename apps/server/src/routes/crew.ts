@@ -1,5 +1,5 @@
 import type { MemoryEntryDto } from "@shipmate/core";
-import { CrewSlug, ModelRef } from "@shipmate/core";
+import { CrewSlug, DEFAULT_MODEL, ModelRef } from "@shipmate/core";
 import { type MemoryEntry, parseManifestYaml } from "@shipmate/crew";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -86,7 +86,6 @@ export async function crewRoutes(app: FastifyInstance, s: Services) {
         persona: z.string().max(100_000),
       })
       .parse(req.body);
-    const defaults = await s.settings.get();
     let manifest: Record<string, unknown>;
     if (body.manifestYaml) {
       try {
@@ -96,7 +95,7 @@ export async function crewRoutes(app: FastifyInstance, s: Services) {
       }
     } else {
       if (!body.name || !body.role) throw new HttpError(400, "name and role are required");
-      manifest = { name: body.name, role: body.role, model: body.model ?? defaults.defaultModel };
+      manifest = { name: body.name, role: body.role, model: body.model ?? DEFAULT_MODEL };
     }
     return {
       crew: await s.crew.create({
@@ -107,6 +106,11 @@ export async function crewRoutes(app: FastifyInstance, s: Services) {
         status: "active",
       }),
     };
+  });
+
+  app.post("/api/crew/use-default-model", async (req) => {
+    requireRole(req.user, "admin");
+    return { changed: await s.crew.useDefaultModel() };
   });
 
   app.put<{ Params: { slug: string } }>("/api/crew/:slug", async (req) => {

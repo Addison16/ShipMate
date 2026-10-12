@@ -1,4 +1,5 @@
 blurb: Reads the calendar, plans days and trips, and checks the weather.
+uses: [home, work]
 watch:
   name: Tomorrow at a glance
   cron: "0 20 * * 0-4"

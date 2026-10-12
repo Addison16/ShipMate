@@ -3,6 +3,7 @@ export {
   type ApprovalHost,
   type AuditDecision,
   approvalExtension,
+  gateToolCall,
   isConsequential,
   matches,
 } from "./approval.js";

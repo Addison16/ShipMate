@@ -13,7 +13,8 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   and the latest message, and a chat's header shows its crew member, what they do and a link to
   their settings. **Start fresh** (or typing `/new`) makes the crew forget the chat so far while
   the messages stay on screen below a divider. Unsent text is kept per chat when you switch.
-  Crew member pages get a **Chat** button.
+  Crew member pages get a **Chat** button. On phones the crew sit in a row of avatars above the
+  chat list, the picker opens as a bottom sheet, and Start fresh is an icon in the chat header.
 - **The Captain coordinates on Claude Code too**: a Captain running on a Claude subscription now
   hands your messages to the right crew member with `delegate`, like one on a provider. Crew on
   Claude Code also get Shipmate's own tools (memory, lists, `ask_captain`), served to the CLI by

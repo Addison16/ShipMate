@@ -176,6 +176,79 @@ export function ChatLanding({
   );
 }
 
+/**
+ * Phones: the crew as a row of avatars above the chat list (the landing page needs the room a
+ * phone doesn't have), so starting a chat with anyone is one tap.
+ */
+export function CrewStrip({
+  crew,
+  creating,
+  onNewBridge,
+  onOpened,
+}: {
+  crew: CrewDto[];
+  creating: boolean;
+  onNewBridge: () => void;
+  onOpened: (c: ConversationDto) => void;
+}) {
+  const [opening, setOpening] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const captain = crew.find((m) => m.captain);
+  const people = [...(captain ? [captain] : []), ...directCandidates(crew)];
+  if (people.length < 2) return null;
+
+  async function open(m: CrewDto) {
+    if (m.captain) return onNewBridge();
+    setOpening(m.slug);
+    setError(null);
+    try {
+      await openDirectChat(m.slug, onOpened);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setOpening(null);
+    }
+  }
+
+  return (
+    <div className="md:hidden">
+      <ul
+        aria-label="Talk to"
+        className="-mx-3 flex snap-x gap-1 overflow-x-auto px-3 pt-1 [scrollbar-width:none]"
+      >
+        {people.map((m) => (
+          <li key={m.slug} className="snap-start">
+            <button
+              type="button"
+              disabled={creating || opening !== null}
+              onClick={() => void open(m)}
+              title={m.captain ? `New bridge chat with ${m.name}` : `Chat with ${m.name}`}
+              className={cx(
+                "flex w-16 flex-col items-center gap-1 rounded-lg py-1.5 transition active:scale-95 disabled:opacity-60",
+                focusRing,
+              )}
+            >
+              <span
+                className={cx(
+                  "rounded-full",
+                  m.captain && "ring-2 ring-accent-500 ring-offset-2 dark:ring-offset-slate-900",
+                  opening === m.slug && "animate-pulse",
+                )}
+              >
+                <Avatar name={m.name} size="lg" />
+              </span>
+              <span className="w-full truncate text-center text-[11px] text-slate-600 dark:text-slate-300">
+                {m.name}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <ErrorText>{error}</ErrorText>
+    </div>
+  );
+}
+
 /** A searchable list of crew members to chat with, opened from the conversation list. */
 export function CrewPicker({
   open,
@@ -251,7 +324,7 @@ export function CrewPicker({
         if (e.target === dialog.current) onClose();
       }}
       aria-labelledby="crew-picker-title"
-      className="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/40 backdrop:backdrop-blur-[2px] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+      className="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-xl max-sm:mb-0 max-sm:w-full max-sm:max-w-none max-sm:rounded-b-none max-sm:pb-[env(safe-area-inset-bottom)] border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/40 backdrop:backdrop-blur-[2px] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
     >
       <div className="flex flex-col">
         <div className="space-y-3 border-b border-slate-200 p-4 dark:border-slate-800">
@@ -284,7 +357,7 @@ export function CrewPicker({
             )}
           />
         </div>
-        <div className="max-h-[50vh] overflow-y-auto p-2">
+        <div className="max-h-[50vh] overflow-y-auto p-2 max-sm:max-h-[60vh]">
           {shown.length === 0 ? (
             <p className="px-2.5 py-6 text-sm text-slate-500 dark:text-slate-400">
               {q ? "No one matches. Try another name or role." : "No crew to chat with yet."}
@@ -309,7 +382,7 @@ export function CrewPicker({
             <ErrorText>{error}</ErrorText>
           </div>
         </div>
-        <p className="border-t border-slate-200 px-4 py-2.5 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+        <p className="border-t border-slate-200 px-4 py-2.5 text-xs max-sm:hidden text-slate-500 dark:border-slate-800 dark:text-slate-400">
           ↑ ↓ to choose, Enter to open. Each crew member keeps one chat with you.
         </p>
       </div>

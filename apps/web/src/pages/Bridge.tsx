@@ -16,7 +16,13 @@ import { useUser } from "../auth.js";
 import { ApprovalCard } from "../components/ApprovalCard.js";
 import { AttachButtons, PendingFiles, useComposerFiles } from "../components/Attachments.js";
 import { Avatar } from "../components/Avatar.js";
-import { ChatLanding, CrewPicker, directCandidates, useDraft } from "../components/CrewChat.js";
+import {
+  ChatLanding,
+  CrewPicker,
+  CrewStrip,
+  directCandidates,
+  useDraft,
+} from "../components/CrewChat.js";
 import { TimelineView } from "../components/Timeline.js";
 import { Badge, Button, cx, ErrorText, focusRing } from "../components/ui.js";
 import { MicButton, speaker, useHandsFree, useVoiceStatus } from "../components/Voice.js";
@@ -182,6 +188,12 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
               )}
             </div>
             <ErrorText>{createError}</ErrorText>
+            <CrewStrip
+              crew={crewList}
+              creating={creating}
+              onNewBridge={() => void createBridge()}
+              onOpened={opened}
+            />
             <div className="relative">
               <label htmlFor="conv-search" className="sr-only">
                 Search conversations
@@ -580,13 +592,14 @@ function Thread({
                 <Button
                   size="sm"
                   variant="ghost"
-                  // Phones have little room up here; typing /new does the same.
-                  className="max-sm:hidden"
                   disabled={state.busy || resetting}
+                  aria-label="Start fresh"
                   title="Start fresh: the crew forget this chat so far, and the messages stay here. You can also type /new."
                   onClick={() => void startFresh()}
                 >
-                  Start fresh
+                  <FreshGlyph />
+                  {/* Phones have little room up here: the icon alone. */}
+                  <span className="max-sm:hidden">Start fresh</span>
                 </Button>
                 <Button
                   size="sm"
@@ -774,6 +787,27 @@ function ListLabel({ children }: { children: ReactNode }) {
 function withWhom(c: ConversationDto, crew: CrewDto[], captainName: string): string {
   if (c.kind !== "direct") return captainName;
   return crew.find((m) => m.slug === c.crewSlug)?.name ?? c.crewSlug ?? "Crew member";
+}
+
+function FreshGlyph() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 12a9 9 0 0 1 15.5-6.2L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-15.5 6.2L3 16" />
+      <path d="M3 21v-5h5" />
+    </svg>
+  );
 }
 
 function GearGlyph() {

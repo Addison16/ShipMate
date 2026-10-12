@@ -221,13 +221,14 @@ export class ClaudeCliTurns {
 
 /**
  * Tools every CLI crew member may use without asking, on top of its own `cli.allowedTools`:
- * reading (and Glob/Grep, which follow Read rules) inside its own folder, and looking things up
- * on the web. In `dontAsk` mode anything else is refused, so without these a fresh crew member
- * cannot even read its own files.
+ * reading (and Glob/Grep, which follow Read rules) inside its working folder, and looking things
+ * up on the web. In `dontAsk` mode anything else is refused, so without these a fresh crew member
+ * cannot even read its own files. The rest of the crew folder stays out of reach: memory/ holds
+ * each person's private memories, which it reaches only through the user-scoped memory tools.
  */
 export function defaultCliTools(crewDir: string): string[] {
   // `//` starts an absolute path in Claude Code permission rules.
-  const abs = crewDir.replace(/\\/g, "/").replace(/^\/*/, "");
+  const abs = `${crewDir}/${CLI_WORKDIR}`.replace(/\\/g, "/").replace(/^\/*/, "");
   return [`Read(//${abs}/**)`, "WebSearch", "WebFetch"];
 }
 

@@ -600,6 +600,12 @@ export class Bridge {
       retire: async (target) => {
         await this.deps.crew.setStatus(target, "retired");
       },
+      approve: async (target) => {
+        const now = (await this.#roster(user)).find((c) => c.slug === target);
+        if (!now) throw new Error(`no crew member "${target}"; check list_crew`);
+        if (now.status !== "pending_review") throw new Error(`${now.name} is not awaiting review`);
+        return { ...(await this.deps.crew.setStatus(target, "active")) };
+      },
       createWatch: async (spec) => {
         if (!this.#watches) throw new Error("watches are not available");
         const trigger = spec.cron
@@ -1039,6 +1045,7 @@ export class Bridge {
       recruit: (s) => current().captain.recruit(s),
       edit: (slug, s) => current().captain.edit(slug, s),
       retire: (slug) => current().captain.retire(slug),
+      approve: (slug) => current().captain.approve(slug),
       delegate: (slug, task, signal) => current().captain.delegate(slug, task, signal),
       createWatch: (spec) => current().captain.createWatch(spec),
       installMcp: (id, crews) => current().captain.installMcp(id, crews),

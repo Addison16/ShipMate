@@ -91,6 +91,8 @@ export interface CaptainHost {
   updatePerson(person: string, changes: PersonChanges): Promise<string>;
   updateHousehold(changes: HouseholdChanges): Promise<string>;
   retire(slug: string): Promise<void>;
+  /** Put a crew member awaiting review to work (only after the person approves the call). */
+  approve(slug: string): Promise<CrewSummary>;
   /** Run `task` with crew member `slug` and return its final reply. */
   delegate(slug: string, task: string, signal: AbortSignal | undefined): Promise<string>;
   /** Schedule a watch (routine) owned by the person in this conversation. */
@@ -263,7 +265,7 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
       name: "recruit_crew_member",
       label: "Recruit crew member",
       description:
-        "Create a new specialist crew member for a recurring kind of work. It starts awaiting review: a person approves it on the Crew page before you can delegate to it.",
+        "Create a new specialist crew member for a recurring kind of work. It starts awaiting review; put it to work with approve_crew_member, which asks the person first.",
       promptSnippet: "recruit_crew_member: create a specialist crew member (needs review)",
       parameters: Type.Object({
         slug: Type.String({ description: "lowercase id, e.g. galley" }),
@@ -285,7 +287,7 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
         requireManager();
         const c = await host.recruit(p);
         return text(
-          `Recruited ${c.name} (${c.slug}). They are awaiting review on the Crew page; tell ${user.displayName} to look over their persona and approve them.`,
+          `Recruited ${c.name} (${c.slug}); they are awaiting review. Tell ${user.displayName} who they are and what they will do, then call approve_crew_member so ${user.displayName} can approve them here.`,
         );
       },
     }),
@@ -368,6 +370,19 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
         };
         const c = await host.edit(slug, spec);
         return text(`Updated ${c.name}.`);
+      },
+    }),
+    defineTool({
+      name: "approve_crew_member",
+      label: "Approve crew member",
+      description:
+        "Put a crew member who is awaiting review (one you recruited, or one imported from a file) to work. The person you are talking with always approves this on a card first. Read their persona and crew_settings beforehand and fix anything unsafe.",
+      promptSnippet: "approve_crew_member: ask the person to approve a new crew member",
+      parameters: Type.Object({ slug: Type.String() }),
+      async execute(_id, p) {
+        requireManager();
+        const c = await host.approve(p.slug);
+        return text(`${c.name} is approved and ready for work.`);
       },
     }),
     defineTool({

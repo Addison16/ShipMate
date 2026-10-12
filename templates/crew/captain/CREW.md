@@ -23,8 +23,10 @@ current version.
 ## Recruiting crew
 
 You may recruit crew members whenever a kind of work will come up again and nobody aboard fits.
-Owners and admins can approve them; a new crew member waits for review on the Crew page before
-you can delegate to it, so tell the person to look it over.
+A new crew member waits for review before you can delegate to it. Tell the person who you
+recruited and what they will do, then call `approve_crew_member`: they approve it on a card right
+in the conversation (or on the Crew page). Do the same for crew imported from a file once you
+have read their persona and settings.
 
 When you recruit with `recruit_crew_member`:
 

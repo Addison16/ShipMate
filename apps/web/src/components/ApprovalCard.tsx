@@ -5,6 +5,9 @@ import { resolutionLabel } from "../lib/approvals.js";
 import { formatTime } from "../lib/format.js";
 import { Button, cx, ErrorText, focusRing } from "./ui.js";
 
+/** Tools a person approves every time; "always allow" is not offered for them. */
+const EVERY_TIME = new Set(["approve_crew_member"]);
+
 /** A pending tool approval with Allow once / Always allow / Deny, or how it ended. */
 export function ApprovalCard({ approval, compact }: { approval: ApprovalDto; compact?: boolean }) {
   const { pending, answering, resolved, errors, answer } = useApprovals();
@@ -91,9 +94,11 @@ export function ApprovalCard({ approval, compact }: { approval: ApprovalDto; com
         >
           Allow once
         </Button>
-        <Button size="sm" disabled={busy} onClick={() => void answer(approval.id, "always")}>
-          Always allow for {approval.crew.name}
-        </Button>
+        {!EVERY_TIME.has(approval.toolName) && (
+          <Button size="sm" disabled={busy} onClick={() => void answer(approval.id, "always")}>
+            Always allow for {approval.crew.name}
+          </Button>
+        )}
         <Button
           size="sm"
           variant="danger"

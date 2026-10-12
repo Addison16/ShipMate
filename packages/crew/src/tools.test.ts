@@ -27,6 +27,14 @@ function setup(role: ActingUser["role"] = "owner") {
       };
     },
     retire: async () => {},
+    approve: async (slug) => ({
+      slug,
+      name: "Galley",
+      role: "meals",
+      model: "faux/m",
+      status: "active",
+      captain: false,
+    }),
     delegate: async () => "",
     createWatch: async () => ({ id: "w", name: "w" }),
     installMcp: async () => "ok",

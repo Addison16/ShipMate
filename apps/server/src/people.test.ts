@@ -114,6 +114,47 @@ describe.skipIf(!db)("Captain sets people up", () => {
     expect(yaml).toContain("skills: [triage]");
   });
 
+  it("approves a recruit only after the person says yes on the card", async () => {
+    const conv = (await api("POST", "/api/conversations", {})).json().conversation;
+    const ws = await t.app.injectWS("/api/ws", { headers: { cookie: ownerCookie } });
+    const events: ServerEvent[] = [];
+    ws.on("message", (raw: Buffer) => events.push(JSON.parse(raw.toString()) as ServerEvent));
+    const status = async (slug: string) =>
+      (await api("GET", `/api/crew/${slug}`)).json().crew.status as string;
+    const approveTurn = async (slug: string, decision: "deny" | "always") => {
+      events.length = 0;
+      t.faux.setResponses([
+        fauxAssistantMessage([
+          fauxToolCall("recruit_crew_member", {
+            slug,
+            name: slug,
+            role: "keeps the pantry stocked",
+            persona: `# ${slug}\n\nYou keep the pantry stocked.`,
+          }),
+        ]),
+        fauxAssistantMessage([fauxToolCall("approve_crew_member", { slug })]),
+        fauxAssistantMessage("Done."),
+      ]);
+      ws.send(JSON.stringify({ type: "send", conversationId: conv.id, text: "hire someone" }));
+      await until(() => events.some((e) => e.type === "approval_request"));
+      expect(await status(slug)).toBe("pending_review");
+      const req = events.find((e) => e.type === "approval_request");
+      if (req?.type !== "approval_request") throw new Error("no request");
+      expect(req.approval.toolName).toBe("approve_crew_member");
+      ws.send(JSON.stringify({ type: "approve", approvalId: req.approval.id, decision }));
+      await until(() => events.some((e) => e.type === "status" && !e.busy));
+    };
+
+    await approveTurn("pantry", "deny");
+    expect(await status("pantry")).toBe("pending_review");
+    await approveTurn("larder", "always");
+    expect(await status("larder")).toBe("active");
+    // "Always allow" never lets the Captain approve crew on its own later.
+    const yaml = (await api("GET", "/api/crew/captain")).json().crew.manifestYaml;
+    expect(yaml).not.toContain("approve_crew_member");
+    ws.terminate();
+  });
+
   it("keeps members to their own settings", async () => {
     const results = await turn(
       [

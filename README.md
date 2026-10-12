@@ -72,7 +72,7 @@ webhooks and links in chat bridges. Every variable and the `/data` layout are in
 [docs/configuration.md](docs/configuration.md); behind Nginx Proxy Manager, SWAG, Traefik or
 Caddy, see [docs/reverse-proxy.md](docs/reverse-proxy.md).
 
-Images are tagged `ghcr.io/addison16/shipmate:1.0.0`, `:1.0`, `:1` and `:latest`; pin a version
+Images are tagged `ghcr.io/addison16/shipmate:0.2.3`, `:0.2` and `:latest` (from 1.0 on, also `:1`); pin a version
 tag to control upgrades. Migrations run on boot. `:edge` follows `main`. **Health** (owners and
 admins) says when a newer release is out and can update in one click; see
 [docs/health-and-updates.md](docs/health-and-updates.md).

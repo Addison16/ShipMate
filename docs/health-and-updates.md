@@ -38,7 +38,7 @@ version answers.
 It is not offered, and the page shows the commands to run instead, when:
 
 - there is no Docker socket,
-- the image is pinned to an exact version (`:1.0.0`) or a digest: pulling it again brings
+- the image is pinned to an exact version (`:0.2.3`) or a digest: pulling it again brings
   nothing new, so change the tag first,
 - Unraid or TrueNAS manages the container: update from their UI so they stay in step.
 

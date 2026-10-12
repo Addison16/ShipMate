@@ -1,7 +1,8 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useUpdateAppearance } from "../appearance.js";
 import { ApprovalsProvider } from "../approvals.js";
 import { isAdmin, useAuth, useUser } from "../auth.js";
+import { activeNavId, canSee, MAIN_NAV, SETTINGS_HOME, settingsSectionFor } from "../lib/nav.js";
 import { THEME_MODES } from "../lib/theme.js";
 import { AuditPage } from "../pages/Audit.js";
 import { BridgePage } from "../pages/Bridge.js";
@@ -21,49 +22,12 @@ import { WatchesPage } from "../pages/Watches.js";
 import { href, navigate, useRoute } from "../router.js";
 import { socket, useSocketState } from "../ws.js";
 import { ApprovalTray } from "./ApprovalTray.js";
-import { type IconName, NavIcon } from "./icons.js";
+import { NavIcon } from "./icons.js";
 import { Logo } from "./Logo.js";
+import { QuickJump, QuickJumpButton, useQuickJumpShortcut } from "./QuickJump.js";
+import { SettingsLayout } from "./SettingsLayout.js";
 import { Toasts } from "./Toasts.js";
 import { cx, focusRing } from "./ui.js";
-
-interface NavItem {
-  path: string;
-  label: string;
-  icon: IconName;
-  adminOnly?: boolean;
-}
-
-const NAV: Array<{ group: string | null; items: NavItem[] }> = [
-  {
-    group: null,
-    items: [
-      { path: "bridge", label: "Bridge", icon: "bridge" },
-      { path: "lists", label: "Lists", icon: "lists" },
-      { path: "watches", label: "Watches", icon: "watches" },
-      { path: "shipyard", label: "Shipyard", icon: "shipyard" },
-    ],
-  },
-  {
-    group: "Crew & tools",
-    items: [
-      { path: "crew", label: "Crew", icon: "crew" },
-      { path: "skills", label: "Skills", icon: "skills" },
-      { path: "mcp", label: "MCP servers", icon: "mcp" },
-    ],
-  },
-  {
-    group: "Manage",
-    items: [
-      { path: "providers", label: "Providers", icon: "providers" },
-      { path: "usage", label: "Cost", icon: "cost" },
-      { path: "audit", label: "Audit", icon: "audit" },
-      { path: "users", label: "Users", icon: "users", adminOnly: true },
-      { path: "bridges", label: "Chat bridges", icon: "bridges" },
-      { path: "health", label: "Health", icon: "health", adminOnly: true },
-      { path: "settings", label: "Settings", icon: "settings" },
-    ],
-  },
-];
 
 function SocketDot() {
   const state = useSocketState();
@@ -74,9 +38,9 @@ function SocketDot() {
       <span
         aria-hidden="true"
         className={cx(
-          "size-2 rounded-full",
+          "size-2 rounded-full transition-colors",
           state === "open"
-            ? "bg-emerald-500"
+            ? "animate-breathe bg-emerald-500"
             : state === "connecting"
               ? "bg-amber-400"
               : "bg-red-500",
@@ -89,62 +53,47 @@ function SocketDot() {
 
 function NavLinks({ current, onNavigate }: { current: string; onNavigate?: () => void }) {
   const user = useUser();
-  return (
-    <div className="space-y-5">
-      {NAV.map((g) => (
-        <div key={g.group ?? "main"}>
-          {g.group && (
-            <p className="px-3 pb-1.5 text-[11px] font-semibold tracking-wider text-accent-700 uppercase dark:text-accent-300">
-              {g.group}
-            </p>
-          )}
-          <NavList
-            items={g.items.filter((n) => !n.adminOnly || isAdmin(user))}
-            current={current}
-            onNavigate={onNavigate}
-          />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function NavList({
-  items,
-  current,
-  onNavigate,
-}: {
-  items: NavItem[];
-  current: string;
-  onNavigate?: () => void;
-}) {
+  const items = [...MAIN_NAV.filter((n) => canSee(user, n.access)), SETTINGS_HOME];
   return (
     <ul className="space-y-0.5">
       {items.map((n) => {
-        const active = current === n.path;
+        const active = current === n.id;
         return (
-          <li key={n.path}>
+          <li key={n.id}>
             <a
-              href={href(`/${n.path}`)}
+              href={href(n.path)}
               onClick={onNavigate}
               aria-current={active ? "page" : undefined}
               className={cx(
-                "group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                "group flex items-center gap-3 rounded-lg px-3 py-2 transition-[background-color,color,box-shadow] duration-200",
                 focusRing,
                 active
                   ? "bg-accent-600 text-white shadow-sm dark:bg-accent-500/20 dark:text-accent-100"
-                  : "text-slate-700 hover:bg-accent-50 hover:text-accent-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-accent-200",
+                  : "text-slate-700 hover:bg-accent-50 active:bg-accent-100 hover:text-accent-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-accent-200",
               )}
             >
               <span
                 className={cx(
+                  "transition-transform duration-200 group-hover:scale-110",
                   !active &&
                     "text-slate-500 group-hover:text-accent-600 dark:text-slate-400 dark:group-hover:text-accent-300",
                 )}
               >
                 <NavIcon name={n.icon} />
               </span>
-              {n.label}
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">{n.label}</span>
+                <span
+                  className={cx(
+                    "block truncate text-xs",
+                    active
+                      ? "text-white/80 dark:text-accent-200/80"
+                      : "text-slate-500 dark:text-slate-400",
+                  )}
+                >
+                  {n.hint}
+                </span>
+              </span>
             </a>
           </li>
         );
@@ -229,7 +178,7 @@ function Brand() {
         focusRing,
       )}
     >
-      <span className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-accent-500 to-accent-700 text-white shadow-sm">
+      <span className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-accent-500 to-accent-700 text-white shadow-sm shadow-accent-900/20 transition-transform duration-300 ease-out hover:rotate-12">
         <Logo size={20} />
       </span>
       <span className="text-[17px] font-semibold tracking-tight">Shipmate</span>
@@ -241,7 +190,14 @@ export function Shell() {
   const route = useRoute();
   const user = useUser();
   const [drawer, setDrawer] = useState(false);
+  const [jump, setJump] = useState(false);
   const section = route[0] ?? "";
+  const settingsSection = settingsSectionFor(route);
+  const openJump = useCallback(() => {
+    setDrawer(false);
+    setJump(true);
+  }, []);
+  useQuickJumpShortcut(openJump);
 
   useEffect(() => {
     socket.start();
@@ -278,6 +234,7 @@ export function Shell() {
         <WatchesPage
           watchId={route[1] ?? null}
           runId={route[2] === "runs" ? (route[3] ?? null) : null}
+          edit={route[2] === "edit"}
         />
       );
       break;
@@ -309,7 +266,7 @@ export function Shell() {
       page = isAdmin(user) ? <UsersPage /> : <NotFound />;
       break;
     case "settings":
-      page = <SettingsPage />;
+      page = <SettingsPage section={route[1] ?? ""} />;
       break;
     case "health":
       page = isAdmin(user) ? <HealthPage /> : <NotFound />;
@@ -317,14 +274,28 @@ export function Shell() {
     default:
       page = <NotFound />;
   }
+  // Settings screens other than the overview get the grouped settings list beside them.
+  if (settingsSection) page = <SettingsLayout current={settingsSection}>{page}</SettingsLayout>;
+  // Each place fades in when you arrive. Keyed by place, not by item, so moving between chats or
+  // settings sections keeps the page (and its scroll) instead of replaying the animation.
+  const pageKey = settingsSection ? "settings-section" : section;
+  const activeNav = activeNavId(route);
 
   return (
     <ApprovalsProvider>
       <div className="flex h-dvh flex-col bg-slate-50 text-slate-900 md:flex-row dark:bg-slate-950 dark:text-slate-100">
         {/* Top bar on narrow screens */}
-        <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2.5 md:hidden dark:border-slate-800 dark:bg-slate-900">
+        <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 pt-[calc(0.625rem+env(safe-area-inset-top))] pb-2.5 md:hidden dark:border-slate-800 dark:bg-slate-900">
           <Brand />
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              aria-label="Search"
+              onClick={openJump}
+              className={cx("rounded-md p-2 hover:bg-slate-100 dark:hover:bg-slate-800", focusRing)}
+            >
+              <NavIcon name="search" size={20} />
+            </button>
             <ApprovalTray variant="topbar" />
             <button
               type="button"
@@ -351,13 +322,13 @@ export function Shell() {
             />
             <nav
               aria-label="Main"
-              className="slide-over-panel absolute inset-y-0 left-0 flex w-64 max-w-[85vw] flex-col bg-white shadow-xl dark:bg-slate-900"
+              className="slide-over-panel absolute inset-y-0 left-0 flex w-64 max-w-[85vw] flex-col bg-white pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-xl dark:bg-slate-900"
             >
               <div className="flex items-center justify-between px-4 py-3">
                 <Brand />
               </div>
               <div className="flex-1 overflow-y-auto px-2">
-                <NavLinks current={section} onNavigate={() => setDrawer(false)} />
+                <NavLinks current={activeNav} onNavigate={() => setDrawer(false)} />
               </div>
               <UserBox />
             </nav>
@@ -367,13 +338,16 @@ export function Shell() {
         {/* Sidebar on wide screens */}
         <nav
           aria-label="Main"
-          className="hidden w-56 shrink-0 flex-col border-r border-slate-200 bg-white md:flex dark:border-slate-800 dark:bg-slate-900"
+          className="hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white md:flex dark:border-slate-800 dark:bg-slate-900"
         >
-          <div className="px-4 py-4">
-            <Brand />
+          <div className="space-y-3 px-3 py-4">
+            <div className="px-1">
+              <Brand />
+            </div>
+            <QuickJumpButton onOpen={openJump} />
           </div>
           <div className="flex-1 overflow-y-auto px-2">
-            <NavLinks current={section} />
+            <NavLinks current={activeNav} />
           </div>
           <div className="px-2 pb-2">
             <ApprovalTray variant="sidebar" />
@@ -381,10 +355,63 @@ export function Shell() {
           <UserBox />
         </nav>
 
-        <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto">{page}</main>
+        <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-gradient-to-b from-accent-100/50 via-accent-50/20 to-transparent dark:from-accent-900/20 dark:via-accent-950/10"
+          />
+          <div key={pageKey} className="relative h-full animate-page-in">
+            {page}
+          </div>
+        </main>
+        {/* Thumb-reach tabs on phones; an open chat keeps the whole height for the composer. */}
+        {!(section === "bridge" && route[1]) && <TabBar current={activeNav} />}
+        {jump && <QuickJump onClose={() => setJump(false)} />}
         <Toasts />
       </div>
     </ApprovalsProvider>
+  );
+}
+
+/** Bottom tabs on narrow screens for the everyday places; Settings stays in the menu. */
+function TabBar({ current }: { current: string }) {
+  const user = useUser();
+  return (
+    <nav
+      aria-label="Quick"
+      className="shrink-0 border-t border-slate-200 bg-white pb-[max(env(safe-area-inset-bottom),0.25rem)] md:hidden dark:border-slate-800 dark:bg-slate-900"
+    >
+      <ul className="flex">
+        {MAIN_NAV.filter((n) => canSee(user, n.access)).map((n) => {
+          const active = current === n.id;
+          return (
+            <li key={n.id} className="flex-1">
+              <a
+                href={href(n.path)}
+                aria-current={active ? "page" : undefined}
+                className={cx(
+                  "flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium",
+                  focusRing,
+                  active
+                    ? "text-accent-700 dark:text-accent-300"
+                    : "text-slate-600 dark:text-slate-400",
+                )}
+              >
+                <span
+                  className={cx(
+                    "grid h-7 w-12 place-items-center rounded-full",
+                    active && "bg-accent-100 dark:bg-accent-500/20",
+                  )}
+                >
+                  <NavIcon name={n.icon} size={20} />
+                </span>
+                {n.label}
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
   );
 }
 

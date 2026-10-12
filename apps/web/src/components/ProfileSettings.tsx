@@ -5,7 +5,7 @@ import { isAdmin, useUser } from "../auth.js";
 import { USE_CHOICES } from "../lib/onboarding.js";
 import { browserTimeZone } from "../lib/starters.js";
 import { useResource } from "../lib/useResource.js";
-import { Button, Card, ErrorText, Muted, SelectField, TextAreaField, TextField } from "./ui.js";
+import { Button, Card, ErrorText, Loading, SelectField, TextAreaField, TextField } from "./ui.js";
 
 function Saved({ show }: { show: boolean }) {
   return show ? (
@@ -22,7 +22,7 @@ export function ProfileSettings() {
   return (
     <>
       <ErrorText>{data.error}</ErrorText>
-      {data.loading && !data.data && <Muted>Loading…</Muted>}
+      {data.loading && !data.data && <Loading />}
       {data.data && (
         <>
           <MyProfile initial={data.data.profile} />

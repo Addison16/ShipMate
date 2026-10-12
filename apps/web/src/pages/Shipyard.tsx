@@ -705,7 +705,7 @@ function StateSelect({
         value={value}
         onChange={(e) => onChange(e.target.value as StateFilter)}
         className={cx(
-          "rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900",
+          "rounded-md border border-control bg-white px-2 py-1 text-sm dark:bg-slate-900",
           focusRing,
         )}
       >

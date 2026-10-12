@@ -68,7 +68,7 @@ export function Toasts() {
               aria-label="Dismiss"
               onClick={() => dismiss(t.id)}
               className={cx(
-                "rounded p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800",
+                "rounded p-1 text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
                 focusRing,
               )}
             >

@@ -66,7 +66,7 @@ export function QuickJumpButton({ onOpen }: { onOpen: () => void }) {
     >
       <NavIcon name="search" size={16} />
       <span className="flex-1 text-left">Search</span>
-      <kbd className="rounded border border-slate-200 bg-white px-1.5 text-[11px] font-medium text-slate-400 dark:border-slate-700 dark:bg-slate-900">
+      <kbd className="rounded border border-slate-200 bg-white px-1.5 text-[11px] font-medium text-slate-500 dark:border-slate-700 dark:text-slate-400 dark:bg-slate-900">
         {shortcutLabel()}
       </kbd>
     </button>
@@ -184,9 +184,9 @@ export function QuickJump({ onClose }: { onClose: () => void }) {
               setActive(0);
             }}
             onKeyDown={onKeyDown}
-            className="w-full bg-transparent py-3.5 text-[15px] outline-none placeholder:text-slate-400"
+            className="w-full bg-transparent py-3.5 text-[15px] outline-none placeholder:text-slate-500"
           />
-          <kbd className="hidden rounded border border-slate-200 px-1.5 text-[11px] text-slate-400 sm:block dark:border-slate-700">
+          <kbd className="hidden rounded border border-slate-200 px-1.5 text-[11px] text-slate-500 sm:block dark:text-slate-400 dark:border-slate-700">
             Esc
           </kbd>
         </div>
@@ -234,7 +234,9 @@ export function QuickJump({ onClose }: { onClose: () => void }) {
                   {r.hint}
                 </span>
               </span>
-              <span className="hidden shrink-0 text-[11px] text-slate-400 sm:block">{r.where}</span>
+              <span className="hidden shrink-0 text-[11px] text-slate-500 sm:block dark:text-slate-400">
+                {r.where}
+              </span>
             </div>
           ))}
         </div>

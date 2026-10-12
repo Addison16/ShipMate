@@ -109,7 +109,7 @@ function CapCells({
       <td className={num}>{capLabel}</td>
       <td className={`${td} min-w-36`}>
         {p === null ? (
-          <span className="text-slate-400 dark:text-slate-500">—</span>
+          <span className="text-slate-500 dark:text-slate-400">—</span>
         ) : (
           <div className="flex items-center justify-end gap-2">
             <div

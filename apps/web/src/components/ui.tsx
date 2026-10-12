@@ -16,7 +16,7 @@ type Variant = "primary" | "secondary" | "danger" | "ghost";
 
 const variants: Record<Variant, string> = {
   primary:
-    "bg-accent-700 text-white shadow-sm shadow-accent-900/20 hover:bg-accent-800 hover:shadow-md hover:shadow-accent-900/20 disabled:bg-accent-700/50 dark:bg-accent-600 dark:hover:bg-accent-500",
+    "bg-accent-700 text-white shadow-sm shadow-accent-900/20 hover:bg-accent-800 hover:shadow-md hover:shadow-accent-900/20 disabled:bg-accent-700/50 dark:bg-accent-600 dark:hover:bg-accent-700",
   secondary:
     "border border-slate-300 bg-white text-slate-800 shadow-xs hover:border-slate-400 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700",
   danger:
@@ -88,7 +88,8 @@ export function IconButton({
 }
 
 const fieldBase =
-  "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs transition-[border-color,box-shadow] duration-150 placeholder:text-slate-400 hover:border-slate-400 focus:border-accent-500 focus:ring-3 focus:ring-accent-500/25 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-slate-500 dark:focus:border-accent-400 dark:focus:ring-accent-400/25 dark:disabled:bg-slate-800";
+  "w-full rounded-md border border-control bg-white px-3 py-2 text-sm text-slate-900 shadow-xs transition-[border-color,box-shadow] duration-150 placeholder:text-slate-500 disabled:bg-slate-100 disabled:text-slate-500 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-400 dark:disabled:bg-slate-800 " +
+  focusRing;
 
 interface FieldProps {
   label: string;

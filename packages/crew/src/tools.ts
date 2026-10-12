@@ -228,7 +228,11 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
           description:
             "the CREW.md: who they are, how they work, what to avoid, written as instructions to them",
         }),
-        model: Type.Optional(Type.String({ description: "provider/model; omit for the default" })),
+        model: Type.Optional(
+          Type.String({
+            description: "provider/model; omit to follow the crew default set in Settings",
+          }),
+        ),
         tools: stringList("built-in tools, smallest set that works: read, write, edit, bash, ..."),
         mcp: stringList("MCP server ids, e.g. time, web-search, fetch"),
       }),

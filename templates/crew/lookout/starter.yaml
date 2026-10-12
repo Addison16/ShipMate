@@ -1,0 +1,9 @@
+blurb: Researches a topic, company or question on the web and writes a short brief with sources.
+uses: [work, home]
+watch:
+  name: Weekly news brief
+  cron: "0 8 * * 1"
+  prompt: |
+    Write a short news brief on the topics the person follows (from their profile notes or what
+    they asked you to keep an eye on). Five items at most, each one or two sentences with a link.
+    If you do not know which topics they follow, say so and ask them to name a few.

@@ -12,6 +12,7 @@ import {
 import { conversations, type Db } from "@shipmate/db";
 import { eq } from "drizzle-orm";
 import { HttpError, type UserRow } from "./auth.js";
+import { CLI_MCP_SERVER } from "./cli-mcp.js";
 import type { UsageContext } from "./services/usage.js";
 import { summarize } from "./summarize.js";
 
@@ -35,8 +36,18 @@ export interface CliTurnInput {
   conv: ConversationRow;
   folder: CrewFolder;
   prompt: string;
-  stream: CliStream;
+  /**
+   * The open reply bubble. A getter: when the Captain delegates, the Bridge closes its bubble
+   * and opens a fresh one for the rest of the Captain's answer.
+   */
+  stream: () => CliStream;
   usage: UsageContext;
+  /** `--mcp-config` for Shipmate's own tools this turn (see cli-mcp.ts); none when unset. */
+  mcpConfig?: string;
+  /** Extra system prompt sections (the Captain's crew roster, how to answer a consult). */
+  context?: string[];
+  /** A one-off answer (the Captain answering a crew question): no resume, nothing stored. */
+  oneOff?: boolean;
   emit: (event: ServerEvent) => void;
   /** The Bridge's usage writer: the turn waits for it before ending (cap checks stay exact). */
   record: (ctx: UsageContext, model: Model<Api>, usage: Usage, durationMs?: number) => void;
@@ -66,7 +77,7 @@ export class ClaudeCliTurns {
   }
 
   async turn(input: CliTurnInput): Promise<string> {
-    const { conv, folder, stream, emit } = input;
+    const { conv, folder, emit } = input;
     if (conv.projectId) {
       throw new HttpError(
         409,
@@ -76,10 +87,14 @@ export class ClaudeCliTurns {
     const cwd = join(folder.dir, CLI_WORKDIR);
     mkdirSync(cwd, { recursive: true });
     const key = cliSessionKey(folder.slug);
-    const resume = conv.sessionFiles[key];
-    const settings = folder.manifest.cli ?? {
+    const resume = input.oneOff ? undefined : conv.sessionFiles[key];
+    const own = folder.manifest.cli ?? {
       allowedTools: [],
       permissionMode: "dontAsk" as const,
+    };
+    const settings = {
+      ...own,
+      allowedTools: cliAllowedTools(folder.dir, own.allowedTools, input.mcpConfig !== undefined),
     };
     const model = settings.model ?? cliModelFromRef(folder.manifest.model);
 
@@ -89,7 +104,15 @@ export class ClaudeCliTurns {
     this.#running.set(conv.id, set);
 
     let needBreak = false;
+    let streamed = false;
     const onEvent = (e: ClaudeCliEvent) => {
+      const stream = input.stream();
+      // Hand-offs show as their own bubbles; Shipmate's tools show under their plain names.
+      if (e.type === "tool_start" || e.type === "tool_end") {
+        const name = shipmateToolName(e.name);
+        if (name === "delegate" || name === "ask_captain") return;
+        e = { ...e, name };
+      }
       switch (e.type) {
         case "text": {
           let text = e.text;
@@ -97,6 +120,7 @@ export class ClaudeCliTurns {
             text = `${stream.text.endsWith("\n") ? "\n" : "\n\n"}${text}`;
           }
           needBreak = false;
+          streamed = true;
           stream.text += text;
           emit({ type: "delta", conversationId: conv.id, streamId: stream.id, text });
           break;
@@ -138,12 +162,13 @@ export class ClaudeCliTurns {
         prompt: input.prompt,
         appendSystemPrompt: this.#systemPrompt(input),
         ...(resume ? { resume } : {}),
+        ...(input.mcpConfig ? { mcpConfig: input.mcpConfig } : {}),
         settings: { ...settings, ...(model ? { model } : {}) },
         signal: controller.signal,
         onEvent,
       });
 
-      if (result.sessionId && result.sessionId !== resume) {
+      if (!input.oneOff && result.sessionId && result.sessionId !== resume) {
         conv.sessionFiles = { ...conv.sessionFiles, [key]: result.sessionId };
         await this.db
           .update(conversations)
@@ -163,7 +188,8 @@ export class ClaudeCliTurns {
         throw new Error(result.error ?? "the Claude Code CLI returned an error");
       }
       // Partial-message streaming is off on some CLI versions; fall back to the final text.
-      if (!stream.text.trim() && result.text) {
+      const stream = input.stream();
+      if (!streamed && !stream.text.trim() && result.text) {
         stream.text = result.text;
         emit({ type: "delta", conversationId: conv.id, streamId: stream.id, text: result.text });
       }
@@ -174,7 +200,7 @@ export class ClaudeCliTurns {
     }
   }
 
-  #systemPrompt({ user, folder }: CliTurnInput): string {
+  #systemPrompt({ user, folder, mcpConfig, context }: CliTurnInput): string {
     const memory = new MemoryStore(folder.dir);
     return [
       folder.persona.trim(),
@@ -183,11 +209,45 @@ export class ClaudeCliTurns {
       "",
       `You are ${folder.manifest.name}, a crew member of a self-hosted Shipmate instance shared by several people.`,
       `You are talking with ${user.displayName} (${user.role}). Today is ${new Date().toISOString().slice(0, 10)}.`,
-      "Shipmate's memory, skill and crew tools are not available in this session; the memory index below is for reference only.",
+      mcpConfig
+        ? `Shipmate's own tools (memory, lists and, for the Captain, the crew tools) are the \`mcp__${CLI_MCP_SERVER}__*\` tools. Use \`remember\` for durable facts worth keeping and \`recall\` to read a memory in full.`
+        : "Shipmate's memory, skill and crew tools are not available in this session; the memory index below is for reference only.",
       "",
       memory.contextFor(user.id),
+      ...(context?.length ? ["", ...context] : []),
     ].join("\n");
   }
+}
+
+/**
+ * Tools every CLI crew member may use without asking, on top of its own `cli.allowedTools`:
+ * reading (and Glob/Grep, which follow Read rules) inside its working folder, and looking things
+ * up on the web. In `dontAsk` mode anything else is refused, so without these a fresh crew member
+ * cannot even read its own files. The rest of the crew folder stays out of reach: memory/ holds
+ * each person's private memories, which it reaches only through the user-scoped memory tools.
+ */
+export function defaultCliTools(crewDir: string): string[] {
+  // `//` starts an absolute path in Claude Code permission rules.
+  const abs = `${crewDir}/${CLI_WORKDIR}`.replace(/\\/g, "/").replace(/^\/*/, "");
+  return [`Read(//${abs}/**)`, "WebSearch", "WebFetch"];
+}
+
+/** The `--allowedTools` for a turn: the defaults, the crew member's own, and Shipmate's tools. */
+export function cliAllowedTools(crewDir: string, own: string[], shipmateTools: boolean): string[] {
+  return [
+    ...new Set([
+      ...defaultCliTools(crewDir),
+      ...own,
+      // Shipmate's tools go through its own approval policy, so the CLI may call them all.
+      ...(shipmateTools ? [`mcp__${CLI_MCP_SERVER}`] : []),
+    ]),
+  ];
+}
+
+/** `mcp__shipmate__delegate` → `delegate`; other tool names unchanged. */
+export function shipmateToolName(name: string): string {
+  const prefix = `mcp__${CLI_MCP_SERVER}__`;
+  return name.startsWith(prefix) ? name.slice(prefix.length) : name;
 }
 
 /** `claude-code/sonnet` or `anthropic/claude-…` in crew.yaml → the CLI's --model; else its default. */

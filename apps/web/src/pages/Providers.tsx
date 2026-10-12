@@ -1,5 +1,5 @@
 import type { ProviderAuth, ProviderDto, ProviderKindDto } from "@shipmate/core";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useCallback, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { useUser } from "../auth.js";
 import { ChatGptCard } from "../components/ChatGptCard.js";
@@ -20,6 +20,8 @@ import {
   td,
   th,
 } from "../components/ui.js";
+import { usableModels } from "../lib/claude-cli.js";
+import { groupByProvider, providerLabel } from "../lib/models.js";
 import { useResource } from "../lib/useResource.js";
 
 const OLLAMA_URL = "http://localhost:11434/v1";
@@ -42,6 +44,9 @@ export function ProvidersPage() {
   const providers = useResource(() => api.listProviders());
   const models = useResource(() => api.listModels().then((r) => r.models));
   const kinds = providers.data?.kinds ?? [];
+  const [cliSignedIn, setCliSignedIn] = useState(false);
+  const onCliStatus = useCallback((s: { signedIn: boolean }) => setCliSignedIn(s.signedIn), []);
+  const usable = models.data ? usableModels(models.data, cliSignedIn) : null;
 
   const reloadAll = async () => {
     await Promise.all([providers.reload(), models.reload()]);
@@ -89,33 +94,53 @@ export function ProvidersPage() {
         <div className="mb-4">
           <ChatGptCard onChanged={reloadAll} />
         </div>
-        <ClaudeCliCard />
+        <ClaudeCliCard onStatus={onCliStatus} />
       </div>
 
-      <h2 className="mt-10 mb-3 text-lg font-semibold">Models</h2>
+      <h2 className="mt-10 mb-1 text-lg font-semibold">Models</h2>
+      <Muted>Models the crew can use with the providers and sign-ins above.</Muted>
       <ErrorText>{models.error}</ErrorText>
-      {models.data && models.data.length === 0 && <Muted>No models known yet.</Muted>}
-      {models.data && models.data.length > 0 && (
-        <Table>
-          <thead>
-            <tr>
-              <th className={th}>Model</th>
-              <th className={th}>Reference</th>
-              <th className={th}>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {models.data.map((m) => (
-              <tr key={m.ref}>
-                <td className={td}>{m.name}</td>
-                <td className={`${td} font-mono text-xs`}>{m.ref}</td>
-                <td className={td}>
-                  {m.available ? <Badge tone="ok">available</Badge> : <Badge>not configured</Badge>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
+      {usable && usable.length === 0 && (
+        <div className="mt-3">
+          <Muted>No models yet. Add a provider or sign in above and its models show up here.</Muted>
+        </div>
+      )}
+      {usable && usable.length > 0 && (
+        <div className="mt-3">
+          {[...groupByProvider(usable.map((m) => ({ ...m, provider: m.source })))].map(
+            ([source, list]) => (
+              <details
+                key={source}
+                className="mb-2 rounded-xl border border-slate-200 dark:border-slate-800"
+              >
+                <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm">
+                  <span className="font-medium">{providerLabel(source)}</span>
+                  <Badge tone="ok">
+                    {list.length} model{list.length === 1 ? "" : "s"}
+                  </Badge>
+                </summary>
+                <div className="px-2 pb-2">
+                  <Table>
+                    <thead>
+                      <tr>
+                        <th className={th}>Model</th>
+                        <th className={th}>Reference</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {list.map((m) => (
+                        <tr key={m.ref}>
+                          <td className={td}>{m.name}</td>
+                          <td className={`${td} font-mono text-xs`}>{m.ref}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </div>
+              </details>
+            ),
+          )}
+        </div>
       )}
     </Page>
   );

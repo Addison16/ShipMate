@@ -6,6 +6,7 @@ import { z } from "zod";
  */
 export const ONBOARDING_STEPS = [
   "account",
+  "purpose",
   "model",
   "captain",
   "household",
@@ -20,7 +21,7 @@ export type OnboardingStep = z.infer<typeof OnboardingStep>;
 /** Stored instance-wide under the "onboarding" settings key. */
 export const OnboardingState = z.object({
   /** Where the guide resumes. */
-  step: OnboardingStep.catch("model"),
+  step: OnboardingStep.catch("purpose"),
   /** Steps finished with Next. */
   done: z.array(OnboardingStep).catch([]),
   /** Steps passed over with Skip. */
@@ -55,12 +56,12 @@ export function parseOnboarding(value: unknown): OnboardingDto {
 
 /** The state right after the owner account is created. */
 export function freshOnboarding(): OnboardingState {
-  return { step: "model", done: ["account"], skipped: [], completedAt: null };
+  return { step: "purpose", done: ["account"], skipped: [], completedAt: null };
 }
 
 /**
  * PUT /api/onboarding (owner). `step` moves the guide; `done`/`skipped` mark one step; `finish`
- * closes it; `restart` opens it again from the model step (Settings → Run the setup guide).
+ * closes it; `restart` opens it again from the first step (Settings → Run the setup guide).
  */
 export const OnboardingUpdate = z
   .object({
@@ -109,6 +110,8 @@ export interface CaptainVoice {
   blurb: string;
   /** A sample reply to "What's for dinner tonight?". */
   sample: string;
+  /** A sample reply to "What's on my plate today?", shown when Shipmate is for work. */
+  workSample: string;
   /** The `## Voice` section body written into the Captain's CREW.md. */
   text: string;
 }
@@ -120,6 +123,8 @@ export const CAPTAIN_VOICES: CaptainVoice[] = [
     label: "Steady hand",
     blurb: "Plain, warm and brief. The default.",
     sample: "Tacos tonight: you have tortillas, beans and peppers. I put cheese on the list.",
+    workSample:
+      "Three meetings, the first at 10. The budget review needs your slides; I put them on your to-do list.",
     text: "Plain, warm, brief. Lead with the answer. Use the nautical theme lightly; never let it get in\nthe way of being clear.",
   },
   {
@@ -127,6 +132,7 @@ export const CAPTAIN_VOICES: CaptainVoice[] = [
     label: "Straight to the point",
     blurb: "Terse and efficient, no small talk.",
     sample: "Tacos. Cheese added to the list.",
+    workSample: "3 meetings, first at 10. Budget slides: on your list.",
     text: "Terse and efficient. Lead with the answer in a sentence or a short list; skip greetings,\nrecaps and small talk. No nautical flourishes.",
   },
   {
@@ -135,6 +141,8 @@ export const CAPTAIN_VOICES: CaptainVoice[] = [
     blurb: "Upbeat, friendly and encouraging.",
     sample:
       "Taco night! You've got almost everything; I added cheese to the list so you're all set.",
+    workSample:
+      "Three meetings today, first one at 10! I put the budget slides on your list so you're all set.",
     text: "Upbeat, friendly and encouraging. Lead with the answer, then a short friendly note when it\nhelps. A little nautical humor now and then is welcome; keep it clear.",
   },
   {
@@ -142,6 +150,8 @@ export const CAPTAIN_VOICES: CaptainVoice[] = [
     label: "Old sea dog",
     blurb: "Salty sayings and dry humor, still clear.",
     sample: "Tacos, matey. The hold's got all but cheese, and that's on the list now.",
+    workSample:
+      "Three meetings on the horizon, first at 10. Budget slides are on the list, so no getting caught in the doldrums.",
     text: "Talk like a seasoned ship's captain: salty turns of phrase and a dry sense of humor, but\nevery answer still clear and useful. Lead with the answer, and keep the sea talk out of lists,\nnumbers and code.",
   },
   {
@@ -150,6 +160,8 @@ export const CAPTAIN_VOICES: CaptainVoice[] = [
     blurb: "Calm, explains the why. Good for kids.",
     sample:
       "How about tacos? You have tortillas, beans and peppers already. Cheese was missing, so I added it.",
+    workSample:
+      "You have three meetings today, starting at 10. The budget review needs slides, so I added them to your to-do list to leave time to prepare.",
     text: "Calm and patient. Lead with the answer, then explain the why in plain words, define any\njargon, and check whether the answer fits. Good for kids and anyone new to this.",
   },
 ];

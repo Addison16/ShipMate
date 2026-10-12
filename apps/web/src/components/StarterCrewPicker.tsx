@@ -1,6 +1,7 @@
-import type { InstallStartersResponse, StarterCrewDto } from "@shipmate/core";
+import type { InstallStartersResponse, ShipmateUse, StarterCrewDto } from "@shipmate/core";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { rankStarters } from "../lib/onboarding.js";
 import { browserTimeZone, describeSchedule } from "../lib/starters.js";
 import { useResource } from "../lib/useResource.js";
 import { Avatar } from "./Avatar.js";
@@ -15,11 +16,14 @@ export function StarterCrewPicker({
   doneLabel = "Add to the crew",
   skipLabel,
   onSkip,
+  use,
 }: {
   onDone: (result: InstallStartersResponse) => void;
   doneLabel?: string;
   skipLabel?: string;
   onSkip?: () => void;
+  /** What Shipmate is for: matching crew come first and are picked; the rest are offered after. */
+  use?: ShipmateUse | "";
 }) {
   const starters = useResource(() => api.listStarters().then((r) => r.starters));
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -27,13 +31,14 @@ export function StarterCrewPicker({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Pre-select everything not aboard yet the first time the list loads.
+  // Pre-select the suggested crew not aboard yet the first time the list loads.
   const [seeded, setSeeded] = useState(false);
   useEffect(() => {
     if (seeded || !starters.data) return;
-    setPicked(new Set(starters.data.filter((s) => !s.installed).map((s) => s.slug)));
+    const { suggested } = rankStarters(starters.data, use);
+    setPicked(new Set(suggested.filter((s) => !s.installed).map((s) => s.slug)));
     setSeeded(true);
-  }, [starters.data, seeded]);
+  }, [starters.data, seeded, use]);
 
   function toggle(slug: string) {
     setPicked((prev) => {
@@ -63,21 +68,29 @@ export function StarterCrewPicker({
   }
 
   const list = starters.data ?? [];
+  const { suggested, others } = rankStarters(list, use);
+  const row = (s: StarterCrewDto) => (
+    <StarterRow
+      key={s.slug}
+      starter={s}
+      checked={picked.has(s.slug)}
+      onToggle={() => toggle(s.slug)}
+    />
+  );
   return (
     <div className="space-y-4">
       <ErrorText>{starters.error}</ErrorText>
       {starters.loading && !starters.data && <Loading />}
       {starters.data && list.length === 0 && <Muted>No starter crew in this install.</Muted>}
-      <ul className="space-y-2">
-        {list.map((s) => (
-          <StarterRow
-            key={s.slug}
-            starter={s}
-            checked={picked.has(s.slug)}
-            onToggle={() => toggle(s.slug)}
-          />
-        ))}
-      </ul>
+      <ul className="space-y-2">{suggested.map(row)}</ul>
+      {others.length > 0 && (
+        <div>
+          <p className="mb-2 text-sm font-medium text-slate-500 dark:text-slate-400">
+            {use === "work" ? "More crew, for home life" : "More crew, for work"}
+          </p>
+          <ul className="space-y-2">{others.map(row)}</ul>
+        </div>
+      )}
       {list.some((s) => s.watch && !s.installed) && (
         <label className="flex items-start gap-2 text-sm">
           <input

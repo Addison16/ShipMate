@@ -26,6 +26,39 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 - **Actions where you look for them**: every chat in the Bridge list has pin, rename and delete
   buttons on its row (rename happens in place), list cards have rename and delete, and each
   watch has edit and delete next to **Run now**, so nothing needs opening first to find them.
+- **The Captain coordinates on Claude Code too**: a Captain running on a Claude subscription now
+  hands your messages to the right crew member with `delegate`, like one on a provider. Crew on
+  Claude Code also get Shipmate's own tools (memory, lists, `ask_captain`), served to the CLI by
+  a small per-turn MCP endpoint over loopback and gated by the same approval rules. A Captain on
+  Claude Code also answers crew members' `ask_captain` questions instead of declining.
+- **One crew default model**: crew.yaml can say `model: default`, which means the crew default
+  picked in Settings, and follows it when it changes. New crew, starters and recruits start on
+  it. Settings has "Put everyone on the crew default" for existing crew, and each crew member's
+  page has a model picker for giving one its own model.
+- **Pick where a model runs, then which one**: model pickers are two dropdowns, a provider (or
+  the Claude subscription, or the crew default) and then its models. Choosing a Claude
+  subscription model for a crew member also moves it onto Claude Code, and the setup guide asks
+  which Claude model the Captain should use.
+- **Claude Code crew can read their own files**: crew on the Claude subscription were refused
+  every tool in the default `dontAsk` mode ("Permission to use Read has been denied"). They may
+  now read inside their working folder (not other people's private memory) and search or fetch the web out of the box, on top of their
+  `cli.allowedTools`.
+- **Only usable models**: the Providers page lists the models you can run with what is signed in
+  or configured (including the Claude Code models when it is signed in), not every model pi
+  knows. Model pickers leave out models nothing is configured for.
+- **"What will you use Shipmate for?"**: the setup guide now opens by asking whether Shipmate is
+  for home life, work or both, and tailors what follows. Work gets a short "basics" step (where
+  you're based, working hours) with no family questions, and home keeps the household details
+  behind an "Add more" button. The starter crew step suggests crew that match, with the rest
+  listed underneath, and the Captain preview asks a work question for work. Two new starter
+  crew for work: **Yeoman** (to-do list, email drafts, meeting prep) and **Lookout** (web
+  research with sources). The answer is part of the household facts every crew member reads
+  and can be changed in Settings.
+- **Claude subscription in the setup guide**: when Claude Code is signed in, the model step can
+  run the Captain (and the starter crew brought aboard next) on it and continue, instead of only
+  offering "Next without a model". The Bridge no longer warns about a missing provider when the
+  Captain runs on Claude Code. Copy buttons now work when Shipmate is opened over plain http
+  (a LAN address), where browsers hide the clipboard API.
 - **First-launch guide**: a new install walks the owner through a step-by-step, skippable setup
   after creating the account: connect a model (Ollama, ChatGPT plan, Claude subscription or an API
   key) and pick the crew's default, name the Captain and choose its personality (five presets or

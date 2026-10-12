@@ -10,6 +10,7 @@ import { sql } from "drizzle-orm";
 import Fastify from "fastify";
 import { ZodError, z } from "zod";
 import { HttpError, type UserRow } from "./auth.js";
+import { CLI_MCP_PATH, cliMcpRoutes } from "./cli-mcp.js";
 import type { Config } from "./config.js";
 import { approvalRoutes, DecisionSchema } from "./routes/approvals.js";
 import { authRoutes } from "./routes/auth.js";
@@ -50,7 +51,7 @@ const PUBLIC = new Set([
   "/api/auth/oidc/callback",
 ]);
 /** Prefixes reachable without signing in; each route checks its own credential (a token). */
-const PUBLIC_PREFIXES = ["/api/hooks/", "/api/push/act/"];
+const PUBLIC_PREFIXES = ["/api/hooks/", "/api/push/act/", CLI_MCP_PATH];
 
 /** How often the Bridge's WebSocket is pinged, under common proxy idle timeouts (60 s). */
 const WS_PING_MS = 25_000;
@@ -113,6 +114,15 @@ export async function buildApp(
     // Chat bridges connect in the background when configured; problems show on their pages.
     void services.telegram.start();
     void services.slack.start();
+  });
+  // Crew on the Claude Code CLI reach Shipmate's tools over loopback (see cli-mcp.ts).
+  app.addHook("onListen", async () => {
+    const address = app.server.address();
+    if (address && typeof address === "object") {
+      services.bridge.cliTools.setBaseUrl(
+        `http://${loopbackHost(address.address)}:${address.port}`,
+      );
+    }
   });
   app.addHook("onClose", async () => {
     clearInterval(fileSweep);
@@ -184,6 +194,7 @@ export async function buildApp(
   await slackRoutes(app, services);
   await backupRoutes(app, services);
   await claudeCliRoutes(app, services);
+  await cliMcpRoutes(app, services.bridge.cliTools);
   await pushRoutes(app, services);
   await fileRoutes(app, services);
   await voiceRoutes(app, services);
@@ -290,4 +301,12 @@ declare module "fastify" {
     /** Set for every /api route except the public ones. */
     user: UserRow;
   }
+}
+
+/** The address a process in this container uses to reach the server's own port. */
+export function loopbackHost(address: string): string {
+  if (address === "0.0.0.0" || address === "::" || address === "" || address === "::1") {
+    return address === "::1" ? "[::1]" : "127.0.0.1";
+  }
+  return address.includes(":") ? `[${address}]` : address;
 }

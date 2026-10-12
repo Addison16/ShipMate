@@ -116,7 +116,9 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
   );
 
   const crewList = crew.data ?? [];
-  const noModels = models.data !== null && !models.data.some((m) => m.available);
+  // A Captain on the Claude Code CLI answers without a provider.
+  const captainOnCli = crewList.some((m) => m.captain && m.backend === "claude-code-cli");
+  const noModels = models.data !== null && !models.data.some((m) => m.available) && !captainOnCli;
   const current =
     conversations.data?.find((c) => c.id === conversationId) ??
     search.results?.find((r) => r.conversation.id === conversationId)?.conversation ??

@@ -1,9 +1,21 @@
 import { z } from "zod";
 
-/** A model reference in `provider/model` form, e.g. `anthropic/claude-sonnet-5-5`. */
+/**
+ * crew.yaml `model: default`: use the crew default picked in Settings, and follow it when it
+ * changes. New crew start on it; a person can still give one crew member its own model.
+ */
+export const DEFAULT_MODEL = "default";
+
+/**
+ * A model reference in `provider/model` form, e.g. `anthropic/claude-sonnet-5-5`, or
+ * {@link DEFAULT_MODEL}.
+ */
 export const ModelRef = z
   .string()
-  .regex(/^[a-z0-9-]+\/[A-Za-z0-9._:-]+$/, "model must look like provider/model-id");
+  .regex(
+    /^(default|[a-z0-9-]+\/[A-Za-z0-9._:-]+)$/,
+    'model must look like provider/model-id, or be "default"',
+  );
 
 export const ApprovalPolicy = z.union([
   z.enum(["ask", "auto"]),

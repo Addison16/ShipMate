@@ -1,8 +1,10 @@
 import type {
   CaptainSetupDto,
+  ClaudeCliStatusDto,
   InstallStartersResponse,
   OnboardingStep,
   ProjectDto,
+  ShipmateUse,
 } from "@shipmate/core";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api.js";
@@ -25,12 +27,21 @@ import {
   ErrorText,
   focusRing,
   Loading,
+  Muted,
   Notice,
   SelectField,
   TextAreaField,
   TextField,
 } from "../components/ui.js";
 import { BRIDGE_TABS, type BridgeTab } from "../lib/bridges.js";
+import { CLAUDE_CODE_MODELS, claudeCliApi, readBackend, withBackend } from "../lib/claude-cli.js";
+import {
+  CLAUDE_CODE_PROVIDER,
+  CREW_DEFAULT,
+  providerOf,
+  readModel,
+  withModel,
+} from "../lib/models.js";
 import {
   GUIDE_STEPS,
   nextStep,
@@ -38,6 +49,7 @@ import {
   stepPosition,
   stepState,
   TOUR_STOPS,
+  USE_CHOICES,
 } from "../lib/onboarding.js";
 import { browserTimeZone } from "../lib/starters.js";
 import { useResource } from "../lib/useResource.js";
@@ -57,7 +69,7 @@ import { TelegramPanel } from "./Telegram.js";
 export function OnboardingPage() {
   const { user, onboarding, setOnboarding, refresh } = useAuth();
   const [step, setStep] = useState<OnboardingStep>(
-    user ? (onboarding?.step ?? "model") : "account",
+    user ? (onboarding?.step ?? "purpose") : "account",
   );
   const [error, setError] = useState<string | null>(null);
 
@@ -128,6 +140,7 @@ export function OnboardingPage() {
     >
       <ErrorText>{error}</ErrorText>
       {step === "account" && <AccountStep onCreated={refresh} />}
+      {step === "purpose" && <PurposeStep nav={nav} />}
       {step === "model" && <ModelStep nav={nav} />}
       {step === "captain" && <CaptainStep nav={nav} />}
       {step === "household" && <HouseholdStep nav={nav} />}
@@ -439,7 +452,60 @@ function AccountStep({ onCreated }: { onCreated: () => Promise<void> }) {
   );
 }
 
-// ---------- 2. model ----------
+// ---------- 2. purpose ----------
+
+type Use = ShipmateUse | "";
+
+/** What Shipmate is for, as saved on the purpose step ("" when skipped). */
+function useShipmateUse() {
+  return useResource(() => api.getProfile().then((r) => r.household.use));
+}
+
+function PurposeStep({ nav }: { nav: StepNav }) {
+  const use = useShipmateUse();
+  return (
+    <>
+      <StepHeader eyebrow="First things first" title="What will you use Shipmate for?">
+        This decides what the guide asks next and which crew members it suggests. You can change it
+        later in Settings.
+      </StepHeader>
+      <ErrorText>{use.error}</ErrorText>
+      {use.loading && use.data === null && <Loading />}
+      {use.data !== null && <PurposeForm initial={use.data} nav={nav} />}
+    </>
+  );
+}
+
+function PurposeForm({ initial, nav }: { initial: Use; nav: StepNav }) {
+  const [use, setUse] = useState<Use>(initial);
+
+  async function save() {
+    if (!use) throw new Error("Pick one, or skip this for now.");
+    if (use !== initial) await api.updateHousehold({ use });
+  }
+
+  return (
+    <>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {USE_CHOICES.map((c) => (
+          <ChoiceCard
+            key={c.id}
+            selected={use === c.id}
+            onSelect={() => setUse(c.id)}
+            title={c.title}
+          >
+            {c.body}
+          </ChoiceCard>
+        ))}
+      </div>
+      <StepFooter nav={nav} onNext={save} />
+    </>
+  );
+}
+
+// ---------- 3. model ----------
+
+const CAPTAIN = "captain";
 
 type ModelRoute = "local" | "chatgpt" | "claude" | "key";
 
@@ -449,9 +515,25 @@ function ModelStep({ nav }: { nav: StepNav }) {
   const settings = useResource(() => api.getSettings());
   const [route, setRoute] = useState<ModelRoute | null>(null);
   const [defaultModel, setDefaultModel] = useState<string | null>(null);
+  // The Claude subscription is not a provider: it runs crew members through the official CLI.
+  const cliStatus = useResource(() => claudeCliApi.status().then((r) => r.claudeCli));
+  const [cli, setCli] = useState<ClaudeCliStatusDto | null>(null);
+  const cliReady = !!(cli ?? cliStatus.data)?.signedIn;
+  const captain = useResource(() => api.getCrew(CAPTAIN).then((r) => r.crew));
+  const captainOnCli = captain.data
+    ? readBackend(captain.data.manifestYaml) === "claude-code-cli"
+    : false;
+  const [useCli, setUseCli] = useState<boolean | null>(null);
+  const captainModel = captain.data ? readModel(captain.data.manifestYaml) : "";
+  const [cliModel, setCliModel] = useState<string | null>(null);
+  const claudeModel =
+    cliModel ??
+    (providerOf(captainModel) === CLAUDE_CODE_PROVIDER ? captainModel : "claude-code/sonnet");
   const available = models.data?.filter((m) => m.available) ?? [];
   const current = defaultModel ?? settings.data?.defaultModel ?? "";
-  const ready = available.length > 0;
+  // Default to Claude when it is signed in and nothing else is, or the Captain already uses it.
+  const onCli = cliReady && (useCli ?? (captainOnCli || available.length === 0));
+  const ready = available.length > 0 || onCli;
   const kinds = (providers.data?.kinds ?? []).filter(
     (k) => k.kind !== "openai-chatgpt" && k.kind !== "claude-code-cli",
   );
@@ -463,6 +545,17 @@ function ModelStep({ nav }: { nav: StepNav }) {
 
   async function save() {
     if (!ready) return;
+    // Read the Captain fresh, so a slow or failed load never skips the switch silently.
+    const { crew: skipper } = await api.getCrew(CAPTAIN);
+    const isCli = readBackend(skipper.manifestYaml) === "claude-code-cli";
+    if (onCli) {
+      const yaml = withModel(withBackend(skipper.manifestYaml, "claude-code-cli"), claudeModel);
+      if (yaml !== skipper.manifestYaml) await api.updateCrew(CAPTAIN, { manifestYaml: yaml });
+    } else if (isCli) {
+      const yaml = withModel(withBackend(skipper.manifestYaml, "pi"), CREW_DEFAULT);
+      await api.updateCrew(CAPTAIN, { manifestYaml: yaml });
+    }
+    if (available.length === 0) return;
     // Point the crew's default at a model that works; keep the owner's pick when it does.
     const usable = available.some((m) => m.ref === current) ? current : available[0]?.ref;
     if (usable && usable !== settings.data?.defaultModel) {
@@ -477,7 +570,7 @@ function ModelStep({ nav }: { nav: StepNav }) {
         on the Providers page, and each crew member can use a different one.
       </StepHeader>
 
-      {ready && (
+      {available.length > 0 && (
         <div className="mb-5">
           <Notice>
             {available.length} model{available.length === 1 ? " is" : "s are"} ready. Add another or
@@ -525,16 +618,48 @@ function ModelStep({ nav }: { nav: StepNav }) {
         {route === "chatgpt" && <ChatGptCard onChanged={reload} />}
         {route === "claude" && (
           <div className="space-y-3">
-            <ClaudeCliCard />
-            <Button size="sm" onClick={() => void reload()}>
-              I've signed in, check again
-            </Button>
+            <ClaudeCliCard onStatus={setCli} />
           </div>
         )}
         {route === "key" && providers.data && <AddProvider kinds={kinds} onAdded={reload} />}
       </div>
 
-      {ready && (
+      {cliReady && (
+        <label className="mt-5 flex items-start gap-3 rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-700">
+          <input
+            type="checkbox"
+            checked={onCli}
+            onChange={(e) => setUseCli(e.target.checked)}
+            className="mt-0.5 size-4 accent-accent-700"
+          />
+          <span>
+            <span className="block font-medium">Run the Captain on your Claude subscription</span>
+            <span className="block text-slate-600 dark:text-slate-400">
+              Claude Code is signed in. The Captain will answer through it, and so will the starter
+              crew you bring aboard next. The Captain still hands your messages to the right crew
+              member.
+            </span>
+          </span>
+        </label>
+      )}
+      {onCli && (
+        <div className="mt-3 max-w-md">
+          <SelectField
+            label="Claude model"
+            hint="Opus is the most capable, Sonnet is quick and capable, Haiku is fastest and uses the least of your plan. Change it per crew member any time."
+            value={claudeModel}
+            onChange={(e) => setCliModel(e.target.value)}
+          >
+            {CLAUDE_CODE_MODELS.map((m) => (
+              <option key={m.ref} value={m.ref}>
+                {m.name}
+              </option>
+            ))}
+          </SelectField>
+        </div>
+      )}
+
+      {available.length > 0 && (
         <div className="mt-5 max-w-md">
           <ModelSelect
             label="Default model for the crew"
@@ -564,10 +689,11 @@ function ModelStep({ nav }: { nav: StepNav }) {
   );
 }
 
-// ---------- 3. captain ----------
+// ---------- 4. captain ----------
 
 function CaptainStep({ nav }: { nav: StepNav }) {
   const setup = useResource(() => api.captainSetup());
+  const use = useShipmateUse();
   const data = setup.data;
   return (
     <>
@@ -577,12 +703,28 @@ function CaptainStep({ nav }: { nav: StepNav }) {
       </StepHeader>
       <ErrorText>{setup.error}</ErrorText>
       {setup.loading && !data && <Loading />}
-      {data && <CaptainForm key={data.name + data.voice} initial={data} nav={nav} />}
+      {data && (
+        <CaptainForm
+          key={data.name + data.voice}
+          initial={data}
+          work={use.data === "work"}
+          nav={nav}
+        />
+      )}
     </>
   );
 }
 
-function CaptainForm({ initial, nav }: { initial: CaptainSetupDto; nav: StepNav }) {
+function CaptainForm({
+  initial,
+  work,
+  nav,
+}: {
+  initial: CaptainSetupDto;
+  /** Preview a work question instead of a home one. */
+  work: boolean;
+  nav: StepNav;
+}) {
   const [name, setName] = useState(initial.name);
   const [voiceId, setVoiceId] = useState(initial.voiceId);
   const [custom, setCustom] = useState(initial.voiceId === "custom" ? initial.voice : "");
@@ -646,14 +788,15 @@ function CaptainForm({ initial, nav }: { initial: CaptainSetupDto; nav: StepNav 
           </p>
           <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/50">
             <div className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-sm bg-accent-700 px-3 py-2 text-sm text-white">
-              What's for dinner tonight?
+              {work ? "What's on my plate today?" : "What's for dinner tonight?"}
             </div>
             <div className="flex items-start gap-2">
               <Avatar name={shownName} size="sm" />
               <div>
                 <p className="mb-0.5 text-xs font-medium">{shownName}</p>
                 <div className="rounded-2xl rounded-tl-sm bg-white px-3 py-2 text-sm shadow-sm dark:bg-slate-800">
-                  {preset?.sample ?? (custom.trim() ? "(answers in the voice you describe)" : "…")}
+                  {(work ? preset?.workSample : preset?.sample) ??
+                    (custom.trim() ? "(answers in the voice you describe)" : "…")}
                 </div>
               </div>
             </div>
@@ -665,15 +808,17 @@ function CaptainForm({ initial, nav }: { initial: CaptainSetupDto; nav: StepNav 
   );
 }
 
-// ---------- 4. household ----------
+// ---------- 5. household ----------
 
 function HouseholdStep({ nav }: { nav: StepNav }) {
   const data = useResource(() => api.getProfile());
+  const work = data.data?.household.use === "work";
   return (
     <>
-      <StepHeader eyebrow="So nobody asks twice" title="Tell the crew about home">
-        Every crew member reads this, so the Galley knows your diet and the morning briefing knows
-        your town. All of it is optional and lives on your server.
+      <StepHeader eyebrow="So nobody asks twice" title="A few basics">
+        {work
+          ? "Where you're based and when you work, so reminders and briefings land at the right time. All of it is optional and stays on your server."
+          : "Your town and timezone are enough to start. Every crew member reads this, and all of it is optional and stays on your server."}
       </StepHeader>
       <ErrorText>{data.error}</ErrorText>
       {data.loading && !data.data && <Loading />}
@@ -689,6 +834,8 @@ function HouseholdForm({
   initial: Awaited<ReturnType<typeof api.getProfile>>;
   nav: StepNav;
 }) {
+  const use = initial.household.use;
+  const work = use === "work";
   const tz = browserTimeZone() ?? "";
   const [location, setLocation] = useState(initial.household.location);
   const [timezone, setTimezone] = useState(initial.household.timezone || tz);
@@ -696,6 +843,10 @@ function HouseholdForm({
   const [diet, setDiet] = useState(initial.profile.diet);
   const [schedule, setSchedule] = useState(initial.profile.schedule);
   const [showInvite, setShowInvite] = useState(false);
+  // Personal details wait behind a button, so the guide doesn't open with questions about family.
+  const [more, setMore] = useState(
+    !!(initial.household.notes || initial.profile.diet || initial.profile.schedule),
+  );
 
   async function save() {
     const tzValue = timezone.trim();
@@ -723,7 +874,7 @@ function HouseholdForm({
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField
-            label="Home town"
+            label={work ? "Where you're based" : "Home town"}
             placeholder="e.g. Austin, TX"
             hint="For the weather and travel."
             maxLength={200}
@@ -743,30 +894,52 @@ function HouseholdForm({
             onChange={(e) => setTimezone(e.target.value)}
           />
         </div>
-        <TextAreaField
-          label="Who's aboard"
-          rows={3}
-          maxLength={4000}
-          placeholder="Who lives here, kids' ages, pets, shared routines, house rules"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-        />
-        <div className="grid gap-4 sm:grid-cols-2">
+        {work ? (
           <TextField
-            label="Your diet and allergies"
-            placeholder="e.g. vegetarian, no peanuts"
-            maxLength={500}
-            value={diet}
-            onChange={(e) => setDiet(e.target.value)}
-          />
-          <TextField
-            label="Your schedule"
-            placeholder="e.g. work 9 to 5 weekdays, gym Tuesdays"
+            label="Your working hours"
+            placeholder="e.g. 9 to 5 weekdays, no meetings on Fridays"
             maxLength={2000}
             value={schedule}
             onChange={(e) => setSchedule(e.target.value)}
           />
-        </div>
+        ) : more ? (
+          <>
+            <TextAreaField
+              label="Who's aboard"
+              rows={3}
+              maxLength={4000}
+              placeholder="Who lives here, kids' ages, pets, shared routines, house rules"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextField
+                label="Your diet and allergies"
+                placeholder="e.g. vegetarian, no peanuts"
+                maxLength={500}
+                value={diet}
+                onChange={(e) => setDiet(e.target.value)}
+              />
+              <TextField
+                label="Your schedule"
+                placeholder="e.g. work 9 to 5 weekdays, gym Tuesdays"
+                maxLength={2000}
+                value={schedule}
+                onChange={(e) => setSchedule(e.target.value)}
+              />
+            </div>
+          </>
+        ) : (
+          <div>
+            <Button variant="secondary" size="sm" onClick={() => setMore(true)}>
+              Add more about {use === "home" ? "your household" : "yourself"}
+            </Button>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Optional: who's aboard, diets and allergies, your schedule. You can also add these
+              later in Settings.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="mt-6 space-y-4">
@@ -774,7 +947,13 @@ function HouseholdForm({
         <Card>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="font-semibold">Add the rest of the household</h2>
+              <h2 className="font-semibold">
+                {work
+                  ? "Add your team"
+                  : use === "home"
+                    ? "Add the rest of the household"
+                    : "Add other people"}
+              </h2>
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 Everyone shares the crew; each person gets their own conversations and profile.
               </p>
@@ -879,10 +1058,44 @@ function InviteForm() {
   );
 }
 
-// ---------- 5. crew ----------
+// ---------- 6. crew ----------
 
 function CrewStep({ nav }: { nav: StepNav }) {
+  const use = useShipmateUse();
   const [result, setResult] = useState<InstallStartersResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [switching, setSwitching] = useState(false);
+  // Installed crew still waiting on the move to Claude Code, kept so a failed move can be retried.
+  const [pending, setPending] = useState<InstallStartersResponse | null>(null);
+
+  // A Captain on the Claude subscription (picked on the model step) brings its crew along. The
+  // roster shows only once every switch is saved, so leaving early never strands one on pi.
+  async function installed(r: InstallStartersResponse) {
+    setSwitching(true);
+    setPending(r);
+    setError(null);
+    try {
+      const { crew: captain } = await api.getCrew(CAPTAIN);
+      if (readBackend(captain.manifestYaml) === "claude-code-cli") {
+        // They take the Captain's Claude model too, when it picked one.
+        const model = readModel(captain.manifestYaml);
+        for (const c of r.crew) {
+          const { crew } = await api.getCrew(c.slug);
+          if (readBackend(crew.manifestYaml) === "claude-code-cli") continue;
+          let yaml = withBackend(crew.manifestYaml, "claude-code-cli");
+          if (providerOf(model) === CLAUDE_CODE_PROVIDER) yaml = withModel(yaml, model);
+          await api.updateCrew(c.slug, { manifestYaml: yaml });
+        }
+      }
+      setResult(r);
+      setPending(null);
+    } catch (err) {
+      setError(`Could not move the new crew to Claude Code: ${errorMessage(err)}`);
+    } finally {
+      setSwitching(false);
+    }
+  }
+
   return (
     <>
       <StepHeader eyebrow="Fill the ship" title="Bring aboard a starter crew">
@@ -906,6 +1119,7 @@ function CrewStep({ nav }: { nav: StepNav }) {
             ))}
           </ul>
           <div className="mt-4 space-y-2">
+            <ErrorText>{error}</ErrorText>
             {result.notes.map((n) => (
               <Notice key={n}>{n}</Notice>
             ))}
@@ -914,12 +1128,26 @@ function CrewStep({ nav }: { nav: StepNav }) {
         </>
       ) : (
         <>
-          <StarterCrewPicker
-            doneLabel="Bring aboard"
-            onDone={(r) => setResult(r)}
-            skipLabel="Skip for now"
-            onSkip={nav.skip}
-          />
+          {error && (
+            <div className="mb-4">
+              <ErrorText>{error}</ErrorText>
+            </div>
+          )}
+          {use.data === null && !use.error ? (
+            <Loading />
+          ) : switching ? (
+            <Muted>Moving the new crew to Claude Code…</Muted>
+          ) : pending ? (
+            <Button onClick={() => void installed(pending)}>Try again</Button>
+          ) : (
+            <StarterCrewPicker
+              doneLabel="Bring aboard"
+              onDone={(r) => void installed(r)}
+              skipLabel="Skip for now"
+              onSkip={nav.skip}
+              use={use.data ?? ""}
+            />
+          )}
           {nav.back && (
             <div className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-800">
               <Button variant="ghost" onClick={nav.back}>
@@ -933,7 +1161,7 @@ function CrewStep({ nav }: { nav: StepNav }) {
   );
 }
 
-// ---------- 6. connect ----------
+// ---------- 7. connect ----------
 
 function ConnectStep({ nav }: { nav: StepNav }) {
   const [tab, setTab] = useState<BridgeTab | null>(null);
@@ -976,7 +1204,7 @@ function ConnectStep({ nav }: { nav: StepNav }) {
   );
 }
 
-// ---------- 7. shipyard ----------
+// ---------- 8. shipyard ----------
 
 function ShipyardStep({ nav }: { nav: StepNav }) {
   const shipyard = useResource(() => api.getShipyard());
@@ -1043,7 +1271,7 @@ function ShipyardStep({ nav }: { nav: StepNav }) {
   );
 }
 
-// ---------- 8. tour ----------
+// ---------- 9. tour ----------
 
 function FinishStep({
   onGo,

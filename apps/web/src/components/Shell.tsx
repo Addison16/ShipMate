@@ -69,7 +69,7 @@ function NavLinks({ current, onNavigate }: { current: string; onNavigate?: () =>
                 focusRing,
                 active
                   ? "bg-accent-600 text-white shadow-sm dark:bg-accent-500/20 dark:text-accent-100"
-                  : "text-slate-700 hover:bg-accent-50 hover:text-accent-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-accent-200",
+                  : "text-slate-700 hover:bg-accent-50 active:bg-accent-100 hover:text-accent-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-accent-200",
               )}
             >
               <span

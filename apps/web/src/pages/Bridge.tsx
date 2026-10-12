@@ -88,6 +88,9 @@ function ConversationTags({
   );
 }
 
+/** Thread header buttons: a 36px square tap target on phones, a labelled button from sm up. */
+const headerAction = "max-sm:size-9 max-sm:p-0";
+
 export function BridgePage({ conversationId }: { conversationId: string | null }) {
   const conversations = useResource(() => api.listConversations().then((r) => r.conversations));
   const crew = useResource(() => api.listCrew().then((r) => r.crew));
@@ -396,7 +399,7 @@ function ConversationRow({
         "relative rounded-md transition-colors duration-150",
         active
           ? "bg-accent-700/10 dark:bg-accent-400/10"
-          : "hover:bg-slate-100 dark:hover:bg-slate-800",
+          : "hover:bg-slate-100 active:bg-slate-200/70 dark:hover:bg-slate-800 dark:active:bg-slate-700/70",
       )}
     >
       <a
@@ -668,13 +671,15 @@ function Thread({
             )}
             {conversation && !readOnly && (
               <>
+                {/* Icons only on phones, so the chat's title keeps the room. */}
                 <Button
                   size="sm"
                   variant="ghost"
+                  className={headerAction}
                   aria-pressed={conversation.pinned}
                   onClick={() => void togglePin()}
                 >
-                  <NavIcon name="pin" size={14} />
+                  <NavIcon name="pin" size={16} />
                   <span className="sr-only sm:not-sr-only">
                     {conversation.pinned ? "Unpin" : "Pin"}
                   </span>
@@ -682,13 +687,19 @@ function Thread({
                 <Button
                   size="sm"
                   variant="ghost"
+                  className={headerAction}
                   onClick={() => setRenaming(conversation.title ?? "")}
                 >
-                  <NavIcon name="pencil" size={14} />
+                  <NavIcon name="pencil" size={16} />
                   <span className="sr-only sm:not-sr-only">Rename</span>
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => void remove()}>
-                  <NavIcon name="trash" size={14} />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={headerAction}
+                  onClick={() => void remove()}
+                >
+                  <NavIcon name="trash" size={16} />
                   <span className="sr-only sm:not-sr-only">Delete</span>
                 </Button>
               </>
@@ -818,7 +829,13 @@ function Thread({
                 </Button>
               )}
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <p
+              className={cx(
+                "text-xs text-slate-500 dark:text-slate-400",
+                // Keyboard tips mean nothing on a phone; the hands-free tip still does.
+                !handsFree && "hidden sm:block",
+              )}
+            >
               {handsFree
                 ? "Hands-free: tap the mic, speak, tap again to send. Replies are read aloud."
                 : "Enter to send, Shift+Enter for a new line."}
@@ -950,7 +967,7 @@ function SearchResults({
                 focusRing,
                 r.conversation.id === conversationId
                   ? "bg-accent-700/10 dark:bg-accent-400/10"
-                  : "hover:bg-slate-100 dark:hover:bg-slate-800",
+                  : "hover:bg-slate-100 active:bg-slate-200/70 dark:hover:bg-slate-800 dark:active:bg-slate-700/70",
               )}
             >
               <span className="flex items-baseline justify-between gap-2">

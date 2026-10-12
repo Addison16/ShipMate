@@ -37,7 +37,7 @@ export function Toasts() {
   return (
     <section
       aria-label="Notifications"
-      className="pointer-events-none fixed top-16 right-3 z-40 md:top-3 flex w-[min(24rem,calc(100vw-1.5rem))] flex-col gap-2"
+      className="pointer-events-none fixed top-[calc(4rem+env(safe-area-inset-top))] right-3 z-40 md:top-3 flex w-[min(24rem,calc(100vw-1.5rem))] flex-col gap-2"
     >
       {toasts.map((t) => (
         <div

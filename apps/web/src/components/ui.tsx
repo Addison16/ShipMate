@@ -275,7 +275,7 @@ export function EmptyState({
   return (
     <div
       className={cx(
-        "flex animate-fade-up flex-col items-center rounded-xl border border-dashed border-slate-300 bg-white/60 px-6 py-10 text-center dark:border-slate-700 dark:bg-slate-900/40",
+        "flex animate-fade-up flex-col items-center rounded-xl border border-dashed border-slate-300 bg-white/60 px-5 py-8 text-center sm:px-6 sm:py-10 dark:border-slate-700 dark:bg-slate-900/40",
         className,
       )}
     >

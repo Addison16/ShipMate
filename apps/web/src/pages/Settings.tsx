@@ -163,7 +163,7 @@ function SettingsOverview() {
                   <a
                     href={href(s.path)}
                     className={cx(
-                      "flex h-full items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 transition-colors hover:border-accent-300 hover:bg-accent-50/50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-accent-700 dark:hover:bg-slate-800/60",
+                      "flex h-full items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 transition duration-150 hover:border-accent-300 hover:bg-accent-50/50 active:scale-[0.98] active:bg-accent-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-accent-700 dark:hover:bg-slate-800/60",
                       focusRing,
                     )}
                   >

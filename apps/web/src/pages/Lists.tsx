@@ -107,7 +107,7 @@ function ListCard({
       <a
         href={href(`/lists/${l.id}`)}
         className={cx(
-          "block h-full rounded-xl border border-slate-200 bg-white p-4 pr-24 shadow-xs transition duration-200 sm:pr-20 hover:-translate-y-0.5 hover:border-accent-600/50 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:hover:border-accent-400/50",
+          "block h-full rounded-xl border border-slate-200 bg-white p-4 pr-24 shadow-xs transition duration-200 sm:pr-20 hover:-translate-y-0.5 hover:border-accent-600/50 hover:shadow-md active:translate-y-0 active:scale-[0.98] dark:border-slate-700 dark:bg-slate-900 dark:hover:border-accent-400/50",
           focusRing,
         )}
       >

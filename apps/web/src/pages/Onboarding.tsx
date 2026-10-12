@@ -478,11 +478,12 @@ function ModelStep({ nav }: { nav: StepNav }) {
 
   async function save() {
     if (!ready) return;
-    if (captain.data && onCli !== captainOnCli) {
+    // Read the Captain fresh, so a slow or failed load never skips the switch silently.
+    const { crew: skipper } = await api.getCrew(CAPTAIN);
+    const isCli = readBackend(skipper.manifestYaml) === "claude-code-cli";
+    if (onCli !== isCli) {
       const backend = onCli ? "claude-code-cli" : "pi";
-      await api.updateCrew(CAPTAIN, {
-        manifestYaml: withBackend(captain.data.manifestYaml, backend),
-      });
+      await api.updateCrew(CAPTAIN, { manifestYaml: withBackend(skipper.manifestYaml, backend) });
     }
     if (available.length === 0) return;
     // Point the crew's default at a model that works; keep the owner's pick when it does.
@@ -922,24 +923,36 @@ function InviteForm() {
 function CrewStep({ nav }: { nav: StepNav }) {
   const [result, setResult] = useState<InstallStartersResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [switching, setSwitching] = useState(false);
+  // Installed crew still waiting on the move to Claude Code, kept so a failed move can be retried.
+  const [pending, setPending] = useState<InstallStartersResponse | null>(null);
 
-  // A Captain on the Claude subscription (picked on the model step) brings its crew along.
+  // A Captain on the Claude subscription (picked on the model step) brings its crew along. The
+  // roster shows only once every switch is saved, so leaving early never strands one on pi.
   async function installed(r: InstallStartersResponse) {
-    setResult(r);
+    setSwitching(true);
+    setPending(r);
+    setError(null);
     try {
       const { crew: captain } = await api.getCrew(CAPTAIN);
-      if (readBackend(captain.manifestYaml) !== "claude-code-cli") return;
-      for (const c of r.crew) {
-        const { crew } = await api.getCrew(c.slug);
-        if (readBackend(crew.manifestYaml) === "claude-code-cli") continue;
-        await api.updateCrew(c.slug, {
-          manifestYaml: withBackend(crew.manifestYaml, "claude-code-cli"),
-        });
+      if (readBackend(captain.manifestYaml) === "claude-code-cli") {
+        for (const c of r.crew) {
+          const { crew } = await api.getCrew(c.slug);
+          if (readBackend(crew.manifestYaml) === "claude-code-cli") continue;
+          await api.updateCrew(c.slug, {
+            manifestYaml: withBackend(crew.manifestYaml, "claude-code-cli"),
+          });
+        }
       }
+      setResult(r);
+      setPending(null);
     } catch (err) {
-      setError(`Could not switch the new crew to Claude Code: ${errorMessage(err)}`);
+      setError(`Could not move the new crew to Claude Code: ${errorMessage(err)}`);
+    } finally {
+      setSwitching(false);
     }
   }
+
   return (
     <>
       <StepHeader eyebrow="Fill the ship" title="Bring aboard a starter crew">
@@ -972,12 +985,23 @@ function CrewStep({ nav }: { nav: StepNav }) {
         </>
       ) : (
         <>
-          <StarterCrewPicker
-            doneLabel="Bring aboard"
-            onDone={(r) => void installed(r)}
-            skipLabel="Skip for now"
-            onSkip={nav.skip}
-          />
+          {error && (
+            <div className="mb-4">
+              <ErrorText>{error}</ErrorText>
+            </div>
+          )}
+          {switching ? (
+            <Muted>Moving the new crew to Claude Code…</Muted>
+          ) : pending ? (
+            <Button onClick={() => void installed(pending)}>Try again</Button>
+          ) : (
+            <StarterCrewPicker
+              doneLabel="Bring aboard"
+              onDone={(r) => void installed(r)}
+              skipLabel="Skip for now"
+              onSkip={nav.skip}
+            />
+          )}
           {nav.back && (
             <div className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-800">
               <Button variant="ghost" onClick={nav.back}>

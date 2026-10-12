@@ -6,6 +6,26 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **The Captain coordinates on Claude Code too**: a Captain running on a Claude subscription now
+  hands your messages to the right crew member with `delegate`, like one on a provider. Crew on
+  Claude Code also get Shipmate's own tools (memory, lists, `ask_captain`), served to the CLI by
+  a small per-turn MCP endpoint over loopback and gated by the same approval rules. A Captain on
+  Claude Code also answers crew members' `ask_captain` questions instead of declining.
+- **One crew default model**: crew.yaml can say `model: default`, which means the crew default
+  picked in Settings, and follows it when it changes. New crew, starters and recruits start on
+  it. Settings has "Put everyone on the crew default" for existing crew, and each crew member's
+  page has a model picker for giving one its own model.
+- **Pick where a model runs, then which one**: model pickers are two dropdowns, a provider (or
+  the Claude subscription, or the crew default) and then its models. Choosing a Claude
+  subscription model for a crew member also moves it onto Claude Code, and the setup guide asks
+  which Claude model the Captain should use.
+- **Claude Code crew can read their own files**: crew on the Claude subscription were refused
+  every tool in the default `dontAsk` mode ("Permission to use Read has been denied"). They may
+  now read inside their working folder (not other people's private memory) and search or fetch the web out of the box, on top of their
+  `cli.allowedTools`.
+- **Only usable models**: the Providers page lists the models you can run with what is signed in
+  or configured (including the Claude Code models when it is signed in), not every model pi
+  knows. Model pickers leave out models nothing is configured for.
 - **"What will you use Shipmate for?"**: the setup guide now opens by asking whether Shipmate is
   for home life, work or both, and tailors what follows. Work gets a short "basics" step (where
   you're based, working hours) with no family questions, and home keeps the household details

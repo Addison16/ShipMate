@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeStatus, readBackend, withBackend } from "./claude-cli.js";
+import { describeStatus, readBackend, usableModels, withBackend } from "./claude-cli.js";
 
 describe("claude-cli helpers", () => {
   it("reads the backend, defaulting to pi", () => {
@@ -21,5 +21,25 @@ describe("claude-cli helpers", () => {
     );
     expect(describeStatus({ ...base, installed: true, signedIn: false }).tone).toBe("warn");
     expect(describeStatus({ ...base, installed: true, signedIn: true }).tone).toBe("ok");
+  });
+});
+
+describe("usableModels", () => {
+  const models = [
+    { ref: "anthropic/claude-x", name: "Claude X", provider: "anthropic", available: true },
+    { ref: "openai/gpt-x", name: "GPT X", provider: "openai", available: false },
+    { ref: "xai/grok-x", name: "Grok X", provider: "xai", available: false },
+  ];
+
+  it("lists only models that something signed in can run", () => {
+    expect(usableModels(models, false)).toEqual([
+      { ref: "anthropic/claude-x", name: "Claude X", source: "anthropic" },
+    ]);
+  });
+
+  it("adds the Claude Code models when the CLI is signed in", () => {
+    const refs = usableModels([], true).map((m) => m.ref);
+    expect(refs).toEqual(["claude-code/opus", "claude-code/sonnet", "claude-code/haiku"]);
+    expect(usableModels(models, true)).toHaveLength(4);
   });
 });

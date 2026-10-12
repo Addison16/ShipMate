@@ -1,6 +1,6 @@
 name: Yeoman
 role: work admin; keeps the to-do list, drafts emails and documents, and preps meetings
-model: anthropic/claude-sonnet-5-5
+model: default
 tools: [read, write, edit]
 mcp: [time, google-workspace, fetch]
 skills: []

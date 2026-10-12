@@ -129,7 +129,7 @@ describe.skipIf(!db)("Everyday life", () => {
     for (const s of starters) for (const id of s.mcp) expect(servers.has(id)).toBe(true);
   });
 
-  it("installs chosen crew on the default model with paused watches", async () => {
+  it("installs chosen crew on the crew default model with paused watches", async () => {
     expect(
       (await api("POST", "/api/crew/starters", { slugs: ["galley"] }, memberCookie)).statusCode,
     ).toBe(403);
@@ -147,7 +147,7 @@ describe.skipIf(!db)("Everyday life", () => {
     const body = res.json();
     expect(body.crew.map((c: { slug: string }) => c.slug)).toEqual(["galley", "navigator"]);
     for (const c of body.crew) {
-      expect(c).toMatchObject({ model: "faux/m", status: "active" });
+      expect(c).toMatchObject({ model: "default", status: "active" });
     }
     expect(body.watches).toHaveLength(2);
     for (const w of body.watches) {
@@ -477,7 +477,7 @@ describe.skipIf(!db)("Everyday life", () => {
     expect(preview).toMatchObject({
       name: "Galley",
       slug: "galley-2",
-      model: "faux/m",
+      model: "default",
       skills: [{ name: "weekly-meal-plan", description: "plan a week of dinners" }],
     });
 

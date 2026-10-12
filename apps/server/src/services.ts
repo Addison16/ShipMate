@@ -263,7 +263,7 @@ export async function createServices(
     lists,
     profiles,
     crewBundles: new CrewBundleService({ crew, settings, providers, mcp, skills }),
-    starters: new StarterService(config.TEMPLATES_DIR, crew, settings, mcp, watches),
+    starters: new StarterService(config.TEMPLATES_DIR, crew, mcp, watches),
     push,
     files,
     voice: new VoiceService(db, vault, settings, options.voiceFetch),

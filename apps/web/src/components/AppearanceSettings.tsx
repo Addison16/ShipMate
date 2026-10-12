@@ -48,7 +48,7 @@ export function AppearanceSettings() {
                 />
                 <NavIcon name={m.id} size={22} />
                 {m.label}
-                <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                <span className="text-xs font-normal text-slate-600 dark:text-slate-400">
                   {MODE_HINTS[m.id]}
                 </span>
               </label>

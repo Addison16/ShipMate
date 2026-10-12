@@ -181,7 +181,7 @@ export function TimelineView({ items, selfId }: { items: TimelineItem[]; selfId:
             {it.text ? (
               <Markdown text={it.text} />
             ) : (
-              <span className="text-slate-400">
+              <span className="text-slate-500 dark:text-slate-400">
                 <span aria-hidden="true">…</span>
                 <span className="sr-only">Thinking</span>
               </span>

@@ -51,7 +51,7 @@ export function ApprovalTray({ variant }: { variant: "sidebar" | "topbar" }) {
         >
           <span
             aria-hidden="true"
-            className="grid size-5 place-items-center rounded-full bg-amber-500 text-[11px] font-bold text-white"
+            className="grid size-5 place-items-center rounded-full bg-amber-400 text-[11px] font-bold text-amber-950"
           >
             {count}
           </span>

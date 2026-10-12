@@ -94,7 +94,7 @@ function NavLinks({ current, onNavigate }: { current: string; onNavigate?: () =>
       {NAV.map((g) => (
         <div key={g.group ?? "main"}>
           {g.group && (
-            <p className="px-3 pb-1.5 text-[11px] font-semibold tracking-wider text-accent-700/80 uppercase dark:text-accent-300/80">
+            <p className="px-3 pb-1.5 text-[11px] font-semibold tracking-wider text-accent-700 uppercase dark:text-accent-300">
               {g.group}
             </p>
           )}
@@ -139,7 +139,7 @@ function NavList({
               <span
                 className={cx(
                   !active &&
-                    "text-slate-400 group-hover:text-accent-600 dark:text-slate-500 dark:group-hover:text-accent-300",
+                    "text-slate-500 group-hover:text-accent-600 dark:text-slate-400 dark:group-hover:text-accent-300",
                 )}
               >
                 <NavIcon name={n.icon} />
@@ -179,7 +179,7 @@ function ModeToggle() {
               focusRing,
               on
                 ? "bg-white text-accent-700 shadow-sm dark:bg-slate-950 dark:text-accent-300"
-                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100",
+                : "text-slate-600 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100",
             )}
           >
             <NavIcon name={m.id} size={14} />

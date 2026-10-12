@@ -72,7 +72,7 @@ export function IconButton({
       aria-label={label}
       title={label}
       className={cx(
-        "grid size-7 shrink-0 place-items-center rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        "grid size-9 shrink-0 place-items-center rounded-md transition-colors sm:size-7 disabled:cursor-not-allowed disabled:opacity-50",
         active ? "text-accent-700 dark:text-accent-300" : "text-slate-500 dark:text-slate-400",
         tone === "danger"
           ? "hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/60 dark:hover:text-red-300"
@@ -82,7 +82,7 @@ export function IconButton({
       )}
       {...rest}
     >
-      <NavIcon name={icon} size={15} />
+      <NavIcon name={icon} size={16} />
     </button>
   );
 }

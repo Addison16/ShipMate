@@ -104,7 +104,7 @@ function ListCard({
       <a
         href={href(`/lists/${l.id}`)}
         className={cx(
-          "block h-full rounded-xl border border-slate-200 bg-white p-4 pr-20 transition hover:-translate-y-0.5 hover:border-accent-600/50 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:hover:border-accent-400/50",
+          "block h-full rounded-xl border border-slate-200 bg-white p-4 pr-24 transition sm:pr-20 hover:-translate-y-0.5 hover:border-accent-600/50 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:hover:border-accent-400/50",
           focusRing,
         )}
       >
@@ -126,7 +126,7 @@ function ListCard({
           </p>
         )}
       </a>
-      <div className="absolute top-3 right-3 flex gap-0.5">
+      <div className="absolute top-2 right-2 flex gap-0.5 sm:top-3 sm:right-3">
         <IconButton
           icon="pencil"
           label={`Rename ${l.name}`}

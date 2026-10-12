@@ -352,10 +352,54 @@ export function Shell() {
         </nav>
 
         <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto">{page}</main>
+        {/* Thumb-reach tabs on phones; an open chat keeps the whole height for the composer. */}
+        {!(section === "bridge" && route[1]) && <TabBar current={activeNav} />}
         {jump && <QuickJump onClose={() => setJump(false)} />}
         <Toasts />
       </div>
     </ApprovalsProvider>
+  );
+}
+
+/** Bottom tabs on narrow screens for the everyday places; Settings stays in the menu. */
+function TabBar({ current }: { current: string }) {
+  const user = useUser();
+  return (
+    <nav
+      aria-label="Quick"
+      className="shrink-0 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden dark:border-slate-800 dark:bg-slate-900"
+    >
+      <ul className="flex">
+        {MAIN_NAV.filter((n) => canSee(user, n.access)).map((n) => {
+          const active = current === n.id;
+          return (
+            <li key={n.id} className="flex-1">
+              <a
+                href={href(n.path)}
+                aria-current={active ? "page" : undefined}
+                className={cx(
+                  "flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium",
+                  focusRing,
+                  active
+                    ? "text-accent-700 dark:text-accent-300"
+                    : "text-slate-600 dark:text-slate-400",
+                )}
+              >
+                <span
+                  className={cx(
+                    "grid h-7 w-12 place-items-center rounded-full",
+                    active && "bg-accent-100 dark:bg-accent-500/20",
+                  )}
+                >
+                  <NavIcon name={n.icon} size={20} />
+                </span>
+                {n.label}
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
   );
 }
 

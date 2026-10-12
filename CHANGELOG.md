@@ -11,7 +11,9 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   every screen in four groups (You, Crew and tools, AI and cost, This Shipmate) with a filter box,
   and each screen keeps that list beside it. Press **Ctrl K** (**⌘K** on a Mac), **/**, or the
   Search button to jump to any page, setting or crew member by typing a few letters, such as
-  "discord" or "password". Old links like `#/providers` still work.
+  "discord" or "password". Old links like `#/providers` still work. On phones, the five
+  everyday places sit in a tab bar at the bottom, in thumb reach (hidden inside an open chat so
+  the message box keeps the room).
 - **Actions where you look for them**: every chat in the Bridge list has pin, rename and delete
   buttons on its row (rename happens in place), list cards have rename and delete, and each
   watch has edit and delete next to **Run now**, so nothing needs opening first to find them.

@@ -405,7 +405,7 @@ function ConversationRow({
             {formatTime(c.updatedAt)}
           </span>
         </span>
-        <span className="mt-0.5 flex min-h-7 min-w-0 flex-wrap items-center gap-1.5 pr-24 text-xs text-slate-500 dark:text-slate-400">
+        <span className="mt-0.5 flex min-h-9 min-w-0 flex-wrap items-center gap-1.5 pr-32 text-xs sm:min-h-7 sm:pr-24 text-slate-500 dark:text-slate-400">
           {c.kind === "bridge" ? "Bridge" : "Direct"}
           <ConversationTags c={c} projectNames={projectNames} />
         </span>
@@ -667,7 +667,9 @@ function Thread({
                   onClick={() => void togglePin()}
                 >
                   <NavIcon name="pin" size={14} />
-                  {conversation.pinned ? "Unpin" : "Pin"}
+                  <span className="sr-only sm:not-sr-only">
+                    {conversation.pinned ? "Unpin" : "Pin"}
+                  </span>
                 </Button>
                 <Button
                   size="sm"
@@ -675,11 +677,11 @@ function Thread({
                   onClick={() => setRenaming(conversation.title ?? "")}
                 >
                   <NavIcon name="pencil" size={14} />
-                  Rename
+                  <span className="sr-only sm:not-sr-only">Rename</span>
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => void remove()}>
                   <NavIcon name="trash" size={14} />
-                  Delete
+                  <span className="sr-only sm:not-sr-only">Delete</span>
                 </Button>
               </>
             )}

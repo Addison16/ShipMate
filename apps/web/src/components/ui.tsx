@@ -15,7 +15,7 @@ type Variant = "primary" | "secondary" | "danger" | "ghost";
 
 const variants: Record<Variant, string> = {
   primary:
-    "bg-accent-700 text-white hover:bg-accent-800 disabled:bg-accent-700/50 dark:bg-accent-600 dark:hover:bg-accent-500",
+    "bg-accent-700 text-white hover:bg-accent-800 disabled:bg-accent-700/50 dark:bg-accent-600 dark:hover:bg-accent-700",
   secondary:
     "border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700",
   danger:
@@ -49,7 +49,7 @@ export function Button({
 }
 
 const fieldBase =
-  "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:disabled:bg-slate-800 " +
+  "w-full rounded-md border border-control bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 disabled:bg-slate-100 disabled:text-slate-500 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-400 dark:disabled:bg-slate-800 " +
   focusRing;
 
 interface FieldProps {

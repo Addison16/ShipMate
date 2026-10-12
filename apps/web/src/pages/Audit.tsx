@@ -159,7 +159,7 @@ export function AuditPage() {
                   {e.decision ? (
                     <Badge tone={decisionTone(e.decision)}>{e.decision}</Badge>
                   ) : (
-                    <span className="text-slate-400">—</span>
+                    <span className="text-slate-500 dark:text-slate-400">—</span>
                   )}
                 </td>
               </tr>

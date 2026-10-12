@@ -9,6 +9,7 @@ import {
   cx,
   ErrorText,
   focusRing,
+  Loading,
   Muted,
   Table,
   TextField,
@@ -34,7 +35,7 @@ export function TelegramPanel() {
   return (
     <div className="space-y-6">
       <ErrorText>{telegram.error}</ErrorText>
-      {telegram.loading && !t && <Muted>Loading…</Muted>}
+      {telegram.loading && !t && <Loading />}
       {t && (
         <StatusCard
           state={telegramState(t)}

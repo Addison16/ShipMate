@@ -16,9 +16,9 @@ type Variant = "primary" | "secondary" | "danger" | "ghost";
 
 const variants: Record<Variant, string> = {
   primary:
-    "bg-accent-700 text-white hover:bg-accent-800 disabled:bg-accent-700/50 dark:bg-accent-600 dark:hover:bg-accent-700",
+    "bg-accent-700 text-white shadow-sm shadow-accent-900/20 hover:bg-accent-800 hover:shadow-md hover:shadow-accent-900/20 disabled:bg-accent-700/50 dark:bg-accent-600 dark:hover:bg-accent-700",
   secondary:
-    "border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700",
+    "border border-slate-300 bg-white text-slate-800 shadow-xs hover:border-slate-400 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700",
   danger:
     "border border-red-300 bg-white text-red-700 hover:bg-red-50 dark:border-red-800 dark:bg-slate-800 dark:text-red-300 dark:hover:bg-red-950",
   ghost: "text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800",
@@ -38,7 +38,7 @@ export function Button({
     <button
       type={type}
       className={cx(
-        "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+        "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition duration-150 ease-out active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100",
         size === "sm" ? "px-2.5 py-1 text-xs" : "px-3.5 py-2 text-sm",
         variants[variant],
         focusRing,
@@ -88,7 +88,7 @@ export function IconButton({
 }
 
 const fieldBase =
-  "w-full rounded-md border border-control bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 disabled:bg-slate-100 disabled:text-slate-500 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-400 dark:disabled:bg-slate-800 " +
+  "w-full rounded-md border border-control bg-white px-3 py-2 text-sm text-slate-900 shadow-xs transition-[border-color,box-shadow] duration-150 placeholder:text-slate-500 disabled:bg-slate-100 disabled:text-slate-500 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-400 dark:disabled:bg-slate-800 " +
   focusRing;
 
 interface FieldProps {
@@ -164,7 +164,7 @@ export function Card({ children, className }: { children: ReactNode; className?:
   return (
     <section
       className={cx(
-        "rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900",
+        "rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-700/80 dark:bg-slate-900",
         className,
       )}
     >
@@ -200,7 +200,7 @@ export function ErrorText({ children }: { children: ReactNode }) {
   return (
     <p
       role="alert"
-      className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm whitespace-pre-wrap text-red-800 dark:border-red-900 dark:bg-red-950/60 dark:text-red-200"
+      className="animate-fade-in rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm whitespace-pre-wrap text-red-800 dark:border-red-900 dark:bg-red-950/60 dark:text-red-200"
     >
       {children}
     </p>
@@ -209,9 +209,86 @@ export function ErrorText({ children }: { children: ReactNode }) {
 
 export function Notice({ children }: { children: ReactNode }) {
   return (
-    <p className="rounded-md border border-accent-200 bg-accent-50 px-3 py-2 text-sm text-accent-900 dark:border-accent-900 dark:bg-accent-950/50 dark:text-accent-100">
+    <p className="animate-fade-in rounded-md border border-accent-200 bg-accent-50 px-3 py-2 text-sm text-accent-900 dark:border-accent-900 dark:bg-accent-950/50 dark:text-accent-100">
       {children}
     </p>
+  );
+}
+
+/** Shimmering placeholder lines while something loads; screen readers hear "Loading…". */
+export function Loading({ lines = 3, label = "Loading…" }: { lines?: number; label?: string }) {
+  return (
+    <div role="status" className="animate-fade-in space-y-2.5 py-1">
+      <span className="sr-only">{label}</span>
+      {Array.from({ length: lines }, (_, i) => (
+        <div
+          // biome-ignore lint/suspicious/noArrayIndexKey: fixed placeholder rows
+          key={i}
+          aria-hidden="true"
+          className="skeleton h-3.5 rounded-full"
+          style={{ width: `${[92, 76, 84, 64, 88][i % 5]}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Placeholder cards for a grid that is loading. */
+export function LoadingCards({ count = 3 }: { count?: number }) {
+  return (
+    <div role="status" className="grid animate-fade-in gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <span className="sr-only">Loading…</span>
+      {Array.from({ length: count }, (_, i) => (
+        <div
+          // biome-ignore lint/suspicious/noArrayIndexKey: fixed placeholder cards
+          key={i}
+          aria-hidden="true"
+          className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+        >
+          <div className="flex items-start gap-3">
+            <div className="skeleton size-9 shrink-0 rounded-full" />
+            <div className="flex-1 space-y-2.5 pt-1">
+              <div className="skeleton h-3.5 w-1/3 rounded-full" />
+              <div className="skeleton h-3 w-11/12 rounded-full" />
+              <div className="skeleton h-3 w-2/3 rounded-full" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A friendly "nothing here yet" panel with an icon, a line of help and an optional action. */
+export function EmptyState({
+  icon,
+  title,
+  children,
+  action,
+  className,
+}: {
+  icon: ReactNode;
+  title: string;
+  children?: ReactNode;
+  action?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cx(
+        "flex animate-fade-up flex-col items-center rounded-xl border border-dashed border-slate-300 bg-white/60 px-5 py-8 text-center sm:px-6 sm:py-10 dark:border-slate-700 dark:bg-slate-900/40",
+        className,
+      )}
+    >
+      <span className="relative mb-4 grid size-12 place-items-center rounded-2xl bg-gradient-to-br from-accent-100 to-accent-200 text-accent-700 shadow-sm ring-1 ring-accent-600/10 dark:from-accent-900/70 dark:to-accent-950 dark:text-accent-300 dark:ring-accent-400/15">
+        {icon}
+      </span>
+      <h2 className="font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
+      {children && (
+        <div className="mt-1 max-w-md text-sm text-slate-500 dark:text-slate-400">{children}</div>
+      )}
+      {action && <div className="mt-4 flex flex-wrap justify-center gap-2">{action}</div>}
+    </div>
   );
 }
 
@@ -223,18 +300,31 @@ export function PageHeader({
   title,
   description,
   actions,
+  icon,
 }: {
   title: string;
   description?: ReactNode;
   actions?: ReactNode;
+  /** A sidebar icon shown in a tile beside the title, so each place is recognisable at a glance. */
+  icon?: IconName;
 }) {
   return (
     <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        {description && (
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{description}</p>
+      <div className="flex min-w-0 items-start gap-3.5">
+        {icon && (
+          <span
+            aria-hidden="true"
+            className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-accent-500 to-accent-700 text-white shadow-md shadow-accent-900/20 ring-1 ring-white/20 ring-inset"
+          >
+            <NavIcon name={icon} size={20} />
+          </span>
         )}
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+          {description && (
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{description}</p>
+          )}
+        </div>
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </header>
@@ -243,7 +333,14 @@ export function PageHeader({
 
 export function Page({ children, wide }: { children: ReactNode; wide?: boolean }) {
   return (
-    <div className={cx("mx-auto w-full px-4 py-6 sm:px-6", wide ? "max-w-6xl" : "max-w-4xl")}>
+    // Phones have the tab bar under the page; on tablets the bottom padding clears the home
+    // indicator once the page is scrolled to its end.
+    <div
+      className={cx(
+        "mx-auto w-full px-4 py-6 sm:px-6 md:pb-[calc(1.5rem+env(safe-area-inset-bottom))]",
+        wide ? "max-w-6xl" : "max-w-4xl",
+      )}
+    >
       {children}
     </div>
   );
@@ -254,7 +351,9 @@ export function Table({ children }: { children: ReactNode }) {
     // `relative` keeps absolutely positioned cell content (sr-only labels) inside the scroller,
     // so a wide table scrolls in its card instead of widening the page on phones.
     <div className="relative overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
-      <table className="w-full text-left text-sm">{children}</table>
+      <table className="w-full text-left text-sm [&_tbody_tr]:transition-colors [&_tbody_tr:hover]:bg-slate-50/70 dark:[&_tbody_tr:hover]:bg-slate-800/40">
+        {children}
+      </table>
     </div>
   );
 }

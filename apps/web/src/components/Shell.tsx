@@ -38,9 +38,9 @@ function SocketDot() {
       <span
         aria-hidden="true"
         className={cx(
-          "size-2 rounded-full",
+          "size-2 rounded-full transition-colors",
           state === "open"
-            ? "bg-emerald-500"
+            ? "animate-breathe bg-emerald-500"
             : state === "connecting"
               ? "bg-amber-400"
               : "bg-red-500",
@@ -65,15 +65,16 @@ function NavLinks({ current, onNavigate }: { current: string; onNavigate?: () =>
               onClick={onNavigate}
               aria-current={active ? "page" : undefined}
               className={cx(
-                "group flex items-center gap-3 rounded-lg px-3 py-2 transition-colors",
+                "group flex items-center gap-3 rounded-lg px-3 py-2 transition-[background-color,color,box-shadow] duration-200",
                 focusRing,
                 active
                   ? "bg-accent-600 text-white shadow-sm dark:bg-accent-500/20 dark:text-accent-100"
-                  : "text-slate-700 hover:bg-accent-50 hover:text-accent-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-accent-200",
+                  : "text-slate-700 hover:bg-accent-50 active:bg-accent-100 hover:text-accent-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-accent-200",
               )}
             >
               <span
                 className={cx(
+                  "transition-transform duration-200 group-hover:scale-110",
                   !active &&
                     "text-slate-500 group-hover:text-accent-600 dark:text-slate-400 dark:group-hover:text-accent-300",
                 )}
@@ -177,7 +178,7 @@ function Brand() {
         focusRing,
       )}
     >
-      <span className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-accent-500 to-accent-700 text-white shadow-sm">
+      <span className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-accent-500 to-accent-700 text-white shadow-sm shadow-accent-900/20 transition-transform duration-300 ease-out hover:rotate-12">
         <Logo size={20} />
       </span>
       <span className="text-[17px] font-semibold tracking-tight">Shipmate</span>
@@ -275,6 +276,9 @@ export function Shell() {
   }
   // Settings screens other than the overview get the grouped settings list beside them.
   if (settingsSection) page = <SettingsLayout current={settingsSection}>{page}</SettingsLayout>;
+  // Each place fades in when you arrive. Keyed by place, not by item, so moving between chats or
+  // settings sections keeps the page (and its scroll) instead of replaying the animation.
+  const pageKey = settingsSection ? "settings-section" : section;
   const activeNav = activeNavId(route);
 
   return (
@@ -351,7 +355,15 @@ export function Shell() {
           <UserBox />
         </nav>
 
-        <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto">{page}</main>
+        <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-gradient-to-b from-accent-100/50 via-accent-50/20 to-transparent dark:from-accent-900/20 dark:via-accent-950/10"
+          />
+          <div key={pageKey} className="relative h-full animate-page-in">
+            {page}
+          </div>
+        </main>
         {/* Thumb-reach tabs on phones; an open chat keeps the whole height for the composer. */}
         {!(section === "bridge" && route[1]) && <TabBar current={activeNav} />}
         {jump && <QuickJump onClose={() => setJump(false)} />}

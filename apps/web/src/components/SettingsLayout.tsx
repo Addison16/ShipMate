@@ -85,7 +85,9 @@ export function SettingsLayout({ current, children }: { current: string; childre
             Settings
           </a>
         </div>
-        {children}
+        <div key={current} className="animate-page-in">
+          {children}
+        </div>
       </div>
     </div>
   );

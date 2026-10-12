@@ -17,7 +17,15 @@ import { ApprovalCard } from "../components/ApprovalCard.js";
 import { AttachButtons, PendingFiles, useComposerFiles } from "../components/Attachments.js";
 import { NavIcon } from "../components/icons.js";
 import { TimelineView } from "../components/Timeline.js";
-import { Badge, Button, cx, ErrorText, focusRing, IconButton } from "../components/ui.js";
+import {
+  Badge,
+  Button,
+  cx,
+  EmptyState,
+  ErrorText,
+  focusRing,
+  IconButton,
+} from "../components/ui.js";
 import { MicButton, speaker, useHandsFree, useVoiceStatus } from "../components/Voice.js";
 import { formatTime } from "../lib/format.js";
 import { splitHighlights } from "../lib/search.js";
@@ -79,6 +87,9 @@ function ConversationTags({
     </>
   );
 }
+
+/** Thread header buttons: a 36px square tap target on phones, a labelled button from sm up. */
+const headerAction = "max-sm:size-9 max-sm:p-0";
 
 export function BridgePage({ conversationId }: { conversationId: string | null }) {
   const conversations = useResource(() => api.listConversations().then((r) => r.conversations));
@@ -217,14 +228,14 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
               projectNames={projectNames}
             />
           ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            <div className="min-h-0 flex-1 overflow-y-auto p-2 md:pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
               {conversations.error && <ErrorText>{conversations.error}</ErrorText>}
               {conversations.data?.length === 0 && (
                 <p className="p-3 text-sm text-slate-500 dark:text-slate-400">
                   No conversations yet. Start one above.
                 </p>
               )}
-              <ul className="space-y-0.5">
+              <ul className="stagger space-y-0.5">
                 {conversations.data?.map((c, i, all) => (
                   <li key={c.id}>
                     {c.pinned && i === 0 && <ListLabel>Pinned</ListLabel>}
@@ -387,10 +398,10 @@ function ConversationRow({
   return (
     <div
       className={cx(
-        "relative rounded-md",
+        "relative rounded-md transition-colors duration-150",
         active
           ? "bg-accent-700/10 dark:bg-accent-400/10"
-          : "hover:bg-slate-100 dark:hover:bg-slate-800",
+          : "hover:bg-slate-100 active:bg-slate-200/70 dark:hover:bg-slate-800 dark:active:bg-slate-700/70",
       )}
     >
       <a
@@ -662,13 +673,15 @@ function Thread({
             )}
             {conversation && !readOnly && (
               <>
+                {/* Icons only on phones, so the chat's title keeps the room. */}
                 <Button
                   size="sm"
                   variant="ghost"
+                  className={headerAction}
                   aria-pressed={conversation.pinned}
                   onClick={() => void togglePin()}
                 >
-                  <NavIcon name="pin" size={14} />
+                  <NavIcon name="pin" size={16} />
                   <span className="sr-only sm:not-sr-only">
                     {conversation.pinned ? "Unpin" : "Pin"}
                   </span>
@@ -676,13 +689,19 @@ function Thread({
                 <Button
                   size="sm"
                   variant="ghost"
+                  className={headerAction}
                   onClick={() => setRenaming(conversation.title ?? "")}
                 >
-                  <NavIcon name="pencil" size={14} />
+                  <NavIcon name="pencil" size={16} />
                   <span className="sr-only sm:not-sr-only">Rename</span>
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => void remove()}>
-                  <NavIcon name="trash" size={14} />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={headerAction}
+                  onClick={() => void remove()}
+                >
+                  <NavIcon name="trash" size={16} />
                   <span className="sr-only sm:not-sr-only">Delete</span>
                 </Button>
               </>
@@ -701,9 +720,13 @@ function Thread({
         <div className="mx-auto max-w-3xl">
           {loadError && <ErrorText>{loadError}</ErrorText>}
           {state.items.length === 0 && restoredApprovals.length === 0 && !loadError && (
-            <p className="py-10 text-center text-sm text-slate-500 dark:text-slate-400">
-              No messages yet. Say hello.
-            </p>
+            <EmptyState
+              className="mt-6 border-none bg-transparent dark:bg-transparent"
+              icon={<NavIcon name="bridge" size={22} />}
+              title="No messages yet"
+            >
+              Say hello. Ask for anything, and the right crew member picks it up.
+            </EmptyState>
           )}
           <TimelineView items={state.items} selfId={user.id} />
           {restoredApprovals.length > 0 && (
@@ -788,7 +811,7 @@ function Thread({
                 }}
                 placeholder={state.busy ? "The crew is working…" : "Message the crew"}
                 className={cx(
-                  "min-h-[42px] flex-1 resize-none rounded-lg border border-control bg-white px-3 py-2 text-[15px] dark:bg-slate-950",
+                  "min-h-[42px] flex-1 resize-none rounded-xl border border-control bg-white px-3.5 py-2 text-[15px] shadow-xs transition-[border-color,box-shadow] duration-150 dark:bg-slate-950",
                   focusRing,
                 )}
               />
@@ -811,7 +834,13 @@ function Thread({
                 </Button>
               )}
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <p
+              className={cx(
+                "text-xs text-slate-500 dark:text-slate-400",
+                // Keyboard tips mean nothing on a phone; the hands-free tip still does.
+                !handsFree && "hidden sm:block",
+              )}
+            >
               {handsFree
                 ? "Hands-free: tap the mic, speak, tap again to send. Replies are read aloud."
                 : "Enter to send, Shift+Enter for a new line."}
@@ -911,7 +940,10 @@ function SearchResults({
   projectNames: Map<string, string>;
 }) {
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto p-2" aria-live="polite">
+    <div
+      className="min-h-0 flex-1 overflow-y-auto p-2 md:pb-[calc(0.5rem+env(safe-area-inset-bottom))]"
+      aria-live="polite"
+    >
       <div className="flex items-center justify-between px-3 py-1 text-xs text-slate-500 dark:text-slate-400">
         <span>
           {search.loading && !search.results
@@ -943,7 +975,7 @@ function SearchResults({
                 focusRing,
                 r.conversation.id === conversationId
                   ? "bg-accent-700/10 dark:bg-accent-400/10"
-                  : "hover:bg-slate-100 dark:hover:bg-slate-800",
+                  : "hover:bg-slate-100 active:bg-slate-200/70 dark:hover:bg-slate-800 dark:active:bg-slate-700/70",
               )}
             >
               <span className="flex items-baseline justify-between gap-2">

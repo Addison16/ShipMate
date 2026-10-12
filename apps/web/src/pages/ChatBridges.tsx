@@ -11,6 +11,7 @@ export function ChatBridgesPage({ tab: tabParam }: { tab: string | null }) {
   return (
     <Page>
       <PageHeader
+        icon="bridges"
         title="Chat bridges"
         description="Talk to the crew from Discord, Telegram or Slack. Link your account on each one you use so messages run as you."
       />

@@ -311,7 +311,11 @@ describe.skipIf(!db)("claude-code-cli backend through the Bridge", () => {
     expect(call?.leaked).toEqual([]);
     const args = call?.args ?? [];
     expect(args[args.indexOf("--model") + 1]).toBe("sonnet");
-    expect(args[args.indexOf("--allowedTools") + 1]).toBe("Read");
+    const allowed = (args[args.indexOf("--allowedTools") + 1] ?? "").split(",");
+    // Its own tools, plus reading its own folder and web lookups out of the box.
+    expect(allowed).toContain("Read");
+    expect(allowed).toContain("WebSearch");
+    expect(allowed.find((a) => a.startsWith("Read(//"))).toMatch(/^Read\(\/\/.*scribe\/\*\*\)$/);
     expect(args[args.indexOf("--append-system-prompt") + 1]).toContain("You write things down.");
     expect(args).not.toContain("--resume");
   });

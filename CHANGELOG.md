@@ -19,6 +19,10 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   the Claude subscription, or the crew default) and then its models. Choosing a Claude
   subscription model for a crew member also moves it onto Claude Code, and the setup guide asks
   which Claude model the Captain should use.
+- **Claude Code crew can read their own files**: crew on the Claude subscription were refused
+  every tool in the default `dontAsk` mode ("Permission to use Read has been denied"). They may
+  now read inside their own folder and search or fetch the web out of the box, on top of their
+  `cli.allowedTools`.
 - **Only usable models**: the Providers page lists the models you can run with what is signed in
   or configured (including the Claude Code models when it is signed in), not every model pi
   knows. Model pickers leave out models nothing is configured for.

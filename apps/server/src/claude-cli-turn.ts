@@ -92,10 +92,10 @@ export class ClaudeCliTurns {
       allowedTools: [],
       permissionMode: "dontAsk" as const,
     };
-    // Shipmate's tools go through its own approval policy, so the CLI may call them all.
-    const settings = input.mcpConfig
-      ? { ...own, allowedTools: [...own.allowedTools, `mcp__${CLI_MCP_SERVER}`] }
-      : own;
+    const settings = {
+      ...own,
+      allowedTools: cliAllowedTools(folder.dir, own.allowedTools, input.mcpConfig !== undefined),
+    };
     const model = settings.model ?? cliModelFromRef(folder.manifest.model);
 
     const controller = new AbortController();
@@ -217,6 +217,30 @@ export class ClaudeCliTurns {
       ...(context?.length ? ["", ...context] : []),
     ].join("\n");
   }
+}
+
+/**
+ * Tools every CLI crew member may use without asking, on top of its own `cli.allowedTools`:
+ * reading (and Glob/Grep, which follow Read rules) inside its own folder, and looking things up
+ * on the web. In `dontAsk` mode anything else is refused, so without these a fresh crew member
+ * cannot even read its own files.
+ */
+export function defaultCliTools(crewDir: string): string[] {
+  // `//` starts an absolute path in Claude Code permission rules.
+  const abs = crewDir.replace(/\\/g, "/").replace(/^\/*/, "");
+  return [`Read(//${abs}/**)`, "WebSearch", "WebFetch"];
+}
+
+/** The `--allowedTools` for a turn: the defaults, the crew member's own, and Shipmate's tools. */
+export function cliAllowedTools(crewDir: string, own: string[], shipmateTools: boolean): string[] {
+  return [
+    ...new Set([
+      ...defaultCliTools(crewDir),
+      ...own,
+      // Shipmate's tools go through its own approval policy, so the CLI may call them all.
+      ...(shipmateTools ? [`mcp__${CLI_MCP_SERVER}`] : []),
+    ]),
+  ];
 }
 
 /** `mcp__shipmate__delegate` → `delegate`; other tool names unchanged. */

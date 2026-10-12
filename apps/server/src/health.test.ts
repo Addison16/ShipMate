@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { HealthDto } from "@shipmate/core";
+import { type HealthDto, SHIPMATE_VERSION } from "@shipmate/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { addressCheck, checkApiKey } from "./health/checks.js";
 import { compareVersions, ReleaseChecker } from "./health/releases.js";
@@ -479,7 +479,7 @@ describe.skipIf(!db)("the Health page", () => {
   it("shows the version, a newer release and the checks", async () => {
     expect((await api("GET", "/api/health", undefined, memberCookie)).statusCode).toBe(403);
     const h = await health(adminCookie);
-    expect(h.version).toBe("1.0.0");
+    expect(h.version).toBe(SHIPMATE_VERSION);
     expect(h.release).toMatchObject({
       enabled: true,
       updateAvailable: true,
@@ -577,6 +577,6 @@ describe.skipIf(!db)("the Health page", () => {
   it("keeps /healthz open for Docker healthchecks", async () => {
     const res = await t.app.inject({ method: "GET", url: "/healthz" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: true, version: "1.0.0" });
+    expect(res.json()).toEqual({ ok: true, version: SHIPMATE_VERSION });
   });
 });

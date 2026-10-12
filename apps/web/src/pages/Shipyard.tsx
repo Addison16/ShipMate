@@ -4,6 +4,7 @@ import type {
   ProjectDto,
   PullRequestDto,
   ShipyardFlow,
+  ShipyardJobDto,
   ShipyardStatusDto,
 } from "@shipmate/core";
 import { type FormEvent, type ReactNode, useState } from "react";
@@ -27,9 +28,17 @@ import {
 } from "../components/ui.js";
 import { formatTime } from "../lib/format.js";
 import {
+  activeJobsByIssue,
   checksBadge,
   emptyProjectForm,
   FLOW_LABELS,
+  type JobSettingsForm,
+  jobActions,
+  jobBadge,
+  jobSettingsChanges,
+  jobSettingsForm,
+  jobsApi,
+  jobsForBoard,
   type ProjectForm,
   projectChanges,
   prStateBadge,
@@ -119,7 +128,9 @@ function CrewSelect({
 }
 
 function StatusBanner({ status }: { status: ShipyardStatusDto | null }) {
+  const user = useUser();
   if (!status || status.available) return null;
+  const code = (t: string) => <code className="font-mono text-xs">{t}</code>;
   return (
     <div
       role="status"
@@ -128,10 +139,36 @@ function StatusBanner({ status }: { status: ShipyardStatusDto | null }) {
       <p className="font-medium">Code cannot run right now.</p>
       {status.reason && <p className="mt-1">{status.reason}</p>}
       <p className="mt-1">
-        Crew members run code in a sandbox container started through Docker. Mount the Docker socket
-        into the Shipmate container (
-        <code className="font-mono text-xs">/var/run/docker.sock:/var/run/docker.sock</code>) and
-        restart it. You can still add projects in the meantime.
+        Crew members run code in a sandbox container, started through a Docker-compatible API. Any
+        one of these works:
+      </p>
+      <ul className="mt-1 list-disc space-y-0.5 pl-5">
+        <li>
+          Mount the Docker socket into Shipmate ({code("/var/run/docker.sock:/var/run/docker.sock")}
+          ) and restart it.
+        </li>
+        <li>
+          Use rootless Podman: run {code("systemctl --user enable --now podman.socket")} and mount{" "}
+          {code("$XDG_RUNTIME_DIR/podman/podman.sock")} instead. Nothing runs as root.
+        </li>
+        <li>
+          Use a Docker or Podman host elsewhere on your network over TCP with TLS client
+          certificates, for a NAS that cannot share its socket.
+        </li>
+      </ul>
+      <p className="mt-1">
+        {user.role === "owner" ? (
+          <>
+            Choose and test one under{" "}
+            <a href={href("/settings")} className="underline underline-offset-2">
+              Settings → Shipyard sandbox
+            </a>
+            .
+          </>
+        ) : (
+          "The owner can set this up under Settings."
+        )}{" "}
+        You can still add projects in the meantime.
       </p>
     </div>
   );
@@ -396,6 +433,18 @@ function useFlows(projectId: string) {
   return { start, isBusy, anyBusy: busy !== null, error };
 }
 
+/** A project's issue-to-PR jobs, kept fresh by the server's shipyard_job events. */
+function useJobs(projectId: string, enabled: boolean) {
+  const jobs = useResource(
+    () => (enabled ? jobsApi.list(projectId).then((r) => r.jobs) : Promise.resolve([])),
+    [projectId, enabled],
+  );
+  useServerEvents((ev) => {
+    if (ev.type === "shipyard_job" && ev.projectId === projectId) void jobs.reload();
+  });
+  return jobs;
+}
+
 function ProjectDetail({ id, tab: tabParam }: { id: string; tab: string | null }) {
   const user = useUser();
   const admin = isAdmin(user);
@@ -403,6 +452,7 @@ function ProjectDetail({ id, tab: tabParam }: { id: string; tab: string | null }
   const shipyard = useResource(() => api.getShipyard().then((r) => r.status));
   const crew = useCrew();
   const project = detail.data;
+  const jobs = useJobs(id, project?.provider === "github");
 
   if (!project) {
     return (
@@ -441,6 +491,15 @@ function ProjectDetail({ id, tab: tabParam }: { id: string; tab: string | null }
       <StatusBanner status={shipyard.data} />
       {admin && <ProjectActions project={project} onChange={detail.setData} />}
       <PlanFeature projectId={project.id} />
+      {github && (
+        <JobsBoard
+          jobs={jobs.data ?? []}
+          error={jobs.error}
+          crew={crew}
+          project={project}
+          onChange={() => void jobs.reload()}
+        />
+      )}
 
       <div
         role="tablist"
@@ -469,7 +528,14 @@ function ProjectDetail({ id, tab: tabParam }: { id: string; tab: string | null }
       </div>
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === "pulls" && <PullsTab project={project} />}
-        {tab === "issues" && <IssuesTab project={project} />}
+        {tab === "issues" && (
+          <IssuesTab
+            project={project}
+            crewName={crewName}
+            jobs={jobs.data ?? []}
+            onAssigned={() => void jobs.reload()}
+          />
+        )}
         {tab === "activity" && <ActivityTab projectId={project.id} />}
         {tab === "chats" && <ChatsTab projectId={project.id} />}
         {tab === "settings" && admin && (
@@ -727,13 +793,38 @@ function PullRow({ pr, flows }: { pr: PullRequestDto; flows: ReturnType<typeof u
   );
 }
 
-function IssuesTab({ project }: { project: ProjectDto }) {
+function IssuesTab({
+  project,
+  crewName,
+  jobs,
+  onAssigned,
+}: {
+  project: ProjectDto;
+  crewName: string;
+  jobs: ShipyardJobDto[];
+  onAssigned: () => void;
+}) {
   const [state, setState] = useState<StateFilter>("open");
   const issues = useResource(
     () => api.listIssues(project.id, state).then((r) => r.issues),
     [state],
   );
   const flows = useFlows(project.id);
+  const [assigning, setAssigning] = useState<number | null>(null);
+  const [assignError, setAssignError] = useState<string | null>(null);
+  const active = activeJobsByIssue(jobs);
+  async function assign(n: number) {
+    setAssigning(n);
+    setAssignError(null);
+    try {
+      await jobsApi.assign(project.id, n);
+      onAssigned();
+    } catch (err) {
+      setAssignError(errorMessage(err));
+    } finally {
+      setAssigning(null);
+    }
+  }
   return (
     <div>
       <NoToken project={project} />
@@ -748,19 +839,50 @@ function IssuesTab({ project }: { project: ProjectDto }) {
           </Button>
         </div>
       </div>
-      <ErrorText>{issues.error ?? flows.error}</ErrorText>
+      <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+        <strong>Assign to {crewName}</strong> works the issue through to a draft pull request,
+        follows CI and fixes failures, and marks it ready for review when it is green.{" "}
+        <strong>Fix</strong> starts a conversation you steer yourself.
+      </p>
+      <ErrorText>{issues.error ?? flows.error ?? assignError}</ErrorText>
       {issues.loading && !issues.data && <Muted>Loading…</Muted>}
       {issues.data?.length === 0 && <Muted>No {state === "all" ? "" : `${state} `}issues.</Muted>}
       <ul className="space-y-2">
         {issues.data?.map((issue) => (
-          <IssueRow key={issue.number} issue={issue} flows={flows} />
+          <IssueRow
+            key={issue.number}
+            issue={issue}
+            flows={flows}
+            job={active.get(issue.number) ?? null}
+            crewName={crewName}
+            assigning={assigning}
+            onAssign={() => void assign(issue.number)}
+            canAssign={project.hasToken}
+          />
         ))}
       </ul>
     </div>
   );
 }
 
-function IssueRow({ issue, flows }: { issue: IssueDto; flows: ReturnType<typeof useFlows> }) {
+function IssueRow({
+  issue,
+  flows,
+  job,
+  crewName,
+  assigning,
+  onAssign,
+  canAssign,
+}: {
+  issue: IssueDto;
+  flows: ReturnType<typeof useFlows>;
+  job: ShipyardJobDto | null;
+  crewName: string;
+  assigning: number | null;
+  onAssign: () => void;
+  canAssign: boolean;
+}) {
+  const badge = job ? jobBadge(job) : null;
   return (
     <li>
       <Card className="p-3">
@@ -773,6 +895,7 @@ function IssueRow({ issue, flows }: { issue: IssueDto; flows: ReturnType<typeof 
             </p>
             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
               {issue.state === "closed" && <Badge>closed</Badge>}
+              {badge && <Badge tone={badge.tone}>job: {badge.label}</Badge>}
               {issue.labels.map((l) => (
                 <Badge key={l} tone="accent">
                   {l}
@@ -784,15 +907,166 @@ function IssueRow({ issue, flows }: { issue: IssueDto; flows: ReturnType<typeof 
             </div>
           </div>
           {issue.state === "open" && (
-            <Button
-              size="sm"
-              disabled={flows.anyBusy}
-              onClick={() => void flows.start("fix_issue", { target: issue.number })}
-            >
-              {flows.isBusy("fix_issue", issue.number) ? "Starting…" : "Fix"}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              {!job && (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  disabled={assigning !== null || !canAssign}
+                  title={canAssign ? undefined : "Needs a GitHub token (Settings)"}
+                  onClick={onAssign}
+                >
+                  {assigning === issue.number ? "Assigning…" : `Assign to ${crewName}`}
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={flows.anyBusy}
+                onClick={() => void flows.start("fix_issue", { target: issue.number })}
+              >
+                {flows.isBusy("fix_issue", issue.number) ? "Starting…" : "Fix"}
+              </Button>
+            </div>
           )}
         </div>
+      </Card>
+    </li>
+  );
+}
+
+// ---------- issue-to-PR jobs ----------
+
+function JobsBoard({
+  jobs,
+  error,
+  crew,
+  project,
+  onChange,
+}: {
+  jobs: ShipyardJobDto[];
+  error: string | null;
+  crew: CrewDto[];
+  project: ProjectDto;
+  onChange: () => void;
+}) {
+  const board = jobsForBoard(jobs);
+  if (!board.length && !error) return null;
+  const nameOf = (slug: string | null) =>
+    (slug && crew.find((c) => c.slug === slug)?.name) || slug || "the reviewer";
+  return (
+    <section aria-labelledby="jobs-heading" className="mb-6">
+      <h2 id="jobs-heading" className="mb-2 text-sm font-semibold">
+        Jobs
+      </h2>
+      <ErrorText>{error}</ErrorText>
+      <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {board.map((job) => (
+          <JobCard
+            key={job.id}
+            job={job}
+            crewName={nameOf(job.crewSlug)}
+            reviewerName={nameOf(project.reviewerSlug)}
+            onChange={onChange}
+          />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function JobCard({
+  job,
+  crewName,
+  reviewerName,
+  onChange,
+}: {
+  job: ShipyardJobDto;
+  crewName: string;
+  reviewerName: string;
+  onChange: () => void;
+}) {
+  const user = useUser();
+  const [busy, setBusy] = useState<"cancel" | "retry" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const badge = jobBadge(job, reviewerName);
+  const actions = jobActions(job, user);
+  async function act(kind: "cancel" | "retry") {
+    if (kind === "cancel" && !window.confirm(`Stop the job on #${job.issue.number}?`)) return;
+    setBusy(kind);
+    setError(null);
+    try {
+      await (kind === "cancel" ? jobsApi.cancel(job.id) : jobsApi.retry(job.id));
+      onChange();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <li>
+      <Card className="h-full p-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Badge tone={badge.tone}>{badge.label}</Badge>
+          {job.source !== "manual" && (
+            <Badge>{job.source === "label" ? "by label" : "by assignee"}</Badge>
+          )}
+        </div>
+        <p className="mt-2 text-sm font-medium">
+          {job.issue.url ? (
+            <ExternalLink to={job.issue.url}>
+              #{job.issue.number} {job.issue.title}
+            </ExternalLink>
+          ) : (
+            `#${job.issue.number} ${job.issue.title}`
+          )}
+        </p>
+        <dl className="mt-1 space-y-0.5 text-xs text-slate-500 dark:text-slate-400">
+          {job.pr && (
+            <div className="flex gap-1.5">
+              <dt>Pull request:</dt>
+              <dd>
+                <ExternalLink to={job.pr.url}>#{job.pr.number}</ExternalLink>
+                {job.branch && <code className="ml-1.5 font-mono">{job.branch}</code>}
+              </dd>
+            </div>
+          )}
+          <div className="flex gap-1.5">
+            <dt>For:</dt>
+            <dd>
+              {job.user.name} · {crewName} · {formatTime(job.updatedAt)}
+            </dd>
+          </div>
+        </dl>
+        {job.detail && (
+          <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{job.detail}</p>
+        )}
+        <ErrorText>{error}</ErrorText>
+        {(job.conversationId || actions.cancel || actions.retry) && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {job.conversationId && (
+              <a href={href(`/bridge/${job.conversationId}`)} className={cx(linkClass, "text-sm")}>
+                Open conversation
+              </a>
+            )}
+            {actions.retry && (
+              <Button size="sm" disabled={busy !== null} onClick={() => void act("retry")}>
+                {busy === "retry" ? "Starting…" : "Try again"}
+              </Button>
+            )}
+            {actions.cancel && (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy !== null}
+                onClick={() => void act("cancel")}
+              >
+                {busy === "cancel" ? "Stopping…" : "Cancel"}
+              </Button>
+            )}
+          </div>
+        )}
       </Card>
     </li>
   );
@@ -959,7 +1233,10 @@ function SettingsTab({
         </form>
       </Card>
       {project.provider === "github" && <TokenCard project={project} onChange={onChange} />}
-      {project.provider === "github" && <WebhookCard project={project} />}
+      {project.provider === "github" && (
+        <JobSettingsCard project={project} crew={crew} onChange={onChange} />
+      )}
+      {project.provider === "github" && <WebhookCard project={project} onChange={onChange} />}
       <DeleteCard project={project} />
     </div>
   );
@@ -1032,12 +1309,154 @@ function TokenCard({
   );
 }
 
-function WebhookCard({ project }: { project: ProjectDto }) {
+function JobSettingsCard({
+  project,
+  crew,
+  onChange,
+}: {
+  project: ProjectDto;
+  crew: CrewDto[];
+  onChange: (p: ProjectDto) => void;
+}) {
+  const [form, setForm] = useState<JobSettingsForm>(() => jobSettingsForm(project));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const set = <K extends keyof JobSettingsForm>(k: K, v: string) => {
+    setForm({ ...form, [k]: v });
+    setSaved(false);
+  };
+  const changes = jobSettingsChanges(project, form);
+  const dirty = typeof changes === "string" || Object.keys(changes).length > 0;
+  const reviewers = workers(crew).filter((c) => c.slug !== project.crewSlug);
+  const ownerName = crew.find((c) => c.slug === project.crewSlug)?.name ?? project.crewSlug;
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    if (typeof changes === "string") {
+      setError(changes);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const { project: p } = await api.updateProject(project.id, changes);
+      onChange(p);
+      setForm(jobSettingsForm(p));
+      setSaved(true);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Card>
-      <h2 className="mb-1 font-semibold">GitHub webhook</h2>
+      <h2 className="mb-1 font-semibold">Issue-to-PR jobs</h2>
       <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-        Lets the crew follow pull requests, CI results and review comments as they happen.
+        Assigned issues are worked by {ownerName} into a draft pull request. Shipmate follows CI,
+        hands failures back to fix, and marks the pull request ready for review when it is green.
+      </p>
+      <form onSubmit={save} className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <SelectField
+            label="Reviewer"
+            value={form.reviewerSlug}
+            onChange={(e) => set("reviewerSlug", e.target.value)}
+            hint="Reviews each pull request once CI is green and posts the review on GitHub; blocking findings go back to be fixed before it is marked ready."
+          >
+            <option value="">No crew review</option>
+            {reviewers.map((c) => (
+              <option key={c.slug} value={c.slug}>
+                {c.name} ({c.role})
+              </option>
+            ))}
+          </SelectField>
+          <TextField
+            label="Fix attempts for failing CI"
+            type="number"
+            min={0}
+            max={10}
+            value={form.maxFixAttempts}
+            onChange={(e) => set("maxFixAttempts", e.target.value)}
+            hint="After this many pushed fixes the job gives up and leaves it to you."
+          />
+          <TextField
+            label="Start a job when an issue gets this label (optional)"
+            placeholder="e.g. shipwright"
+            value={form.triggerLabel}
+            onChange={(e) => set("triggerLabel", e.target.value)}
+          />
+          <TextField
+            label="…or is assigned to this GitHub user (optional)"
+            placeholder="e.g. my-shipmate-bot"
+            value={form.triggerAssignee}
+            onChange={(e) => set("triggerAssignee", e.target.value)}
+          />
+        </div>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          {project.triggerUser && (project.triggerLabel || project.triggerAssignee)
+            ? `Automatic jobs run as ${project.triggerUser.name}: their approvals, their usage. `
+            : "Automatic jobs run as whoever saves a trigger here. "}
+          Pushing and opening pull requests still ask for approval unless that person chose "Always
+          allow".
+        </p>
+        <ErrorText>{error}</ErrorText>
+        <div className="flex items-center gap-3">
+          <Button type="submit" variant="primary" disabled={busy || !dirty}>
+            {busy ? "Saving…" : "Save"}
+          </Button>
+          {saved && !dirty && (
+            <span className="text-sm text-emerald-700 dark:text-emerald-300">Saved</span>
+          )}
+        </div>
+      </form>
+    </Card>
+  );
+}
+
+function WebhookCard({
+  project,
+  onChange,
+}: {
+  project: ProjectDto;
+  onChange: (p: ProjectDto) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function rotate() {
+    if (
+      !window.confirm(
+        "Make a new secret? GitHub's deliveries fail until you paste the new one into the webhook.",
+      )
+    )
+      return;
+    setBusy(true);
+    setError(null);
+    try {
+      onChange((await jobsApi.rotateWebhookSecret(project.id)).project);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Card>
+      <div className="mb-1 flex flex-wrap items-center gap-2">
+        <h2 className="font-semibold">GitHub webhook</h2>
+        {project.webhookLastDeliveryAt ? (
+          <Badge tone="ok">last delivery {formatTime(project.webhookLastDeliveryAt)}</Badge>
+        ) : (
+          <Badge tone="warn">not set up: polling</Badge>
+        )}
+      </div>
+      <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
+        Lets the crew react as things happen: new and labelled issues start jobs, failed CI goes
+        back to be fixed, and comments and reviews reach the conversation that opened the pull
+        request. Watches can run on these events too. Without a webhook, Shipmate checks GitHub
+        every minute for jobs and their CI instead.
       </p>
       {project.webhookUrl ? (
         <div className="space-y-4">
@@ -1046,7 +1465,7 @@ function WebhookCard({ project }: { project: ProjectDto }) {
             <CopyField
               label="Secret"
               value={project.webhookSecret}
-              hint="Keep it private: it proves events really come from GitHub."
+              hint="Keep it private: every delivery is signed with it (X-Hub-Signature-256) and unsigned ones are refused."
             />
           )}
           <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-700 dark:text-slate-300">
@@ -1067,14 +1486,20 @@ function WebhookCard({ project }: { project: ProjectDto }) {
               <code className="font-mono">application/json</code>.
             </li>
             <li>
-              Choose <strong>Let me select individual events</strong> and tick: Pull requests, Check
-              suites, Issue comments, Pull request reviews, and Pull request review comments.
+              Choose <strong>Let me select individual events</strong> and tick: Issues, Issue
+              comments, Pull requests, Pull request reviews, Pull request review comments, Check
+              suites, Check runs, Workflow runs, Statuses, and Pushes (for watches).
             </li>
             <li>Save. GitHub sends a ping; it shows up under Activity.</li>
           </ol>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            GitHub must be able to reach this URL, so Shipmate needs a public address.
+            GitHub must be able to reach this URL, so Shipmate needs a public address (or a tunnel).
+            Polling keeps jobs going without one.
           </p>
+          <ErrorText>{error}</ErrorText>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void rotate()}>
+            {busy ? "Making a new secret…" : "New secret"}
+          </Button>
         </div>
       ) : (
         <Muted>The server did not report a webhook URL for this project.</Muted>

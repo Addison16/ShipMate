@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { hostname } from "node:os";
 import { join, relative } from "node:path";
@@ -19,6 +19,7 @@ import type {
   ShipyardStatusDto,
   StartFlowRequest,
   UpdateProjectRequest,
+  UpdateSandboxEndpointRequest,
 } from "@shipmate/core";
 import type { CrewFolder } from "@shipmate/crew";
 import { conversations, type Db, projectEvents, projects, secrets, users } from "@shipmate/db";
@@ -27,13 +28,18 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { atLeast, HttpError, type UserRow } from "../auth.js";
 import type { Bridge, WorkspaceProvider } from "../bridge.js";
 import type { CrewService } from "../services/crew.js";
+import type { SettingsService } from "../services/settings.js";
 import {
+  checkSandbox,
   DEFAULT_SANDBOX_IMAGE,
   DockerClient,
+  type DockerEndpoint,
   DockerError,
   SANDBOX_WORKDIR,
   Sandbox,
+  type SandboxCheck,
 } from "./docker.js";
+import { type ResolvedEndpoint, SandboxEndpointStore } from "./endpoint.js";
 import {
   cloneOrFetch,
   currentBranch,
@@ -45,17 +51,25 @@ import {
   remoteDefaultBranch,
 } from "./git.js";
 import { GITHUB_API, GITHUB_WEB, GitHubClient, GitHubError } from "./github.js";
+import { ShipyardJobs } from "./jobs.js";
+import {
+  type Any,
+  ATTRIBUTION,
+  compactPayload,
+  parsePayload,
+  routeOf,
+  summarizeEvent,
+  verifySignature,
+} from "./webhook.js";
 
 type ProjectRow = typeof projects.$inferSelect;
 
 export const DEFAULT_CREW = "shipwright";
 export const DOCKER_UNAVAILABLE =
-  "the Shipyard needs the Docker socket: mount /var/run/docker.sock into Shipmate (or set DOCKER_SOCKET). Code never runs outside a sandbox.";
+  "the Shipyard needs a sandbox engine: mount the Docker socket into Shipmate, point it at rootless Podman's socket, or at a remote Docker or Podman host (Settings → Sandbox). Code never runs outside a sandbox.";
 /** Internal timeline rows: a crew member opened (or was asked to follow) a pull request. */
 const PR_OPENED = "shipmate.pr_opened";
 const PR_FOLLOWED = "shipmate.pr_followed";
-/** Marks text Shipmate posted, so its own comments are not routed back as new events. */
-const ATTRIBUTION = "on Shipmate_";
 const LABEL = "shipmate.project";
 
 export interface ShipyardOptions {
@@ -63,16 +77,24 @@ export interface ShipyardOptions {
   vault: SecretVault;
   bridge: Bridge;
   crew: CrewService;
+  settings: SettingsService;
   /** <dataDir>/workspaces inside this process. */
   workspacesDir: string;
   /** The host path of the data dir when Shipmate itself runs in Docker (bind sources). */
   hostDataDir?: string | undefined;
-  dockerSocket: string;
+  /** The sandbox engine from the environment; the owner can override it in Settings. */
+  dockerEndpoint: DockerEndpoint;
+  /** The workspaces folder as the environment's sandbox host sees it (SHIPMATE_SANDBOX_WORKSPACES). */
+  sandboxWorkspaces?: string | undefined;
   sandboxImage?: string | undefined;
   /** Public base URL, for webhook URLs. */
   publicUrl: string;
   githubApi?: string | undefined;
   githubWeb?: string | undefined;
+  /** Watches with a GitHub trigger hear about this project's webhook deliveries. */
+  watches?: { onGitHubEvent(projectId: string, kind: string, payload: unknown): Promise<void> };
+  /** Whether this process polls GitHub for jobs (the watch scheduler's leader). */
+  isLeader?: () => boolean;
 }
 
 const SLUG = /^[a-z0-9][a-z0-9-]{0,39}$/;
@@ -85,7 +107,11 @@ const IMAGE = /^[A-Za-z0-9][A-Za-z0-9_.\-/:@]{0,199}$/;
  * vault that only host-side tools use.
  */
 export class ShipyardService implements WorkspaceProvider {
-  readonly docker: DockerClient;
+  #docker: DockerClient;
+  /** The workspaces folder as the sandbox host sees it, when set. */
+  #sandboxWorkspaces: string | null;
+  readonly endpoints: SandboxEndpointStore;
+  readonly jobs: ShipyardJobs;
   readonly sandboxImage: string;
   #locks = new Map<string, Promise<unknown>>();
   /** Conversations running a webhook-triggered turn. */
@@ -93,20 +119,66 @@ export class ShipyardService implements WorkspaceProvider {
   #hostWorkspaces: Promise<string> | undefined;
 
   constructor(private readonly o: ShipyardOptions) {
-    this.docker = new DockerClient(o.dockerSocket);
+    this.#docker = new DockerClient(o.dockerEndpoint);
+    this.#sandboxWorkspaces = o.sandboxWorkspaces || null;
     this.sandboxImage = o.sandboxImage || DEFAULT_SANDBOX_IMAGE;
+    this.endpoints = new SandboxEndpointStore(o.db, o.settings, o.vault, {
+      endpoint: o.dockerEndpoint,
+      workspacesPath: o.sandboxWorkspaces || null,
+    });
+    this.jobs = new ShipyardJobs({
+      db: o.db,
+      bridge: o.bridge,
+      crew: o.crew,
+      isLeader: o.isLeader ?? (() => false),
+      host: {
+        row: (id) => this.row(id),
+        client: (row) => this.#client(row),
+        refreshWorkspace: (row) => this.#locked(`git:${row.id}`, () => this.#cloneOrFetch(row)),
+        githubWeb: o.githubWeb ?? GITHUB_WEB,
+      },
+    });
+  }
+
+  /** The client for the sandbox engine in effect (it changes when the owner edits Settings). */
+  get docker(): DockerClient {
+    return this.#docker;
+  }
+
+  /** Apply the owner's saved sandbox endpoint, if any (on boot). */
+  async loadEndpoint(): Promise<void> {
+    this.#useEndpoint(await this.endpoints.resolve());
+  }
+
+  #useEndpoint(r: ResolvedEndpoint) {
+    this.#docker = new DockerClient(r.endpoint);
+    this.#sandboxWorkspaces = r.workspacesPath;
+    this.#hostWorkspaces = undefined;
+  }
+
+  async getEndpoint() {
+    return this.endpoints.dto(this.#docker.endpoint);
+  }
+
+  async setEndpoint(req: UpdateSandboxEndpointRequest) {
+    this.#useEndpoint(await this.endpoints.save(req));
+    return this.getEndpoint();
+  }
+
+  /** Is the sandbox engine reachable? Never throws (the health page calls this). */
+  checkSandbox(): Promise<SandboxCheck> {
+    return checkSandbox(this.#docker);
   }
 
   // ---------- status and projects ----------
 
   async status(): Promise<ShipyardStatusDto> {
-    const available = await this.docker.ping();
+    const check = await this.checkSandbox();
     return {
-      available,
-      reason: available
-        ? null
-        : `No Docker socket at ${this.o.dockerSocket}. Mount /var/run/docker.sock into Shipmate to run code in sandboxes.`,
+      available: check.ok,
+      reason: check.ok ? null : `Cannot reach a sandbox engine: ${check.error}.`,
       sandboxImage: this.sandboxImage,
+      endpoint: check.endpoint,
     };
   }
 
@@ -207,6 +279,36 @@ export class ShipyardService implements WorkspaceProvider {
     if (req.sandboxImage !== undefined) {
       if (req.sandboxImage) this.#assertImage(req.sandboxImage);
       set.sandboxImage = req.sandboxImage || null;
+    }
+    if (req.reviewerSlug !== undefined) {
+      if (req.reviewerSlug) {
+        this.#assertCrew(req.reviewerSlug);
+        if (req.reviewerSlug === (set.crewSlug ?? row.crewSlug)) {
+          throw new HttpError(400, "reviewerSlug: the reviewer must be another crew member");
+        }
+      }
+      set.reviewerSlug = req.reviewerSlug || null;
+    }
+    if (req.maxFixAttempts !== undefined) {
+      if (
+        !Number.isInteger(req.maxFixAttempts) ||
+        req.maxFixAttempts < 0 ||
+        req.maxFixAttempts > 10
+      ) {
+        throw new HttpError(400, "maxFixAttempts: a whole number from 0 to 10");
+      }
+      set.maxFixAttempts = req.maxFixAttempts;
+    }
+    for (const key of ["triggerLabel", "triggerAssignee"] as const) {
+      const value = req[key];
+      if (value === undefined) continue;
+      const v = value.trim();
+      if (v && row.provider !== "github") throw new HttpError(400, `${key}: only GitHub projects`);
+      if (v && !/^[^\0\n\r]{1,50}$/.test(v))
+        throw new HttpError(400, `${key}: up to 50 characters`);
+      set[key] = v || null;
+      // Automatic jobs run as whoever turned the trigger on (their approvals, their usage).
+      if (v) set.triggerUserId = user.id;
     }
     if (Object.keys(set).length) {
       await this.o.db.update(projects).set(set).where(eq(projects.id, id));
@@ -342,7 +444,10 @@ export class ShipyardService implements WorkspaceProvider {
    * (found by inspecting our own container), else the path as we see it.
    */
   async #bindSource(row: ProjectRow): Promise<string> {
+    if (this.#sandboxWorkspaces) return join(this.#sandboxWorkspaces, row.slug);
     if (this.o.hostDataDir) return join(this.o.hostDataDir, "workspaces", row.slug);
+    // A remote host cannot be asked about our own container; same paths on both is the guess.
+    if (this.#docker.endpoint.kind === "tcp") return this.workspace(row);
     this.#hostWorkspaces ??= this.#detectHostWorkspaces();
     return join(await this.#hostWorkspaces, row.slug);
   }
@@ -540,11 +645,22 @@ I'm following this PR: later CI failures and review comments on #${n} will come 
     const row = await this.row(projectId);
     const dir = this.workspace(row);
     mkdirSync(dir, { recursive: true });
-    const bash = new Sandbox(this.docker, dir, async () => {
-      // Re-read the project so an image change or reset since the session began applies.
-      return this.ensureSandbox(await this.row(projectId));
-    });
-    const tools = row.provider === "github" ? this.#tools(projectId, crew, conversationId) : [];
+    const bash = new Sandbox(
+      () => this.docker,
+      dir,
+      async () => {
+        // Re-read the project so an image change or reset since the session began applies.
+        return this.ensureSandbox(await this.row(projectId));
+      },
+    );
+    // The project's reviewer reads and reviews; only the crew member who owns the work pushes.
+    const reviewer = row.reviewerSlug === crew.slug && row.crewSlug !== crew.slug;
+    const tools =
+      row.provider === "github"
+        ? this.#tools(projectId, crew, conversationId).filter(
+            (t) => !reviewer || !["git_push", "open_pull_request"].includes(t.name),
+          )
+        : [];
     const lines = [
       "# Shipyard project",
       "",
@@ -557,7 +673,9 @@ I'm following this PR: later CI failures and review comments on #${n} will come 
     ];
     if (row.provider === "github") {
       lines.push(
-        "There are no GitHub credentials in the sandbox. Commit with git in the shell, but push only with the git_push tool and use open_pull_request, comment_on_github, list_issues, list_pull_requests and get_pull_request for GitHub. Never push to the default branch: work on a branch and open a pull request.",
+        row.reviewerSlug === crew.slug && row.crewSlug !== crew.slug
+          ? `You are this project's reviewer. Read the code and the pull requests (get_pull_request, list_pull_requests, list_issues), post reviews with submit_pull_request_review and comments with comment_on_github. You do not push or open pull requests; ${row.crewSlug} does.`
+          : "There are no GitHub credentials in the sandbox. Commit with git in the shell, but push only with the git_push tool and use open_pull_request, comment_on_github, submit_pull_request_review, list_issues, list_pull_requests and get_pull_request for GitHub. Never push to the default branch: work on a branch and open a pull request.",
       );
     }
     return { dir, bash, tools, prompt: lines.filter(Boolean).join("\n") };
@@ -634,15 +752,21 @@ I'm following this PR: later CI failures and review comments on #${n} will come 
           if (!head) throw new Error("name the head branch");
           const base = p.base?.trim() || row.defaultBranch || (await client.defaultBranch());
           const name = crew.manifest.name;
+          // A job's PR stays a draft until CI (and the reviewer, if any) are happy.
+          const job = await this.jobs.jobForConversation(conversationId);
+          const draft = Boolean(p.draft || job);
           const pr = await client.createPull({
             title: p.title,
             body: `${p.body}\n\n---\n_Opened by ${name} ${ATTRIBUTION}`,
             head,
             base,
-            ...(p.draft ? { draft: true } : {}),
+            ...(draft ? { draft: true } : {}),
           });
           await this.#recordPr(row, PR_OPENED, pr.number, conversationId, crew.slug, p.title);
-          return text(`Opened #${pr.number}: ${pr.url}`);
+          if (job) await this.jobs.onPullOpened(conversationId, { ...pr, branch: head });
+          return text(
+            `Opened ${draft ? "draft " : ""}#${pr.number}: ${pr.url}${job ? "\nShipmate follows its CI from here; you will hear about failures." : ""}`,
+          );
         },
       }),
       defineTool({
@@ -661,6 +785,51 @@ I'm following this PR: later CI failures and review comments on #${n} will come 
             `${p.body}\n\n_— ${crew.manifest.name} ${ATTRIBUTION}`,
           );
           return text(`Commented on #${p.number}: ${c.url}`);
+        },
+      }),
+      defineTool({
+        name: "submit_pull_request_review",
+        label: "Review pull request",
+        description:
+          "Post a review on a pull request in this project's repo: a verdict, a summary, and optional inline comments on lines of the new code.",
+        promptSnippet: "submit_pull_request_review: post a review with a verdict on a PR",
+        parameters: Type.Object({
+          number: Type.Integer({ description: "pull request number" }),
+          verdict: Type.Union(
+            [Type.Literal("approve"), Type.Literal("changes_requested"), Type.Literal("comment")],
+            { description: "approve: nothing blocks merging; changes_requested: something does" },
+          ),
+          body: Type.String({ description: "one-line verdict, then findings" }),
+          comments: Type.Optional(
+            Type.Array(
+              Type.Object({
+                path: Type.String(),
+                line: Type.Integer({ description: "line number in the new version of the file" }),
+                body: Type.String(),
+              }),
+              { maxItems: 30 },
+            ),
+          ),
+        }),
+        execute: async (_id, p) => {
+          const { client } = await gh(true);
+          const name = crew.manifest.name;
+          const heading =
+            p.verdict === "approve"
+              ? "looks good to merge"
+              : p.verdict === "changes_requested"
+                ? "changes requested"
+                : "comments";
+          const sign = `_— ${name} ${ATTRIBUTION}`;
+          // Posted as a comment review: GitHub refuses approving or requesting changes on a PR
+          // opened by the same account, which Shipmate's own PRs are.
+          const review = await client.createReview(p.number, {
+            event: "COMMENT",
+            body: `**${name}'s review: ${heading}**\n\n${p.body}\n\n${sign}`,
+            comments: (p.comments ?? []).map((c) => ({ ...c, body: `${c.body}\n\n${sign}` })),
+          });
+          await this.jobs.onReview(conversationId, crew.slug, p.number, p.verdict, p.body);
+          return text(`Posted the review on #${p.number}: ${review.url}`);
         },
       }),
       defineTool({
@@ -759,7 +928,14 @@ I'm following this PR: later CI failures and review comments on #${n} will come 
       .onConflictDoNothing({ target: projectEvents.deliveryId })
       .returning();
     if (!event) return { ok: true }; // a redelivery
-    const route = routeOf(kind, payload);
+    await this.o.db
+      .update(projects)
+      .set({ webhookLastDeliveryAt: new Date() })
+      .where(eq(projects.id, row.id));
+    // Issue-to-PR jobs take their own PRs' CI results; watches hear about everything.
+    const forJob = await this.jobs.onEvent(row, kind, payload).catch(() => false);
+    if (this.o.watches) void this.o.watches.onGitHubEvent(row.id, kind, payload).catch(() => {});
+    const route = forJob ? null : routeOf(kind, payload);
     if (!route) return { ok: true };
     const [follow] = await this.o.db
       .select()
@@ -860,18 +1036,39 @@ I'm following this PR: later CI failures and review comments on #${n} will come 
           ? `${this.o.publicUrl.replace(/\/$/, "")}/api/hooks/github/${row.id}`
           : null,
       webhookSecret: manager && row.provider === "github" ? row.webhookSecret : null,
+      webhookLastDeliveryAt: row.webhookLastDeliveryAt?.toISOString() ?? null,
+      reviewerSlug: row.reviewerSlug,
+      triggerLabel: row.triggerLabel,
+      triggerAssignee: row.triggerAssignee,
+      triggerUser: await this.#userRef(row.triggerUserId),
+      maxFixAttempts: row.maxFixAttempts,
       createdBy: by,
       createdAt: row.createdAt.toISOString(),
     };
   }
 
   async #creator(row: ProjectRow): Promise<{ id: string; name: string } | null> {
-    if (!row.createdById) return null;
+    return this.#userRef(row.createdById);
+  }
+
+  async #userRef(id: string | null): Promise<{ id: string; name: string } | null> {
+    if (!id) return null;
     const [u] = await this.o.db
       .select({ id: users.id, name: users.displayName })
       .from(users)
-      .where(eq(users.id, row.createdById));
+      .where(eq(users.id, id));
     return u ?? null;
+  }
+
+  /** A new webhook secret; the old one stops working at once. */
+  async rotateWebhookSecret(user: UserRow, id: string): Promise<ProjectDto> {
+    const row = await this.row(id);
+    if (row.provider !== "github") throw new HttpError(400, "a local project has no webhook");
+    await this.o.db
+      .update(projects)
+      .set({ webhookSecret: randomBytes(24).toString("hex"), webhookLastDeliveryAt: null })
+      .where(eq(projects.id, id));
+    return this.get(user, id);
   }
 
   #remoteUrl(row: ProjectRow): string {
@@ -1010,100 +1207,6 @@ export function sandboxSpec(projectId: string, image: string, bindSource: string
   };
 }
 
-/** Constant-time check of GitHub's `X-Hub-Signature-256: sha256=<hex>` over the raw body. */
-export function verifySignature(secret: string, raw: Buffer, header: string | undefined): boolean {
-  if (!header?.startsWith("sha256=")) return false;
-  const expected = Buffer.from(createHmac("sha256", secret).update(raw).digest("hex"), "utf8");
-  const given = Buffer.from(header.slice("sha256=".length), "utf8");
-  return given.length === expected.length && timingSafeEqual(given, expected);
-}
-
-function parsePayload(raw: Buffer, contentType: string | undefined): Record<string, unknown> {
-  try {
-    const text = raw.toString("utf8");
-    if (contentType?.includes("application/x-www-form-urlencoded")) {
-      return JSON.parse(new URLSearchParams(text).get("payload") ?? "{}");
-    }
-    const parsed = JSON.parse(text) as unknown;
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
-}
-
-// biome-ignore lint/suspicious/noExplicitAny: webhook payloads are loosely shaped
-type Any = any;
-
-/** One line for the project timeline. */
-export function summarizeEvent(kind: string, p: Any): string {
-  const who = p?.sender?.login ? ` by ${p.sender.login}` : "";
-  const pr = p?.pull_request;
-  const issue = p?.issue;
-  switch (kind) {
-    case "ping":
-      return "GitHub webhook connected";
-    case "push": {
-      const ref = String(p?.ref ?? "").replace(/^refs\/heads\//, "");
-      const n = Array.isArray(p?.commits) ? p.commits.length : 0;
-      return `${n} commit${n === 1 ? "" : "s"} pushed to ${ref}${who}`;
-    }
-    case "pull_request":
-      return `PR #${pr?.number} ${p?.action === "closed" && pr?.merged ? "merged" : p?.action}: ${pr?.title}${who}`;
-    case "pull_request_review":
-      return `Review on PR #${pr?.number} (${p?.review?.state ?? p?.action})${who}`;
-    case "pull_request_review_comment":
-      return `Review comment on PR #${pr?.number}${who}`;
-    case "issues":
-      return `Issue #${issue?.number} ${p?.action}: ${issue?.title}${who}`;
-    case "issue_comment":
-      return `Comment on ${issue?.pull_request ? "PR" : "issue"} #${issue?.number}${who}`;
-    case "check_suite": {
-      const s = p?.check_suite;
-      const prs = (s?.pull_requests ?? []).map((x: Any) => `#${x.number}`).join(", ");
-      return `Checks ${s?.conclusion ?? s?.status ?? p?.action} on ${s?.head_branch ?? "?"}${prs ? ` (${prs})` : ""}`;
-    }
-    case "check_run": {
-      const r = p?.check_run;
-      return `Check "${r?.name}" ${r?.conclusion ?? r?.status ?? p?.action}`;
-    }
-    case "workflow_run": {
-      const r = p?.workflow_run;
-      return `Workflow "${r?.name}" ${r?.conclusion ?? r?.status ?? p?.action} on ${r?.head_branch ?? "?"}`;
-    }
-    default:
-      return `${kind}${p?.action ? ` ${p.action}` : ""}${who}`;
-  }
-}
-
-const FAILED = new Set(["failure", "timed_out"]);
-
-/** PR events a crew member following that PR should hear about; null for everything else. */
-export function routeOf(kind: string, p: Any): { number: number } | null {
-  const first = (prs: Any) => (Array.isArray(prs) && prs[0]?.number ? Number(prs[0].number) : null);
-  const ours = (body: unknown) => typeof body === "string" && body.includes(ATTRIBUTION);
-  let n: number | null = null;
-  if (
-    kind === "check_suite" &&
-    p?.action === "completed" &&
-    FAILED.has(p?.check_suite?.conclusion)
-  ) {
-    n = first(p.check_suite.pull_requests);
-  } else if (
-    kind === "check_run" &&
-    p?.action === "completed" &&
-    FAILED.has(p?.check_run?.conclusion)
-  ) {
-    n = first(p.check_run.pull_requests);
-  } else if (kind === "pull_request_review" && p?.action === "submitted") {
-    if (!ours(p?.review?.body)) n = Number(p?.pull_request?.number) || null;
-  } else if (kind === "pull_request_review_comment" && p?.action === "created") {
-    if (!ours(p?.comment?.body)) n = Number(p?.pull_request?.number) || null;
-  } else if (kind === "issue_comment" && p?.action === "created" && p?.issue?.pull_request) {
-    if (!ours(p?.comment?.body)) n = Number(p?.issue?.number) || null;
-  }
-  return n ? { number: n } : null;
-}
-
 function eventPrompt(row: ProjectRow, kind: string, number: number, p: Any): string {
   const intro = `GitHub event on pull request #${number} in ${row.repo}, which you are following: ${summarizeEvent(kind, p)}.`;
   let detail = "";
@@ -1125,13 +1228,6 @@ function eventPrompt(row: ProjectRow, kind: string, number: number, p: Any): str
       "Decide whether it needs a change. If it does, make it on the PR branch, run the tests and push with git_push; reply on GitHub with comment_on_github when a short answer helps. If nothing is needed, say so briefly.";
   }
   return [intro, detail, ask].filter(Boolean).join("\n\n");
-}
-
-/** Keep the stored payload small: drop the huge repository and sender blobs. */
-function compactPayload(p: Any): Record<string, unknown> {
-  const { repository: _r, organization: _o, installation: _i, enterprise: _e, ...rest } = p ?? {};
-  const text = JSON.stringify(rest);
-  return text.length > 100_000 ? { truncated: true, action: p?.action ?? null } : rest;
 }
 
 function quote(text: string): string {

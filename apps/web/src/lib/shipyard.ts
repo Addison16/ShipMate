@@ -4,8 +4,11 @@ import type {
   ProjectProvider,
   PullRequestDto,
   ShipyardFlow,
+  ShipyardJobDto,
+  ShipyardJobStatus,
   UpdateProjectRequest,
 } from "@shipmate/core";
+import { request } from "../api.js";
 
 export type Tone = "neutral" | "accent" | "warn" | "danger" | "ok";
 
@@ -161,4 +164,143 @@ export function surfaceLabel(surface: string): string | null {
   if (surface === "telegram") return "Telegram";
   if (surface === "slack") return "Slack";
   return null;
+}
+
+// ---------- issue-to-PR jobs ----------
+
+const enc = encodeURIComponent;
+
+export const jobsApi = {
+  list: (projectId: string) =>
+    request<{ jobs: ShipyardJobDto[] }>("GET", `/api/shipyard/projects/${enc(projectId)}/jobs`),
+  assign: (projectId: string, issue: number) =>
+    request<{ job: ShipyardJobDto }>("POST", `/api/shipyard/projects/${enc(projectId)}/jobs`, {
+      issue,
+    }),
+  cancel: (id: string) =>
+    request<{ job: ShipyardJobDto }>("POST", `/api/shipyard/jobs/${enc(id)}/cancel`),
+  retry: (id: string) =>
+    request<{ job: ShipyardJobDto }>("POST", `/api/shipyard/jobs/${enc(id)}/retry`),
+  rotateWebhookSecret: (projectId: string) =>
+    request<{ project: ProjectDto }>(
+      "POST",
+      `/api/shipyard/projects/${enc(projectId)}/webhook-secret`,
+    ),
+};
+
+const ACTIVE: ShipyardJobStatus[] = [
+  "working",
+  "pr_open",
+  "ci_running",
+  "ci_failed",
+  "reviewing",
+  "addressing_review",
+  "needs_input",
+  "ready",
+];
+
+/** Still holds its issue (one active job per issue). */
+export function isActiveJob(job: Pick<ShipyardJobDto, "status">): boolean {
+  return ACTIVE.includes(job.status);
+}
+
+/** The status card's badge: "CI red (attempt 2 of 3)", "Ready for review", ... */
+export function jobBadge(
+  job: Pick<ShipyardJobDto, "status" | "attempts" | "maxAttempts">,
+  reviewerName = "the reviewer",
+): { tone: Tone; label: string } {
+  switch (job.status) {
+    case "working":
+      return { tone: "accent", label: "Working" };
+    case "pr_open":
+      return { tone: "accent", label: "PR open" };
+    case "ci_running":
+      return {
+        tone: "warn",
+        label: job.attempts ? `CI running (after fix ${job.attempts})` : "CI running",
+      };
+    case "ci_failed":
+      return { tone: "danger", label: `CI red (attempt ${job.attempts} of ${job.maxAttempts})` };
+    case "reviewing":
+      return { tone: "accent", label: `Review by ${reviewerName}` };
+    case "addressing_review":
+      return { tone: "accent", label: "Addressing review" };
+    case "needs_input":
+      return { tone: "warn", label: "Needs you" };
+    case "ready":
+      return { tone: "ok", label: "Ready for review" };
+    case "gave_up":
+      return { tone: "danger", label: "Gave up" };
+    case "merged":
+      return { tone: "ok", label: "Merged" };
+    case "closed":
+      return { tone: "neutral", label: "Closed" };
+    case "cancelled":
+      return { tone: "neutral", label: "Cancelled" };
+    default:
+      return { tone: "neutral", label: String(job.status).replace(/_/g, " ") };
+  }
+}
+
+/** Which buttons a job card shows for this viewer. */
+export function jobActions(
+  job: Pick<ShipyardJobDto, "status" | "user" | "pr">,
+  viewer: { id: string; role: string },
+): { cancel: boolean; retry: boolean } {
+  const mine = job.user.id === viewer.id || viewer.role === "owner" || viewer.role === "admin";
+  if (!mine) return { cancel: false, retry: false };
+  return {
+    cancel: isActiveJob(job) && job.status !== "ready",
+    retry:
+      job.status === "gave_up" ||
+      job.status === "needs_input" ||
+      (job.status === "cancelled" && job.pr !== null),
+  };
+}
+
+/** Active jobs first (newest first), then up to `finished` finished ones. */
+export function jobsForBoard(jobs: ShipyardJobDto[], finished = 6): ShipyardJobDto[] {
+  const byNew = [...jobs].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return [...byNew.filter(isActiveJob), ...byNew.filter((j) => !isActiveJob(j)).slice(0, finished)];
+}
+
+/** The active job for each issue number, for the Issues tab. */
+export function activeJobsByIssue(jobs: ShipyardJobDto[]): Map<number, ShipyardJobDto> {
+  return new Map(jobs.filter(isActiveJob).map((j) => [j.issue.number, j]));
+}
+
+export interface JobSettingsForm {
+  reviewerSlug: string;
+  maxFixAttempts: string;
+  triggerLabel: string;
+  triggerAssignee: string;
+}
+
+export function jobSettingsForm(p: ProjectDto): JobSettingsForm {
+  return {
+    reviewerSlug: p.reviewerSlug ?? "",
+    maxFixAttempts: String(p.maxFixAttempts),
+    triggerLabel: p.triggerLabel ?? "",
+    triggerAssignee: p.triggerAssignee ?? "",
+  };
+}
+
+/** The PATCH for the job settings card: only what changed; an error string when invalid. */
+export function jobSettingsChanges(
+  p: ProjectDto,
+  f: JobSettingsForm,
+): UpdateProjectRequest | string {
+  const out: UpdateProjectRequest = {};
+  const reviewer = f.reviewerSlug || null;
+  if (reviewer !== p.reviewerSlug) out.reviewerSlug = reviewer;
+  const n = Number(f.maxFixAttempts);
+  if (!/^\d+$/.test(f.maxFixAttempts.trim()) || n > 10) {
+    return "Fix attempts: a whole number from 0 to 10.";
+  }
+  if (n !== p.maxFixAttempts) out.maxFixAttempts = n;
+  const label = f.triggerLabel.trim();
+  if (label !== (p.triggerLabel ?? "")) out.triggerLabel = label;
+  const assignee = f.triggerAssignee.trim().replace(/^@/, "");
+  if (assignee !== (p.triggerAssignee ?? "")) out.triggerAssignee = assignee;
+  return out;
 }

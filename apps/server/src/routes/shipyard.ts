@@ -1,4 +1,8 @@
-import type { CreateProjectRequest, UpdateProjectRequest } from "@shipmate/core";
+import type {
+  CreateProjectRequest,
+  UpdateProjectRequest,
+  UpdateSandboxEndpointRequest,
+} from "@shipmate/core";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireRole } from "../auth.js";
@@ -14,12 +18,29 @@ const Create = z.object({
   defaultBranch: z.string().trim().optional(),
   sandboxImage: z.string().trim().optional(),
 });
-const Update = Create.omit({ provider: true }).partial();
+const Update = Create.omit({ provider: true })
+  .partial()
+  .extend({
+    reviewerSlug: z.string().nullable().optional(),
+    triggerLabel: z.string().max(50).optional(),
+    triggerAssignee: z.string().max(50).optional(),
+    maxFixAttempts: z.number().int().min(0).max(10).optional(),
+  });
 const StateQuery = z.object({ state: z.enum(["open", "closed", "all"]).default("open") });
 const Flow = z.object({
   flow: z.enum(["plan", "fix_issue", "review_pr", "triage", "keep_ci_green"]),
   target: z.number().int().positive().optional(),
   notes: z.string().max(20_000).optional(),
+});
+
+const SandboxEndpoint = z.object({
+  mode: z.enum(["env", "socket", "tcp"]),
+  socketPath: z.string().max(300).optional(),
+  host: z.string().max(300).optional(),
+  tlsCa: z.string().max(32_000).optional(),
+  tlsCert: z.string().max(32_000).optional(),
+  tlsKey: z.string().max(32_000).optional(),
+  workspacesPath: z.string().max(500).optional(),
 });
 
 type Id = { Params: { id: string } };
@@ -30,6 +51,33 @@ export async function shipyardRoutes(app: FastifyInstance, s: Services) {
   app.get("/api/shipyard", async (req) => {
     const [status, projects] = await Promise.all([y.status(), y.list(req.user)]);
     return { status, projects };
+  });
+
+  // Where sandboxes run: owner only, since it decides which machine runs the crew's code.
+  app.get("/api/shipyard/sandbox", async (req) => {
+    requireRole(req.user, "owner");
+    return { sandbox: await y.getEndpoint() };
+  });
+
+  app.put("/api/shipyard/sandbox", async (req) => {
+    requireRole(req.user, "owner");
+    const body = strip(SandboxEndpoint.parse(req.body)) as UpdateSandboxEndpointRequest;
+    const sandbox = await y.setEndpoint(body);
+    await s.audit.record({
+      userId: req.user.id,
+      crewMemberId: null,
+      action: "shipyard.sandbox",
+      summary: `Set the Shipyard sandbox endpoint to ${sandbox.effective}`,
+      decision: null,
+      detail: { mode: body.mode },
+    });
+    return { sandbox };
+  });
+
+  app.post("/api/shipyard/sandbox/test", async (req) => {
+    requireRole(req.user, "owner");
+    const body = strip(SandboxEndpoint.parse(req.body)) as UpdateSandboxEndpointRequest;
+    return { check: await y.endpoints.test(body) };
   });
 
   app.post("/api/shipyard/projects", async (req) => {
@@ -89,6 +137,29 @@ export async function shipyardRoutes(app: FastifyInstance, s: Services) {
       ...(body.target !== undefined ? { target: body.target } : {}),
       ...(body.notes !== undefined ? { notes: body.notes } : {}),
     });
+  });
+
+  // Issue-to-PR jobs: anyone can assign an issue (it runs as them, like a flow).
+  app.get<Id>("/api/shipyard/projects/:id/jobs", async (req) => ({
+    jobs: await y.jobs.list(req.user, req.params.id),
+  }));
+
+  app.post<Id>("/api/shipyard/projects/:id/jobs", async (req) => {
+    const { issue } = z.object({ issue: z.number().int().positive() }).parse(req.body);
+    return { job: await y.jobs.assign(req.user, req.params.id, issue) };
+  });
+
+  app.post<{ Params: { jobId: string } }>("/api/shipyard/jobs/:jobId/cancel", async (req) => ({
+    job: await y.jobs.cancel(req.user, req.params.jobId),
+  }));
+
+  app.post<{ Params: { jobId: string } }>("/api/shipyard/jobs/:jobId/retry", async (req) => ({
+    job: await y.jobs.retry(req.user, req.params.jobId),
+  }));
+
+  app.post<Id>("/api/shipyard/projects/:id/webhook-secret", async (req) => {
+    requireRole(req.user, "admin");
+    return { project: await y.rotateWebhookSecret(req.user, req.params.id) };
   });
 
   app.post<Id>("/api/shipyard/projects/:id/conversations", async (req) => ({

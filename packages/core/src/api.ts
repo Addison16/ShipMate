@@ -5,6 +5,7 @@
  * All JSON. Timestamps are ISO strings. Auth is a `shipmate_session` http-only cookie set by
  * `/api/setup` and `/api/auth/login`. Errors are `{ error: string }` with a 4xx/5xx status.
  */
+import type { GitHubWatchEvent } from "./routine.js";
 import type { HouseholdFacts, PersonProfile, UserPreferences, UserRole } from "./user.js";
 
 // ---------- users and auth ----------
@@ -393,7 +394,12 @@ export type WatchTrigger =
   | { kind: "cron"; expression: string; timezone?: string }
   | { kind: "interval"; everyMinutes: number }
   | { kind: "webhook" }
-  | { kind: "after"; routineId: string };
+  | { kind: "after"; routineId: string }
+  /**
+   * A GitHub event on a Shipyard project, through its signed webhook (see GITHUB_WATCH_EVENTS).
+   * The run works in that project's workspace.
+   */
+  | { kind: "github"; projectId: string; events: GitHubWatchEvent[] };
 
 export interface WatchDto {
   id: string;
@@ -564,6 +570,48 @@ export interface ShipyardStatusDto {
   reason: string | null;
   /** Default sandbox image for new projects. */
   sandboxImage: string;
+  /** Where sandboxes run, e.g. "unix:///var/run/docker.sock" or "tcp://nas.lan:2376 (TLS)". */
+  endpoint: string;
+}
+/**
+ * Where the Shipyard starts sandboxes (owner only). The environment (DOCKER_HOST,
+ * DOCKER_TLS_VERIFY, DOCKER_CERT_PATH, DOCKER_SOCKET) gives the default; the owner can
+ * override it here. TLS material is stored encrypted and never returned.
+ */
+export interface SandboxEndpointDto {
+  /** "env": the server environment decides; "socket" / "tcp": set here by the owner. */
+  mode: "env" | "socket" | "tcp";
+  /** For socket mode: Docker's /var/run/docker.sock or rootless Podman's podman.sock. */
+  socketPath: string | null;
+  /** For tcp mode: "tcp://host:port". */
+  host: string | null;
+  /** Which TLS files are stored for tcp mode. */
+  tls: { ca: boolean; cert: boolean; key: boolean };
+  /** The workspaces folder as the sandbox host sees it (remote hosts, or a different mount). */
+  workspacesPath: string | null;
+  /** What is in effect now, described without secrets. */
+  effective: string;
+  /** What the environment alone would give. */
+  fromEnv: string;
+}
+/** PUT /api/shipyard/sandbox. PEM fields: omit to keep, "" to clear. */
+export interface UpdateSandboxEndpointRequest {
+  mode: "env" | "socket" | "tcp";
+  socketPath?: string;
+  host?: string;
+  tlsCa?: string;
+  tlsCert?: string;
+  tlsKey?: string;
+  workspacesPath?: string;
+}
+export interface SandboxCheckDto {
+  ok: boolean;
+  endpoint: string;
+  /** "Docker 27.3.1" or "Podman 5.2.0" when reachable. */
+  engine: string | null;
+  error: string | null;
+  /** Things that work but deserve a second look (no TLS, no workspaces path). */
+  warnings: string[];
 }
 export type ProjectProvider = "github" | "local";
 export interface ProjectDto {
@@ -589,6 +637,18 @@ export interface ProjectDto {
   webhookUrl: string | null;
   /** The webhook secret to paste into GitHub (owner/admin only). */
   webhookSecret: string | null;
+  /** Last signed delivery from GitHub; null = never, so Shipmate polls instead. */
+  webhookLastDeliveryAt: string | null;
+  /** Crew member who reviews job PRs before they are marked ready; null = no review. */
+  reviewerSlug: string | null;
+  /** Issues given this label on GitHub become jobs (null = off). */
+  triggerLabel: string | null;
+  /** Issues assigned to this GitHub login become jobs (null = off). */
+  triggerAssignee: string | null;
+  /** Who automatic jobs run as. */
+  triggerUser: { id: string; name: string } | null;
+  /** Fix attempts for failing CI before a job gives up. */
+  maxFixAttempts: number;
   createdBy: { id: string; name: string } | null;
   createdAt: string;
 }
@@ -604,8 +664,17 @@ export interface CreateProjectRequest {
   defaultBranch?: string;
   sandboxImage?: string;
 }
-/** `token: ""` clears the stored token. */
-export type UpdateProjectRequest = Partial<Omit<CreateProjectRequest, "provider">>;
+/**
+ * `token: ""` clears the stored token. Job settings (admin): `reviewerSlug: null` turns review
+ * off; empty trigger values turn that trigger off. Saving a trigger makes the saver the user
+ * automatic jobs run as.
+ */
+export type UpdateProjectRequest = Partial<Omit<CreateProjectRequest, "provider">> & {
+  reviewerSlug?: string | null;
+  triggerLabel?: string;
+  triggerAssignee?: string;
+  maxFixAttempts?: number;
+};
 export interface PullRequestDto {
   number: number;
   title: string;
@@ -636,6 +705,43 @@ export interface ProjectEventDto {
   conversationId: string | null;
   createdAt: string;
 }
+/**
+ * An issue-to-PR job: a crew member works an issue on a branch, opens a draft PR, follows CI
+ * and fixes failures up to a limit; an optional reviewer reviews it before it is marked ready.
+ */
+export type ShipyardJobStatus =
+  | "working"
+  | "pr_open"
+  | "ci_running"
+  | "ci_failed"
+  | "reviewing"
+  | "addressing_review"
+  | "needs_input"
+  | "ready"
+  | "gave_up"
+  | "merged"
+  | "closed"
+  | "cancelled";
+export interface ShipyardJobDto {
+  id: string;
+  projectId: string;
+  issue: { number: number; title: string; url: string | null };
+  status: ShipyardJobStatus;
+  source: "manual" | "label" | "assignee";
+  crewSlug: string;
+  branch: string | null;
+  pr: { number: number; url: string } | null;
+  attempts: number;
+  maxAttempts: number;
+  reviewRounds: number;
+  reviewVerdict: "approve" | "changes_requested" | null;
+  detail: string | null;
+  user: { id: string; name: string };
+  /** Only for the person the job runs as (conversations are private). */
+  conversationId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 export type ShipyardFlow = "plan" | "fix_issue" | "review_pr" | "triage" | "keep_ci_green";
 export interface StartFlowRequest {
   flow: ShipyardFlow;
@@ -664,6 +770,15 @@ export interface StartFlowRequest {
  *   conversation with the project's crew member, started with the flow's prompt)
  * POST /api/shipyard/projects/:id/conversations → { conversation } (an empty one, for chat)
  * POST /api/hooks/github/:projectId (public; X-Hub-Signature-256 checked) → { ok: true }
+ * GET /api/shipyard/projects/:id/jobs → { jobs: ShipyardJobDto[] } newest first
+ * POST /api/shipyard/projects/:id/jobs { issue: number } → { job } (assign an issue)
+ * POST /api/shipyard/jobs/:jobId/cancel → { job } ; POST /api/shipyard/jobs/:jobId/retry → { job }
+ *   (the person the job runs as, or an admin)
+ * POST /api/shipyard/projects/:id/webhook-secret (admin) → { project } (a new secret)
+ * GET /api/shipyard/sandbox (owner) → { sandbox: SandboxEndpointDto }
+ * PUT /api/shipyard/sandbox (owner) UpdateSandboxEndpointRequest → { sandbox }
+ * POST /api/shipyard/sandbox/test (owner) UpdateSandboxEndpointRequest → { check: SandboxCheckDto }
+ *   (tries the given settings without saving them; omitted TLS files use the stored ones)
  */
 
 // ---------- sign-in with OIDC (phase 4) ----------
@@ -1118,4 +1233,6 @@ export type ServerEvent =
   /** A watch run started or finished; failures should surface as a notice. */
   | { type: "watch_run"; watchName: string; run: WatchRunDto }
   /** A list or its items changed (here, on another device, or by a crew member); refetch it. */
-  | { type: "list_changed"; listId: string; deleted?: boolean };
+  | { type: "list_changed"; listId: string; deleted?: boolean }
+  /** An issue-to-PR job changed; sent to everyone (the Shipyard is shared). Refetch its list. */
+  | { type: "shipyard_job"; projectId: string; jobId: string; status: ShipyardJobStatus };

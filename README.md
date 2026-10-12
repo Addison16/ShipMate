@@ -21,10 +21,13 @@ Version 1.0. See [CHANGELOG.md](CHANGELOG.md) for what is in it and
 - **Household profiles**: diets, budgets, timezones and schedules every crew member knows, so
   nobody repeats themselves to each bot.
 - **Skills and Watches**: reusable skills made by you or by the crew (with approval), and
-  watches that run on a schedule, a webhook or after another watch. A one-click **daily
-  briefing** brings the weather, today's calendar, bills due and what the crew did overnight.
-- **Shipyard**: GitHub or local projects worked in sandboxed containers, with PR flows and
-  CI and review events routed back to the conversation.
+  watches that run on a schedule, a webhook, a GitHub event or after another watch. A one-click
+  **daily briefing** brings the weather, today's calendar, bills due and what the crew did
+  overnight.
+- **Shipyard**: GitHub or local projects worked in sandboxed containers (Docker, rootless
+  Podman or a remote host). Assign an issue and the Shipwright opens a draft PR, fixes failing
+  CI and, with the Bosun reviewing first, hands you a PR ready for review. GitHub webhooks
+  drive it all, with polling as a fallback. See [docs/shipyard.md](docs/shipyard.md).
 - **Approvals and audit**: consequential actions wait for the person who asked; every tool call
   is logged.
 - **MCP**: the common servers bundled, the rest one click away from the catalog.

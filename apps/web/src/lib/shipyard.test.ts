@@ -1,9 +1,15 @@
-import type { ProjectDto } from "@shipmate/core";
+import type { ProjectDto, ShipyardJobDto } from "@shipmate/core";
 import { describe, expect, it } from "vitest";
 import {
+  activeJobsByIssue,
   checksBadge,
   emptyProjectForm,
   flowLabel,
+  jobActions,
+  jobBadge,
+  jobSettingsChanges,
+  jobSettingsForm,
+  jobsForBoard,
   normalizeRepo,
   projectChanges,
   prStateBadge,
@@ -28,6 +34,12 @@ function project(over: Partial<ProjectDto> = {}): ProjectDto {
     sandbox: { status: "stopped", image: "node:22" },
     webhookUrl: null,
     webhookSecret: null,
+    webhookLastDeliveryAt: null,
+    reviewerSlug: null,
+    triggerLabel: null,
+    triggerAssignee: null,
+    triggerUser: null,
+    maxFixAttempts: 3,
     createdBy: null,
     createdAt: "2026-10-11T00:00:00.000Z",
     ...over,
@@ -177,5 +189,94 @@ describe("projectChanges", () => {
       defaultBranch: "develop",
       sandboxImage: "node:24",
     });
+  });
+});
+
+describe("issue-to-PR jobs", () => {
+  const job = (over: Partial<ShipyardJobDto> = {}): ShipyardJobDto => ({
+    id: "j1",
+    projectId: "p1",
+    issue: { number: 12, title: "It breaks", url: null },
+    status: "working",
+    source: "manual",
+    crewSlug: "shipwright",
+    branch: null,
+    pr: null,
+    attempts: 0,
+    maxAttempts: 3,
+    reviewRounds: 0,
+    reviewVerdict: null,
+    detail: null,
+    user: { id: "u1", name: "Addison" },
+    conversationId: null,
+    createdAt: "2026-10-11T00:00:00.000Z",
+    updatedAt: "2026-10-11T00:00:00.000Z",
+    ...over,
+  });
+
+  it("labels each status the way the owner described them", () => {
+    expect(jobBadge(job({ status: "ci_failed", attempts: 2 }))).toEqual({
+      tone: "danger",
+      label: "CI red (attempt 2 of 3)",
+    });
+    expect(jobBadge(job({ status: "ready" })).label).toBe("Ready for review");
+    expect(jobBadge(job({ status: "gave_up" })).label).toBe("Gave up");
+    expect(jobBadge(job({ status: "reviewing" }), "Bosun").label).toBe("Review by Bosun");
+    expect(jobBadge(job({ status: "pr_open" })).label).toBe("PR open");
+  });
+
+  it("offers cancel and retry to the job's person and admins only", () => {
+    const me = { id: "u1", role: "member" };
+    const other = { id: "u2", role: "member" };
+    const admin = { id: "u3", role: "admin" };
+    expect(jobActions(job(), me)).toEqual({ cancel: true, retry: false });
+    expect(jobActions(job(), other)).toEqual({ cancel: false, retry: false });
+    expect(jobActions(job({ status: "gave_up" }), admin)).toEqual({ cancel: false, retry: true });
+    expect(jobActions(job({ status: "cancelled" }), me).retry).toBe(false);
+    expect(jobActions(job({ status: "cancelled", pr: { number: 4, url: "u" } }), me).retry).toBe(
+      true,
+    );
+    expect(jobActions(job({ status: "ready" }), me).cancel).toBe(false);
+  });
+
+  it("puts active jobs first and keeps a few finished ones", () => {
+    const list = [
+      job({ id: "old-done", status: "merged", createdAt: "2026-10-01T00:00:00Z" }),
+      job({ id: "active", status: "ci_running", createdAt: "2026-10-02T00:00:00Z" }),
+      job({ id: "new-done", status: "gave_up", createdAt: "2026-10-03T00:00:00Z" }),
+    ];
+    expect(jobsForBoard(list).map((j) => j.id)).toEqual(["active", "new-done", "old-done"]);
+    expect(jobsForBoard(list, 1).map((j) => j.id)).toEqual(["active", "new-done"]);
+    expect([...activeJobsByIssue(list).keys()]).toEqual([12]);
+  });
+
+  it("sends only changed job settings and checks the attempt limit", () => {
+    const p = project();
+    expect(jobSettingsChanges(p, jobSettingsForm(p))).toEqual({});
+    expect(
+      jobSettingsChanges(p, {
+        reviewerSlug: "bosun",
+        maxFixAttempts: "2",
+        triggerLabel: " shipwright ",
+        triggerAssignee: "@shipmate-bot",
+      }),
+    ).toEqual({
+      reviewerSlug: "bosun",
+      maxFixAttempts: 2,
+      triggerLabel: "shipwright",
+      triggerAssignee: "shipmate-bot",
+    });
+    expect(
+      jobSettingsChanges(project({ reviewerSlug: "bosun" }), {
+        ...jobSettingsForm(project({ reviewerSlug: "bosun" })),
+        reviewerSlug: "",
+      }),
+    ).toEqual({ reviewerSlug: null });
+    expect(typeof jobSettingsChanges(p, { ...jobSettingsForm(p), maxFixAttempts: "11" })).toBe(
+      "string",
+    );
+    expect(typeof jobSettingsChanges(p, { ...jobSettingsForm(p), maxFixAttempts: "x" })).toBe(
+      "string",
+    );
   });
 });

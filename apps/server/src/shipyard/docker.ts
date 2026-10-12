@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { request } from "node:http";
-import { relative, sep } from "node:path";
+import { readFileSync } from "node:fs";
+import { type ClientRequest, request as httpRequest, type IncomingMessage } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { join, relative, sep } from "node:path";
 import type { BashOperations } from "@earendil-works/pi-coding-agent";
 
 /** Where the sandbox sees the project workspace. */
@@ -19,6 +21,67 @@ export class DockerError extends Error {
   }
 }
 
+/**
+ * Where the sandbox engine listens: a unix socket (Docker, or rootless Podman's
+ * Docker-compatible API socket), or a remote Docker or Podman host over TCP, ideally with TLS
+ * client certificates.
+ */
+export type DockerEndpoint =
+  | { kind: "socket"; socketPath: string }
+  | {
+      kind: "tcp";
+      host: string;
+      port: number;
+      /** PEM strings; with them the connection is HTTPS and the server certificate is checked. */
+      tls?: { ca?: string | undefined; cert: string; key: string } | undefined;
+    };
+
+/** Parse `unix:///path`, `tcp://host:port` or a bare socket path (DOCKER_HOST style). */
+export function parseDockerHost(value: string): DockerEndpoint | null {
+  const v = value.trim();
+  if (!v) return null;
+  if (v.startsWith("/")) return { kind: "socket", socketPath: v };
+  if (v.startsWith("unix://")) {
+    const path = v.slice("unix://".length);
+    return path.startsWith("/") ? { kind: "socket", socketPath: path } : null;
+  }
+  const m = /^(?:tcp|https?):\/\/(\[[0-9a-fA-F:.]+\]|[A-Za-z0-9.-]+)(?::(\d{1,5}))?\/?$/.exec(v);
+  if (!m) return null;
+  const port = m[2] ? Number(m[2]) : 2376;
+  if (port < 1 || port > 65535) return null;
+  return { kind: "tcp", host: (m[1] as string).replace(/^\[|\]$/g, ""), port };
+}
+
+/**
+ * The endpoint from the environment, following Docker's own conventions: DOCKER_HOST
+ * (`unix://` or `tcp://`), DOCKER_TLS_VERIFY and DOCKER_CERT_PATH (ca.pem, cert.pem, key.pem),
+ * else DOCKER_SOCKET, else /var/run/docker.sock.
+ */
+export function endpointFromEnv(env: NodeJS.ProcessEnv = process.env): DockerEndpoint {
+  const parsed = env.DOCKER_HOST ? parseDockerHost(env.DOCKER_HOST) : null;
+  if (parsed?.kind === "tcp") {
+    const certPath = env.DOCKER_CERT_PATH;
+    const verify = env.DOCKER_TLS_VERIFY && env.DOCKER_TLS_VERIFY !== "0";
+    if (certPath && verify) {
+      const read = (f: string) => readFileSync(join(certPath, f), "utf8");
+      return {
+        ...parsed,
+        tls: { ca: read("ca.pem"), cert: read("cert.pem"), key: read("key.pem") },
+      };
+    }
+    return parsed;
+  }
+  if (parsed) return parsed;
+  return { kind: "socket", socketPath: env.DOCKER_SOCKET || DEFAULT_DOCKER_SOCKET };
+}
+
+/** "unix:///var/run/docker.sock", "tcp://nas.lan:2376 (TLS)": for messages, never secrets. */
+export function describeEndpoint(e: DockerEndpoint): string {
+  if (e.kind === "socket") return `unix://${e.socketPath}`;
+  const host = e.host.includes(":") ? `[${e.host}]` : e.host;
+  return `tcp://${host}:${e.port}${e.tls ? " (TLS)" : ""}`;
+}
+
 export interface ContainerInfo {
   id: string;
   name: string;
@@ -29,11 +92,71 @@ export interface ContainerInfo {
 }
 
 /**
- * A minimal Docker Engine API client over the unix socket: just what the Shipyard sandboxes
- * need. No dependency on dockerode.
+ * A minimal Docker Engine API client over a unix socket or TCP (optionally TLS): just what the
+ * Shipyard sandboxes need. Podman's Docker-compatible API works too. No dependency on dockerode.
  */
 export class DockerClient {
-  constructor(readonly socketPath: string = DEFAULT_DOCKER_SOCKET) {}
+  readonly endpoint: DockerEndpoint;
+
+  constructor(endpoint: DockerEndpoint | string = DEFAULT_DOCKER_SOCKET) {
+    this.endpoint =
+      typeof endpoint === "string" ? { kind: "socket", socketPath: endpoint } : endpoint;
+  }
+
+  /** Engine name and versions from GET /version (Docker or Podman). */
+  async version(timeoutMs = 5000): Promise<{
+    engine: string;
+    version: string;
+    apiVersion: string;
+    os: string;
+  }> {
+    const res = await this.#call("GET", "/version", undefined, timeoutMs);
+    ensureOk(res, "read its version");
+    const v = json(res) as {
+      Version?: string;
+      ApiVersion?: string;
+      Os?: string;
+      Arch?: string;
+      Components?: Array<{ Name?: string; Version?: string }> | null;
+    };
+    const podman = (v.Components ?? []).find((c) => /podman/i.test(c.Name ?? ""));
+    return {
+      engine: podman ? "Podman" : "Docker",
+      version: podman?.Version ?? v.Version ?? "unknown",
+      apiVersion: v.ApiVersion ?? "unknown",
+      os: [v.Os, v.Arch].filter(Boolean).join("/"),
+    };
+  }
+
+  /** An HTTP request to the engine, over the socket or TCP (TLS when certificates are set). */
+  #request(
+    options: {
+      method: string;
+      path: string;
+      headers: Record<string, string | number>;
+      timeout?: number;
+    },
+    onResponse: (res: IncomingMessage) => void,
+  ): ClientRequest {
+    const e = this.endpoint;
+    if (e.kind === "socket")
+      return httpRequest({ ...options, socketPath: e.socketPath }, onResponse);
+    if (e.tls) {
+      return httpsRequest(
+        {
+          ...options,
+          host: e.host,
+          port: e.port,
+          cert: e.tls.cert,
+          key: e.tls.key,
+          ...(e.tls.ca ? { ca: e.tls.ca } : {}),
+          rejectUnauthorized: true,
+        },
+        onResponse,
+      );
+    }
+    return httpRequest({ ...options, host: e.host, port: e.port }, onResponse);
+  }
 
   /** True when the daemon answers; never throws. */
   async ping(timeoutMs = 2000): Promise<boolean> {
@@ -163,9 +286,8 @@ export class DockerClient {
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const body = JSON.stringify({ Detach: false, Tty: false });
-      const req = request(
+      const req = this.#request(
         {
-          socketPath: this.socketPath,
           method: "POST",
           path: `${API}/exec/${encodeURIComponent(execId)}/start`,
           headers: {
@@ -243,9 +365,8 @@ export class DockerClient {
   ): Promise<{ status: number; body: Buffer }> {
     return new Promise((resolve, reject) => {
       const body = payload === undefined ? undefined : JSON.stringify(payload);
-      const req = request(
+      const req = this.#request(
         {
-          socketPath: this.socketPath,
           method,
           path: path === "/_ping" ? path : `${API}${path}`,
           headers: body
@@ -311,11 +432,20 @@ export function sandboxPath(hostWorkspace: string, cwd: string): string {
  * project's sandbox container, never on the host. `ensure` starts the container on first use.
  */
 export class Sandbox implements BashOperations {
+  readonly #docker: () => DockerClient;
+
   constructor(
-    private readonly docker: DockerClient,
+    /** A client, or a getter so a session follows endpoint changes made in Settings. */
+    docker: DockerClient | (() => DockerClient),
     private readonly hostWorkspace: string,
     private readonly ensure: () => Promise<string>,
-  ) {}
+  ) {
+    this.#docker = typeof docker === "function" ? docker : () => docker;
+  }
+
+  private get docker(): DockerClient {
+    return this.#docker();
+  }
 
   exec: BashOperations["exec"] = async (command, cwd, { onData, signal, timeout }) => {
     if (signal?.aborted) throw new Error("aborted");
@@ -361,6 +491,45 @@ export class Sandbox implements BashOperations {
     const script = `for p in /proc/[0-9]*; do grep -qsz '^${marker}$' "$p/environ" 2>/dev/null && kill -9 "\${p#/proc/}" 2>/dev/null; done; true`;
     await this.docker.run(containerId, ["sh", "-c", script]);
   }
+}
+
+export interface SandboxCheck {
+  ok: boolean;
+  /** Where Shipmate looked, e.g. "unix:///var/run/docker.sock" or "tcp://nas:2376 (TLS)". */
+  endpoint: string;
+  /** "Docker 27.3.1" or "Podman 5.2.0" when reachable. */
+  engine: string | null;
+  error: string | null;
+}
+
+/**
+ * Is the sandbox engine reachable? Never throws; the health page and Settings' "Test
+ * connection" both use it.
+ */
+export async function checkSandbox(client: DockerClient, timeoutMs = 3000): Promise<SandboxCheck> {
+  const endpoint = describeEndpoint(client.endpoint);
+  try {
+    const v = await client.version(timeoutMs);
+    return { ok: true, endpoint, engine: `${v.engine} ${v.version}`, error: null };
+  } catch (err) {
+    return { ok: false, endpoint, engine: null, error: connectionError(err, client.endpoint) };
+  }
+}
+
+/** A plain-words reason a connection failed; certificate text is never included. */
+function connectionError(err: unknown, e: DockerEndpoint): string {
+  const code = (err as { code?: string }).code ?? "";
+  const where = describeEndpoint(e);
+  if (code === "ENOENT") return `no socket at ${where}`;
+  if (code === "EACCES") return `permission denied on ${where}; check the socket's group or mode`;
+  if (code === "ECONNREFUSED") return `nothing is listening at ${where}`;
+  if (code === "ENOTFOUND" || code === "EAI_AGAIN") return `cannot resolve the host in ${where}`;
+  if (/^ERR_(TLS|SSL)|CERT|^UNABLE_TO|^EPROTO$/.test(code)) {
+    return `TLS handshake with ${where} failed (${code}); check the CA and client certificate`;
+  }
+  if (err instanceof DockerError) return err.message;
+  const msg = err instanceof Error ? err.message : String(err);
+  return `${where}: ${msg.slice(0, 200)}`;
 }
 
 function splitImage(image: string): [string, string] {

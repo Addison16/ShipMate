@@ -2,7 +2,8 @@
 
 Each folder is a starter crew member: `crew.yaml` (the manifest) plus `CREW.md` (persona and
 instructions). On first boot Shipmate copies `captain/` into `/data/crew/captain`, and seeds `shipwright/`
-(the Shipyard's default coder) whenever it is missing. The Captain
+(the Shipyard's default coder) and `bosun/` (the reviewer a project can turn on for its
+issue-to-PR jobs) whenever they are missing. The Captain
 recruits the rest from these templates or from scratch.
 
 Folders with a `starter.yaml` are **starter crew packs**, offered during first-run setup and

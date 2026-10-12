@@ -101,14 +101,24 @@ export async function doctorCommand(): Promise<void> {
     add("encryption key", "warn", `none yet; the server creates ${secretFile} on first start`);
   }
 
-  // Docker socket (optional: the Shipyard's sandboxes).
-  const socket = process.env.DOCKER_SOCKET || "/var/run/docker.sock";
-  const ping = await dockerPing(socket);
-  add(
-    "docker socket",
-    ping === true ? "ok" : "warn",
-    ping === true ? socket : `${socket}: ${ping}; the Shipyard stays off without it`,
-  );
+  // Docker socket (optional: the Shipyard's sandboxes). A remote host (DOCKER_HOST=tcp://, or
+  // one the owner set in Settings) is checked from Settings → Shipyard sandbox instead.
+  const dockerHost = process.env.DOCKER_HOST ?? "";
+  if (dockerHost.startsWith("tcp://")) {
+    add("docker socket", "ok", `remote sandbox host ${dockerHost}; test it in Settings`);
+  } else {
+    const socket = dockerHost.startsWith("unix://")
+      ? dockerHost.slice("unix://".length)
+      : process.env.DOCKER_SOCKET || "/var/run/docker.sock";
+    const ping = await dockerPing(socket);
+    add(
+      "docker socket",
+      ping === true ? "ok" : "warn",
+      ping === true
+        ? socket
+        : `${socket}: ${ping}; the Shipyard stays off without it (or set a Podman socket or remote host in Settings)`,
+    );
+  }
 
   // Room for backups: the database dump plus the data folder, compressed; ask for 2x the DB.
   const dir = backupDir();

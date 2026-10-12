@@ -139,9 +139,21 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
   }
 
   /** Put a just-opened conversation at the top of the list (once). */
+  /**
+   * Show a just-opened conversation in the list. A reopened one stays where it is (keeping its
+   * preview, which only the list carries); a new one goes first after the pinned ones.
+   */
   function opened(conversation: ConversationDto) {
-    const rest = (conversations.data ?? []).filter((x) => x.id !== conversation.id);
-    conversations.setData([conversation, ...rest]);
+    const list = conversations.data ?? [];
+    if (list.some((x) => x.id === conversation.id)) {
+      conversations.setData(
+        list.map((x) => (x.id === conversation.id ? { ...conversation, preview: x.preview } : x)),
+      );
+      return;
+    }
+    const at = list.findIndex((x) => !x.pinned);
+    const i = at < 0 ? list.length : at;
+    conversations.setData([...list.slice(0, i), conversation, ...list.slice(i)]);
   }
 
   const canDirect = directCandidates(crewList).length > 0;
@@ -435,7 +447,9 @@ function Thread({
     if (state.busy || resetting) return;
     setResetting(true);
     try {
-      await api.resetConversation(conversationId);
+      const { message } = await api.resetConversation(conversationId);
+      // Shown now even if the live event never arrives (socket down); duplicates are dropped.
+      dispatch({ type: "event", event: { type: "message", conversationId, message } });
       setSendError(null);
       stick.current = true;
     } catch (err) {

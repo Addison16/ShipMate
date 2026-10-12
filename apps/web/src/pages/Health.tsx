@@ -36,6 +36,7 @@ export function HealthPage() {
   return (
     <Page>
       <PageHeader
+        icon="health"
         title="Health"
         description="The running version, newer releases, and whether everything Shipmate depends on is working."
         actions={

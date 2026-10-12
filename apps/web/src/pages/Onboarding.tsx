@@ -24,7 +24,7 @@ import {
   cx,
   ErrorText,
   focusRing,
-  Muted,
+  Loading,
   Notice,
   SelectField,
   TextAreaField,
@@ -576,7 +576,7 @@ function CaptainStep({ nav }: { nav: StepNav }) {
         hands bigger jobs to the rest of the crew.
       </StepHeader>
       <ErrorText>{setup.error}</ErrorText>
-      {setup.loading && !data && <Muted>Loading…</Muted>}
+      {setup.loading && !data && <Loading />}
       {data && <CaptainForm key={data.name + data.voice} initial={data} nav={nav} />}
     </>
   );
@@ -676,7 +676,7 @@ function HouseholdStep({ nav }: { nav: StepNav }) {
         your town. All of it is optional and lives on your server.
       </StepHeader>
       <ErrorText>{data.error}</ErrorText>
-      {data.loading && !data.data && <Muted>Loading…</Muted>}
+      {data.loading && !data.data && <Loading />}
       {data.data && <HouseholdForm initial={data.data} nav={nav} />}
     </>
   );

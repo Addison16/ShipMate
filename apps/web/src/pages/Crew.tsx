@@ -5,6 +5,7 @@ import { isAdmin, useUser } from "../auth.js";
 import { Avatar } from "../components/Avatar.js";
 import { CrewBackendSelect } from "../components/ClaudeCliCard.js";
 import { ExportCrewButton, ImportCrewPage } from "../components/CrewBundle.js";
+import { NavIcon } from "../components/icons.js";
 import { ModelSelect } from "../components/ModelSelect.js";
 import { StarterCrewPicker } from "../components/StarterCrewPicker.js";
 import {
@@ -12,8 +13,11 @@ import {
   Button,
   Card,
   cx,
+  EmptyState,
   ErrorText,
   focusRing,
+  Loading,
+  LoadingCards,
   Muted,
   Notice,
   Page,
@@ -56,6 +60,7 @@ function CrewList() {
   return (
     <Page wide>
       <PageHeader
+        icon="crew"
         title="Crew"
         description="Each crew member is a folder with a persona, a manifest and its own memory."
         actions={
@@ -81,14 +86,19 @@ function CrewList() {
         <label htmlFor="show-retired">Show retired</label>
       </div>
       <ErrorText>{crew.error}</ErrorText>
-      {crew.data?.length === 0 && <Muted>No crew yet.</Muted>}
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {crew.loading && !crew.data && <LoadingCards />}
+      {crew.data?.length === 0 && (
+        <EmptyState icon={<NavIcon name="crew" size={22} />} title="No crew yet">
+          Crew members are bots with their own job, persona and memory. Add a starter crew to begin.
+        </EmptyState>
+      )}
+      <ul className="stagger grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {crew.data?.map((c) => (
           <li key={c.slug}>
             <a
               href={href(`/crew/${c.slug}`)}
               className={cx(
-                "block h-full rounded-xl border border-slate-200 bg-white p-4 transition hover:-translate-y-0.5 hover:border-accent-600/50 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:hover:border-accent-400/50",
+                "block h-full rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition duration-200 hover:-translate-y-0.5 hover:border-accent-600/50 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:hover:border-accent-400/50",
                 focusRing,
               )}
             >
@@ -337,7 +347,7 @@ function CrewDetail({ slug }: { slug: string }) {
         ← Crew
       </a>
       {detail.error && !crew && <ErrorText>{detail.error}</ErrorText>}
-      {!crew && !detail.error && <Muted>Loading…</Muted>}
+      {!crew && !detail.error && <Loading />}
       {crew && (
         <>
           <header className="mt-2 mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -579,7 +589,7 @@ function MemoryPanel({ slug, admin }: { slug: string; admin: boolean }) {
   return (
     <div className="space-y-4">
       <ErrorText>{memory.error ?? error}</ErrorText>
-      {memory.loading && !memory.data && <Muted>Loading…</Muted>}
+      {memory.loading && !memory.data && <Loading />}
       {memory.data && (
         <>
           {section(

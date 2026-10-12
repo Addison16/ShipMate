@@ -15,6 +15,7 @@ import { useApprovals } from "../approvals.js";
 import { isAdmin, useUser } from "../auth.js";
 import { ApprovalCard } from "../components/ApprovalCard.js";
 import { CopyField } from "../components/CopyField.js";
+import { NavIcon } from "../components/icons.js";
 import { Markdown } from "../components/Markdown.js";
 import { TimelineView } from "../components/Timeline.js";
 import {
@@ -22,9 +23,11 @@ import {
   Button,
   Card,
   cx,
+  EmptyState,
   ErrorText,
   focusRing,
   IconButton,
+  Loading,
   Muted,
   Page,
   PageHeader,
@@ -248,6 +251,7 @@ function WatchList() {
   return (
     <Page wide>
       <PageHeader
+        icon="watches"
         title="Watches"
         description="Jobs a crew member runs on a schedule, on a webhook, or after another watch finishes."
         actions={
@@ -259,16 +263,14 @@ function WatchList() {
       <RoutineApprovals />
       <WatchTemplates crew={crew} existing={all} />
       <ErrorText>{watches.error}</ErrorText>
-      {watches.loading && !watches.data && <Muted>Loading…</Muted>}
+      {watches.loading && !watches.data && <Loading lines={4} />}
       {watches.data?.length === 0 && (
-        <Card>
-          <Muted>
-            No watches yet. A watch could send you a morning brief every weekday, plan meals each
-            Monday, or triage a repository every night.
-          </Muted>
-        </Card>
+        <EmptyState icon={<NavIcon name="watches" size={22} />} title="No watches yet">
+          A watch could send you a morning brief every weekday, plan meals each Monday, or triage a
+          repository every night.
+        </EmptyState>
       )}
-      <ul className="space-y-3">
+      <ul className="stagger space-y-3">
         {all.map((w) => {
           const editable = canEdit(w, user);
           return (
@@ -887,7 +889,7 @@ function WatchDetail({ id, startEditing }: { id: string; startEditing: boolean }
         ← Watches
       </a>
       {watches.error && !watch && <ErrorText>{watches.error}</ErrorText>}
-      {!watch && watches.loading && <Muted>Loading…</Muted>}
+      {!watch && watches.loading && <Loading />}
       {!watch && watches.data && <Muted>This watch no longer exists.</Muted>}
       {watch && (
         <>
@@ -979,7 +981,7 @@ function RunHistory({
     <Card>
       <h2 className="mb-3 font-semibold">Run history</h2>
       <ErrorText>{error}</ErrorText>
-      {loading && !runs && <Muted>Loading…</Muted>}
+      {loading && !runs && <Loading />}
       {runs?.length === 0 && <Muted>No runs yet.</Muted>}
       <ul className="divide-y divide-slate-200 dark:divide-slate-800">
         {runs?.map((r) => (
@@ -1070,7 +1072,7 @@ function RunTranscript({ watchId, runId }: { watchId: string; runId: string }) {
         }
       />
       <ErrorText>{data.error}</ErrorText>
-      {data.loading && !data.data && <Muted>Loading…</Muted>}
+      {data.loading && !data.data && <Loading />}
       {data.data && !run && <Muted>This run is no longer in the history.</Muted>}
       {run && !run.conversationId && <Muted>This run has no transcript.</Muted>}
       {run?.error && (

@@ -50,6 +50,7 @@ export function ProvidersPage() {
   return (
     <Page wide>
       <PageHeader
+        icon="providers"
         title="Providers"
         description={
           owner

@@ -17,7 +17,15 @@ import { ApprovalCard } from "../components/ApprovalCard.js";
 import { AttachButtons, PendingFiles, useComposerFiles } from "../components/Attachments.js";
 import { NavIcon } from "../components/icons.js";
 import { TimelineView } from "../components/Timeline.js";
-import { Badge, Button, cx, ErrorText, focusRing, IconButton } from "../components/ui.js";
+import {
+  Badge,
+  Button,
+  cx,
+  EmptyState,
+  ErrorText,
+  focusRing,
+  IconButton,
+} from "../components/ui.js";
 import { MicButton, speaker, useHandsFree, useVoiceStatus } from "../components/Voice.js";
 import { formatTime } from "../lib/format.js";
 import { splitHighlights } from "../lib/search.js";
@@ -222,7 +230,7 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
                   No conversations yet. Start one above.
                 </p>
               )}
-              <ul className="space-y-0.5">
+              <ul className="stagger space-y-0.5">
                 {conversations.data?.map((c, i, all) => (
                   <li key={c.id}>
                     {c.pinned && i === 0 && <ListLabel>Pinned</ListLabel>}
@@ -385,7 +393,7 @@ function ConversationRow({
   return (
     <div
       className={cx(
-        "relative rounded-md",
+        "relative rounded-md transition-colors duration-150",
         active
           ? "bg-accent-700/10 dark:bg-accent-400/10"
           : "hover:bg-slate-100 dark:hover:bg-slate-800",
@@ -699,9 +707,13 @@ function Thread({
         <div className="mx-auto max-w-3xl">
           {loadError && <ErrorText>{loadError}</ErrorText>}
           {state.items.length === 0 && restoredApprovals.length === 0 && !loadError && (
-            <p className="py-10 text-center text-sm text-slate-500 dark:text-slate-400">
-              No messages yet. Say hello.
-            </p>
+            <EmptyState
+              className="mt-6 border-none bg-transparent dark:bg-transparent"
+              icon={<NavIcon name="bridge" size={22} />}
+              title="No messages yet"
+            >
+              Say hello. Ask for anything, and the right crew member picks it up.
+            </EmptyState>
           )}
           <TimelineView items={state.items} selfId={user.id} />
           {restoredApprovals.length > 0 && (
@@ -785,10 +797,7 @@ function Thread({
                   files.add(e.clipboardData.files);
                 }}
                 placeholder={state.busy ? "The crew is working…" : "Message the crew"}
-                className={cx(
-                  "min-h-[42px] flex-1 resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-[15px] dark:border-slate-600 dark:bg-slate-950",
-                  focusRing,
-                )}
+                className="min-h-[42px] flex-1 resize-none rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-[15px] shadow-xs transition-[border-color,box-shadow] duration-150 hover:border-slate-400 focus:border-accent-500 focus:ring-3 focus:ring-accent-500/25 focus:outline-none dark:border-slate-600 dark:bg-slate-950 dark:hover:border-slate-500 dark:focus:border-accent-400 dark:focus:ring-accent-400/25"
               />
               {state.busy ? (
                 <Button

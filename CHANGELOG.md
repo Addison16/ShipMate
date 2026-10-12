@@ -6,6 +6,12 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Motion and polish**: pages fade in as you arrive, cards and lists rise in one after another,
+  chat messages slide in from their side, and a crew member who is working shows bouncing dots
+  instead of "typing…". Loading spots show shimmering placeholders, empty pages show an icon, a
+  line of help and the next step, each page has its icon beside its title, and buttons, fields,
+  dialogs and failure notices respond with small transitions. People whose device asks for
+  reduced motion get none of it.
 - **Simpler navigation**: the sidebar is down to six places (Bridge, Lists, Watches, Shipyard,
   Crew, Settings), each with a one-line hint of what it is for. Settings opens on an overview of
   every screen in four groups (You, Crew and tools, AI and cost, This Shipmate) with a filter box,

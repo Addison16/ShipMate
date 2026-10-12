@@ -9,6 +9,7 @@ import {
   cx,
   ErrorText,
   focusRing,
+  Loading,
   Muted,
   Table,
   TextField,
@@ -34,7 +35,7 @@ export function SlackPanel() {
   return (
     <div className="space-y-6">
       <ErrorText>{slack.error}</ErrorText>
-      {slack.loading && !s && <Muted>Loading…</Muted>}
+      {slack.loading && !s && <Loading />}
       {s && (
         <StatusCard
           state={slackState(s)}

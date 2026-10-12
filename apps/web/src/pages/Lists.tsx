@@ -2,15 +2,18 @@ import type { ListDetailDto, ListDto, ListItemDto, ListKind } from "@shipmate/co
 import { type FormEvent, useRef, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { isAdmin, useUser } from "../auth.js";
+import { NavIcon } from "../components/icons.js";
 import {
   Badge,
   Button,
   Card,
   cx,
+  EmptyState,
   ErrorText,
   focusRing,
   IconButton,
-  Muted,
+  Loading,
+  LoadingCards,
   Page,
   PageHeader,
   SelectField,
@@ -104,7 +107,7 @@ function ListCard({
       <a
         href={href(`/lists/${l.id}`)}
         className={cx(
-          "block h-full rounded-xl border border-slate-200 bg-white p-4 pr-24 transition sm:pr-20 hover:-translate-y-0.5 hover:border-accent-600/50 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:hover:border-accent-400/50",
+          "block h-full rounded-xl border border-slate-200 bg-white p-4 pr-24 shadow-xs transition duration-200 sm:pr-20 hover:-translate-y-0.5 hover:border-accent-600/50 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:hover:border-accent-400/50",
           focusRing,
         )}
       >
@@ -182,21 +185,20 @@ function ListIndex() {
   return (
     <Page wide>
       <PageHeader
+        icon="lists"
         title="Lists"
         description="Groceries, to-dos, packing and bills. Shared lists are for the whole household; the crew read and update them too."
       />
       <div className="grid gap-6 lg:grid-cols-[1fr_18rem]">
         <div>
           <ErrorText>{lists.error}</ErrorText>
-          {lists.loading && !lists.data && <Muted>Loading…</Muted>}
+          {lists.loading && !lists.data && <LoadingCards count={4} />}
           {lists.data && all.length === 0 && (
-            <Card>
-              <Muted>
-                No lists yet. Start one here, or ask the crew: "add milk to the grocery list".
-              </Muted>
-            </Card>
+            <EmptyState icon={<NavIcon name="lists" size={22} />} title="No lists yet">
+              Start one here, or ask the crew: "add milk to the grocery list".
+            </EmptyState>
           )}
-          <ul className="grid gap-3 sm:grid-cols-2">
+          <ul className="stagger grid gap-3 sm:grid-cols-2">
             {all.map((l) => (
               <li key={l.id}>
                 <ListCard
@@ -318,7 +320,7 @@ function ListDetail({ id }: { id: string }) {
         ← Lists
       </a>
       {list.error && !l && <ErrorText>{list.error}</ErrorText>}
-      {!l && !list.error && <Muted>Loading…</Muted>}
+      {!l && !list.error && <Loading />}
       {l && (
         <>
           <header className="mt-2 mb-4 flex flex-wrap items-start justify-between gap-3">

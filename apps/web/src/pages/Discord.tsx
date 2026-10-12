@@ -9,6 +9,7 @@ import {
   cx,
   ErrorText,
   focusRing,
+  Loading,
   Muted,
   Page,
   PageHeader,
@@ -25,6 +26,7 @@ export function DiscordPage() {
   return (
     <Page>
       <PageHeader
+        icon="bridges"
         title="Discord"
         description="Talk to the crew from Discord: each crew member gets its own channel and posts under its own name."
       />
@@ -48,7 +50,7 @@ export function DiscordPanel() {
   return (
     <div className="space-y-6">
       <ErrorText>{discord.error}</ErrorText>
-      {discord.loading && !d && <Muted>Loading…</Muted>}
+      {discord.loading && !d && <Loading />}
       {d && <StatusCard d={d} onReload={() => void discord.reload()} busy={discord.loading} />}
       {d && owner && <OwnerCard d={d} onChange={discord.setData} onReload={discord.reload} />}
       {d && admin && !owner && !d.configured && (

@@ -43,7 +43,7 @@ export function Toasts() {
         <div
           key={t.id}
           role="alert"
-          className="pointer-events-auto rounded-lg border border-red-200 bg-white p-3 text-sm shadow-lg dark:border-red-900 dark:bg-slate-900"
+          className="pointer-events-auto animate-toast-in rounded-lg border border-red-200 bg-white p-3 text-sm shadow-lg dark:border-red-900 dark:bg-slate-900"
         >
           <div className="flex items-start gap-2">
             <span aria-hidden="true" className="mt-1.5 size-2 shrink-0 rounded-full bg-red-500" />

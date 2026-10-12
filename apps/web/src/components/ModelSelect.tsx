@@ -177,7 +177,7 @@ export function CrewModelSelect({
         disabled={readOnly || busy}
         hint={
           onCli
-            ? "Runs on your Claude subscription through the official Claude Code CLI. Its own tools follow cli.allowedTools and cli.permissionMode in crew.yaml; Shipmate's tools (memory, lists, delegating) still ask for approval as usual. Not available in Shipyard projects."
+            ? "Runs on your Claude subscription through Claude Code. Not available in Shipyard projects."
             : "Crew default follows the model picked in Settings. Pick a provider and model to give this crew member its own."
         }
       />

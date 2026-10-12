@@ -12,25 +12,6 @@ export const BACKEND_LABEL: Record<CrewBackendName, string> = {
   "claude-code-cli": "Claude subscription (Claude Code CLI)",
 };
 
-const BACKEND_LINE = /^backend:[ \t]*["']?([A-Za-z0-9-]+)["']?[ \t]*(#.*)?$/m;
-
-/** The `backend` of a crew.yaml (pi when absent). */
-export function readBackend(yaml: string): CrewBackendName {
-  return BACKEND_LINE.exec(yaml)?.[1] === "claude-code-cli" ? "claude-code-cli" : "pi";
-}
-
-/** crew.yaml with its top-level `backend` set, other lines untouched. */
-export function withBackend(yaml: string, backend: CrewBackendName): string {
-  const line = `backend: ${backend}`;
-  if (BACKEND_LINE.test(yaml)) return yaml.replace(BACKEND_LINE, line);
-  const model = /^model:.*$/m.exec(yaml);
-  if (model) {
-    const end = model.index + model[0].length;
-    return `${yaml.slice(0, end)}\n${line}${yaml.slice(end)}`;
-  }
-  return `${yaml.replace(/\s*$/, "")}\n${line}\n`;
-}
-
 /** One-line state for the Providers card. */
 export function describeStatus(s: ClaudeCliStatusDto): {
   label: string;

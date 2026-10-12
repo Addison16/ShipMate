@@ -3,8 +3,8 @@ import { type FormEvent, useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { isAdmin, useUser } from "../auth.js";
 import { Avatar } from "../components/Avatar.js";
-import { CrewBackendSelect } from "../components/ClaudeCliCard.js";
 import { ExportCrewButton, ImportCrewPage } from "../components/CrewBundle.js";
+import { CrewSettings } from "../components/CrewSettings.js";
 import { ModelSelect } from "../components/ModelSelect.js";
 import { StarterCrewPicker } from "../components/StarterCrewPicker.js";
 import {
@@ -287,7 +287,7 @@ function StarterCrew() {
   );
 }
 
-type Tab = "persona" | "manifest" | "memory";
+type Tab = "persona" | "settings" | "memory";
 
 function CrewDetail({ slug }: { slug: string }) {
   const user = useUser();
@@ -324,7 +324,7 @@ function CrewDetail({ slug }: { slug: string }) {
 
   const tabs: Array<{ id: Tab; label: string }> = [
     { id: "persona", label: "Persona" },
-    { id: "manifest", label: "Manifest" },
+    { id: "settings", label: "Settings" },
     { id: "memory", label: "Memory" },
   ];
 
@@ -414,29 +414,16 @@ function CrewDetail({ slug }: { slug: string }) {
                 onSaved={detail.setData}
               />
             )}
-            {tab === "manifest" && (
-              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-                Tool approvals are set here: <code className="font-mono">approval</code> (ask, auto,
-                or <code className="font-mono">never-for</code> a list of tools) and{" "}
-                <code className="font-mono">allow</code>, the tools this crew member may run without
-                asking. "Always allow" on an approval card adds to that list.
-              </p>
-            )}
             {tab === "persona" && (
-              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-                The approval policy and allow list are edited in the Manifest tab.
+              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                Model, tools, approvals and the rest are in the Settings tab.
               </p>
             )}
-            {tab === "manifest" && (
-              <CrewBackendSelect crew={crew} readOnly={!admin} onSaved={detail.setData} />
-            )}
-            {tab === "manifest" && (
-              <FileEditor
-                key="manifest"
-                label="crew.yaml"
-                initial={crew.manifestYaml}
+            {tab === "settings" && (
+              <CrewSettings
+                key={crew.slug}
+                crew={crew}
                 readOnly={!admin}
-                onSave={(v) => api.updateCrew(slug, { manifestYaml: v })}
                 onSaved={detail.setData}
               />
             )}

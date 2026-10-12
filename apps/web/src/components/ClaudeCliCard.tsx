@@ -1,18 +1,9 @@
-import type { CrewDetailDto } from "@shipmate/core";
-import { Fragment, useState } from "react";
-import { api, errorMessage } from "../api.js";
+import { Fragment } from "react";
 import { isAdmin, useUser } from "../auth.js";
-import {
-  BACKEND_LABEL,
-  type CrewBackendName,
-  claudeCliApi,
-  describeStatus,
-  readBackend,
-  withBackend,
-} from "../lib/claude-cli.js";
+import { claudeCliApi, describeStatus } from "../lib/claude-cli.js";
 import { useResource } from "../lib/useResource.js";
 import { CopyField } from "./CopyField.js";
-import { Badge, Button, Card, ErrorText, SelectField } from "./ui.js";
+import { Badge, Button, Card, ErrorText } from "./ui.js";
 
 /** Split text into plain and `code` parts, each keyed by its offset (stable for a given text). */
 function codeParts(text: string): Array<{ key: number; code: boolean; text: string }> {
@@ -91,65 +82,11 @@ function ClaudeCliStatusCard() {
           </div>
           <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
             Then set <code className="font-mono">backend: claude-code-cli</code> on a crew member
-            (Crew → Manifest).
+            (Crew → Settings → Runs on).
             {s.authMethod ? ` Signed in with: ${s.authMethod}.` : ""}
           </p>
         </>
       )}
     </Card>
-  );
-}
-
-/** Crew → Manifest: choose what runs this crew member (rewrites `backend:` in crew.yaml). */
-export function CrewBackendSelect({
-  crew,
-  readOnly,
-  onSaved,
-}: {
-  crew: CrewDetailDto;
-  readOnly: boolean;
-  onSaved: (crew: CrewDetailDto) => void;
-}) {
-  const current = readBackend(crew.manifestYaml);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function change(next: CrewBackendName) {
-    if (next === current) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await api.updateCrew(crew.slug, {
-        manifestYaml: withBackend(crew.manifestYaml, next),
-      });
-      onSaved(res.crew);
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="mb-4 max-w-xl">
-      <SelectField
-        label="Backend"
-        value={current}
-        disabled={readOnly || busy}
-        onChange={(e) => void change(e.target.value as CrewBackendName)}
-        hint={
-          current === "claude-code-cli"
-            ? "Runs the official claude binary signed in with your own Claude account (see Providers). Shipmate approval cards do not apply: cli.allowedTools and cli.permissionMode (default dontAsk) decide which tools it may use. Not available in Shipyard projects."
-            : "Uses the model in crew.yaml through the instance's providers."
-        }
-      >
-        {(Object.keys(BACKEND_LABEL) as CrewBackendName[]).map((b) => (
-          <option key={b} value={b}>
-            {BACKEND_LABEL[b]}
-          </option>
-        ))}
-      </SelectField>
-      <ErrorText>{error}</ErrorText>
-    </div>
   );
 }

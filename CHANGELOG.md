@@ -6,6 +6,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Crew settings**: a crew member's Manifest tab is now **Settings**, a form for everything in
+  its `crew.yaml` (name, role, who can use it, what it runs on and its model, Claude Code
+  options, built-in tools, MCP servers, skills, approvals and the monthly cap). **Edit file**
+  switches to the raw YAML; both edit the same draft, and the form only rewrites the lines you
+  change, so comments and keys it doesn't know about are kept.
 - **First-launch guide**: a new install walks the owner through a step-by-step, skippable setup
   after creating the account: connect a model (Ollama, ChatGPT plan, Claude subscription or an API
   key) and pick the crew's default, name the Captain and choose its personality (five presets or

@@ -73,7 +73,7 @@ export function ApprovalTray({ variant }: { variant: "sidebar" | "topbar" }) {
             ref={panelRef}
             role="dialog"
             aria-label="Pending approvals"
-            className="absolute top-14 right-3 left-3 max-h-[70dvh] animate-scale-in overflow-y-auto rounded-lg border border-slate-200 bg-white p-2 shadow-xl sm:left-auto sm:w-96 md:top-auto md:bottom-24 md:left-3 dark:border-slate-700 dark:bg-slate-900"
+            className="absolute top-[calc(3.5rem+env(safe-area-inset-top))] right-3 left-3 max-h-[70dvh] animate-scale-in overflow-y-auto rounded-lg border border-slate-200 bg-white p-2 shadow-xl sm:left-auto sm:w-96 md:top-auto md:bottom-24 md:left-3 dark:border-slate-700 dark:bg-slate-900"
           >
             <p className="px-2 py-1.5 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
               Waiting for you

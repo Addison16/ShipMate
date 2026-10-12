@@ -332,7 +332,13 @@ export function PageHeader({
 
 export function Page({ children, wide }: { children: ReactNode; wide?: boolean }) {
   return (
-    <div className={cx("mx-auto w-full px-4 py-6 sm:px-6", wide ? "max-w-6xl" : "max-w-4xl")}>
+    // The bottom padding clears the iPhone home indicator once the page is scrolled to its end.
+    <div
+      className={cx(
+        "mx-auto w-full px-4 pt-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:px-6",
+        wide ? "max-w-6xl" : "max-w-4xl",
+      )}
+    >
       {children}
     </div>
   );

@@ -13,7 +13,8 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   dialogs and failure notices respond with small transitions. People whose device asks for
   reduced motion get none of it. On phones, buttons and cards show a pressed state, fields no
   longer zoom the page when tapped, the chat's Pin, Rename and Delete become icons so its title
-  fits, and an installed app keeps clear of the notch and home indicator.
+  fits, and an installed app keeps the top bar, menu, message box, approvals, notices and the end of
+  every page clear of the notch and the home indicator.
 - **Simpler navigation**: the sidebar is down to six places (Bridge, Lists, Watches, Shipyard,
   Crew, Settings), each with a one-line hint of what it is for. Settings opens on an overview of
   every screen in four groups (You, Crew and tools, AI and cost, This Shipmate) with a filter box,

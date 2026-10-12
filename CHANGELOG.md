@@ -6,6 +6,12 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **The Captain sets people up**: ask the Captain to set someone up and it fills in their
+  profile (diet, budget, timezone, schedule, notes), theme and spending cap, the household facts,
+  and any crew member setting (model, backend, tools, MCP servers, skills, approvals, cap,
+  visibility). Members can change only their own settings this way; owners and admins can set up
+  anyone, and caps and renaming others stay with the owner. Edits keep the comments in
+  `crew.yaml`. Unedited Captain standing orders are upgraded to mention this.
 - **Crew settings**: a crew member's Manifest tab is now **Settings**, a form for everything in
   its `crew.yaml` (name, role, who can use it, what it runs on and its model, Claude Code
   options, built-in tools, MCP servers, skills, approvals and the monthly cap). **Edit file**

@@ -60,8 +60,16 @@ describe("CrewRegistry", () => {
     expect(() => r.update("galley", { manifestYaml: "name: x\nrole: y\nmodel: bad" })).toThrow(
       /model/,
     );
-    const edited = r.patchManifest("galley", { role: "meal planning" });
+    writeFileSync(
+      join(r.root, "galley", "crew.yaml"),
+      "# kept\nname: Galley\nrole: meals\nmodel: ollama/a\ntools: [read] # just reading\n",
+    );
+    const edited = r.patchManifest("galley", { role: "meal planning", tools: ["read"] });
     expect(edited.manifest.role).toBe("meal planning");
+    expect(readFileSync(join(r.root, "galley", "crew.yaml"), "utf8")).toBe(
+      "# kept\nname: Galley\nrole: meal planning\nmodel: ollama/a\ntools: [read] # just reading\n",
+    );
+    expect(() => r.patchManifest("galley", { model: "bad" })).toThrow(/model/);
     r.update("galley", { persona: "new persona" });
     expect(readFileSync(join(r.root, "galley", "CREW.md"), "utf8")).toBe("new persona\n");
     expect(r.list().map((c) => c.slug)).toEqual(["galley"]);

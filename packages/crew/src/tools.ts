@@ -32,9 +32,47 @@ export interface EditSpec {
   name?: string | undefined;
   role?: string | undefined;
   model?: string | undefined;
+  backend?: "pi" | "claude-code-cli" | undefined;
+  /** Merged into the current `cli` settings. */
+  cli?:
+    | {
+        model?: string | undefined;
+        allowedTools?: string[] | undefined;
+        permissionMode?: "dontAsk" | "acceptEdits" | "plan" | undefined;
+      }
+    | undefined;
   tools?: string[] | undefined;
   mcp?: string[] | undefined;
+  skills?: string[] | undefined;
+  approval?: "ask" | "auto" | { "never-for": string[] } | undefined;
+  allow?: string[] | undefined;
+  autoApproveSkills?: boolean | undefined;
+  monthlyCapUsd?: number | null | undefined;
+  visibility?: "shared" | "private" | undefined;
+  avatar?: string | undefined;
   persona?: string | undefined;
+}
+
+/** Changes to one person's settings; profile fields are the household profile. */
+export interface PersonChanges {
+  displayName?: string | undefined;
+  /** USD per month; null removes the cap. */
+  monthlyCapUsd?: number | null | undefined;
+  themeMode?: string | undefined;
+  colorTheme?: string | undefined;
+  diet?: string | undefined;
+  budget?: string | undefined;
+  timezone?: string | undefined;
+  schedule?: string | undefined;
+  notes?: string | undefined;
+  /** Let crew working for other people read this profile. */
+  shared?: boolean | undefined;
+}
+
+export interface HouseholdChanges {
+  location?: string | undefined;
+  timezone?: string | undefined;
+  notes?: string | undefined;
 }
 
 /**
@@ -45,6 +83,13 @@ export interface CaptainHost {
   listCrew(): Promise<CrewSummary[]>;
   recruit(spec: RecruitSpec): Promise<CrewSummary>;
   edit(slug: string, spec: EditSpec): Promise<CrewSummary>;
+  /** A crew member's crew.yaml as text. */
+  crewSettings(slug: string): Promise<string>;
+  /** Everyone with an account, with their settings and profile (as far as `user` may see). */
+  listPeople(): Promise<string>;
+  /** Change one person's settings; `person` is a name, email or id. Returns a summary. */
+  updatePerson(person: string, changes: PersonChanges): Promise<string>;
+  updateHousehold(changes: HouseholdChanges): Promise<string>;
   retire(slug: string): Promise<void>;
   /** Run `task` with crew member `slug` and return its final reply. */
   delegate(slug: string, task: string, signal: AbortSignal | undefined): Promise<string>;
@@ -241,21 +286,82 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
       },
     }),
     defineTool({
+      name: "crew_settings",
+      label: "Crew settings",
+      description:
+        "Read a crew member's settings (their crew.yaml): model, backend, tools, MCP servers, skills, approvals, spending cap and visibility.",
+      parameters: Type.Object({ slug: Type.String() }),
+      async execute(_id, p) {
+        return text(await host.crewSettings(p.slug));
+      },
+    }),
+    defineTool({
       name: "edit_crew_member",
       label: "Edit crew member",
       description:
-        "Change a crew member's name, role, model, tools, MCP servers or persona (replaces CREW.md entirely when given).",
+        "Change any of a crew member's settings: name, role, model, backend, Claude Code options, tools, MCP servers, skills, approvals, spending cap, visibility, or persona (replaces CREW.md entirely when given). Only the fields you pass change; read crew_settings first.",
+      promptSnippet: "edit_crew_member: change any crew member setting (read crew_settings first)",
       parameters: Type.Object({
         slug: Type.String(),
         name: Type.Optional(Type.String()),
         role: Type.Optional(Type.String()),
-        model: Type.Optional(Type.String()),
-        tools: stringList("replaces the tool list"),
+        model: Type.Optional(Type.String({ description: "provider/model" })),
+        backend: Type.Optional(
+          Type.Union([Type.Literal("pi"), Type.Literal("claude-code-cli")], {
+            description:
+              '"pi" (Shipmate with the instance providers) or "claude-code-cli" (an owner\'s own Claude subscription)',
+          }),
+        ),
+        cliModel: Type.Optional(
+          Type.String({ description: "claude-code-cli only: alias such as sonnet or opus" }),
+        ),
+        cliAllowedTools: stringList("claude-code-cli only: tools it may use, e.g. Read, Edit"),
+        cliPermissionMode: Type.Optional(
+          Type.Union([Type.Literal("dontAsk"), Type.Literal("acceptEdits"), Type.Literal("plan")]),
+        ),
+        tools: stringList("replaces the built-in tool list; empty means all built-in tools"),
         mcp: stringList("replaces the MCP server list"),
+        skills: stringList("replaces the skill list"),
+        approval: Type.Optional(
+          Type.Union([Type.Literal("ask"), Type.Literal("auto"), Type.Literal("never-for")], {
+            description:
+              '"ask" before consequential tools, "auto" never asks, "never-for" blocks the tools in neverFor and runs the rest',
+          }),
+        ),
+        neverFor: stringList('tools that are never run, with approval "never-for"'),
+        allow: stringList("replaces the tools it may run without asking"),
+        autoApproveSkills: Type.Optional(Type.Boolean()),
+        monthlyCapUsd: Type.Optional(
+          Type.Number({ description: "monthly spend ceiling in USD; 0 removes the cap" }),
+        ),
+        visibility: Type.Optional(Type.Union([Type.Literal("shared"), Type.Literal("private")])),
         persona: Type.Optional(Type.String()),
       }),
-      async execute(_id, { slug, ...spec }) {
+      async execute(_id, p) {
         requireManager();
+        const { slug, cliModel, cliAllowedTools, cliPermissionMode, approval, neverFor, ...rest } =
+          p;
+        if (approval === "never-for" && !neverFor?.length) {
+          throw new Error('approval "never-for" needs at least one tool in neverFor');
+        }
+        const spec: EditSpec = {
+          ...rest,
+          ...(rest.monthlyCapUsd !== undefined
+            ? { monthlyCapUsd: rest.monthlyCapUsd > 0 ? rest.monthlyCapUsd : null }
+            : {}),
+          ...(cliModel !== undefined || cliAllowedTools || cliPermissionMode
+            ? {
+                cli: {
+                  ...(cliModel !== undefined ? { model: cliModel } : {}),
+                  ...(cliAllowedTools ? { allowedTools: cliAllowedTools } : {}),
+                  ...(cliPermissionMode ? { permissionMode: cliPermissionMode } : {}),
+                },
+              }
+            : {}),
+          ...(approval
+            ? { approval: approval === "never-for" ? { "never-for": neverFor ?? [] } : approval }
+            : {}),
+        };
         const c = await host.edit(slug, spec);
         return text(`Updated ${c.name}.`);
       },
@@ -304,6 +410,72 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
       async execute(_id, p) {
         requireManager();
         return text(await host.installMcp(p.id, p.crews));
+      },
+    }),
+    defineTool({
+      name: "list_people",
+      label: "List people",
+      description:
+        "List everyone with an account on this instance, with their role, spending cap, appearance and household profile (diet, budget, timezone, schedule, notes). Use it before setting people up.",
+      parameters: Type.Object({}),
+      async execute() {
+        return text(await host.listPeople());
+      },
+    }),
+    defineTool({
+      name: "update_person",
+      label: "Update person",
+      description:
+        "Set up or change one person's settings: display name, monthly spending cap, theme, and their household profile (diet, budget, timezone, schedule, notes, and whether crew helping others may read it). Anyone can change their own; owners and admins can set up others (the name and cap of others: owner only). Only the fields you pass change.",
+      promptSnippet: "update_person: set up someone's profile and settings",
+      parameters: Type.Object({
+        person: Type.String({ description: 'their name, email or id; or "me"' }),
+        displayName: Type.Optional(Type.String()),
+        monthlyCapUsd: Type.Optional(
+          Type.Number({ description: "monthly spending cap in USD; 0 removes the cap" }),
+        ),
+        themeMode: Type.Optional(
+          Type.Union([Type.Literal("auto"), Type.Literal("light"), Type.Literal("dark")]),
+        ),
+        colorTheme: Type.Optional(
+          Type.String({
+            description: "harbor, open-sea, coral-reef, kelp-forest, lighthouse or admiral",
+          }),
+        ),
+        diet: Type.Optional(Type.String()),
+        budget: Type.Optional(Type.String()),
+        timezone: Type.Optional(Type.String({ description: "IANA timezone, e.g. Europe/Berlin" })),
+        schedule: Type.Optional(Type.String()),
+        notes: Type.Optional(Type.String()),
+        shared: Type.Optional(
+          Type.Boolean({ description: "let crew working for others read this profile" }),
+        ),
+      }),
+      async execute(_id, { person, ...changes }) {
+        const target = person.trim().toLowerCase() === "me" ? user.id : person;
+        return text(
+          await host.updatePerson(target, {
+            ...changes,
+            ...(changes.monthlyCapUsd !== undefined
+              ? { monthlyCapUsd: changes.monthlyCapUsd > 0 ? changes.monthlyCapUsd : null }
+              : {}),
+          }),
+        );
+      },
+    }),
+    defineTool({
+      name: "update_household",
+      label: "Update household",
+      description:
+        "Set the household facts every crew member sees: home location, household timezone and notes (who lives here, kids, routines). Owners and admins only; only the fields you pass change.",
+      parameters: Type.Object({
+        location: Type.Optional(Type.String({ description: "town or city, for weather" })),
+        timezone: Type.Optional(Type.String({ description: "IANA timezone" })),
+        notes: Type.Optional(Type.String()),
+      }),
+      async execute(_id, p) {
+        requireManager();
+        return text(await host.updateHousehold(p));
       },
     }),
     defineTool({

@@ -46,6 +46,10 @@ describe("createCrewSession", () => {
       },
       createWatch: async () => ({ id: "w", name: "w" }),
       installMcp: async () => "ok",
+      crewSettings: async () => "",
+      listPeople: async () => "",
+      updatePerson: async () => "",
+      updateHousehold: async () => "",
     };
     faux.setResponses([
       fauxAssistantMessage([

@@ -220,7 +220,7 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
                 }}
                 placeholder="Search conversations"
                 className={cx(
-                  "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900",
+                  "w-full rounded-md border border-control bg-white px-3 py-2 text-sm dark:bg-slate-900",
                   focusRing,
                 )}
               />
@@ -544,7 +544,7 @@ function Thread({
               value={renaming}
               onChange={(e) => setRenaming(e.target.value)}
               className={cx(
-                "min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900",
+                "min-w-0 flex-1 rounded-md border border-control bg-white px-2 py-1 text-sm dark:bg-slate-900",
                 focusRing,
               )}
             />
@@ -754,7 +754,7 @@ function Thread({
                       : "Message the crew"
                 }
                 className={cx(
-                  "min-h-[42px] flex-1 resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-[15px] dark:border-slate-600 dark:bg-slate-950",
+                  "min-h-[42px] flex-1 resize-none rounded-lg border border-control bg-white px-3 py-2 text-[15px] dark:bg-slate-950",
                   focusRing,
                 )}
               />

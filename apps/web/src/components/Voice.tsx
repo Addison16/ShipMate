@@ -202,7 +202,7 @@ export function ListenButton({ id, text }: { id: string; text: string }) {
       }}
       title={speaking ? "Stop" : "Listen"}
       className={cx(
-        "rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200",
+        "rounded p-0.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200",
         speaking && "text-accent-700 dark:text-accent-300",
         focusRing,
       )}

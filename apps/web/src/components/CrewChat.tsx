@@ -352,7 +352,7 @@ export function CrewPicker({
             onKeyDown={onKeyDown}
             placeholder="Find by name or role"
             className={cx(
-              "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-950",
+              "w-full rounded-md border border-control bg-white px-3 py-2 text-sm dark:bg-slate-950",
               focusRing,
             )}
           />

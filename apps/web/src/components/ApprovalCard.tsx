@@ -51,7 +51,7 @@ export function ApprovalCard({ approval, compact }: { approval: ApprovalDto; com
           {approval.crew.name} wants to run{" "}
           <span className="font-mono text-[0.95em]">{approval.toolName}</span>
         </p>
-        <time className="text-xs text-amber-800/80 dark:text-amber-200/70">
+        <time className="text-xs text-amber-800 dark:text-amber-200">
           {formatTime(approval.createdAt)}
         </time>
       </div>

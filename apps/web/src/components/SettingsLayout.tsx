@@ -54,7 +54,9 @@ export function SettingsLayout({ current, children }: { current: string; childre
                         >
                           <span
                             className={cx(
-                              active ? "text-accent-600 dark:text-accent-300" : "text-slate-400",
+                              active
+                                ? "text-accent-600 dark:text-accent-300"
+                                : "text-slate-500 dark:text-slate-400",
                             )}
                           >
                             <NavIcon name={s.icon} size={16} />

@@ -166,7 +166,7 @@ export function QuickJump({ onClose }: { onClose: () => void }) {
         className="relative w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
       >
         <div className="flex items-center gap-2 border-b border-slate-200 px-4 dark:border-slate-800">
-          <span className="text-slate-400">
+          <span className="text-slate-500 dark:text-slate-400">
             <NavIcon name="search" />
           </span>
           <input

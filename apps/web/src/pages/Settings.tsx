@@ -130,7 +130,7 @@ function SettingsOverview() {
       <PageHeader title="Settings" description="Everything you can set up, in one place." />
       <label className="relative mb-6 block">
         <span className="sr-only">Find a setting</span>
-        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">
+        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-500 dark:text-slate-400">
           <NavIcon name="search" size={16} />
         </span>
         <input
@@ -149,7 +149,7 @@ function SettingsOverview() {
         {grouped.map((g) => (
           <section key={g.group ?? "results"}>
             {g.group && (
-              <h2 className="mb-2 text-[11px] font-semibold tracking-wider text-accent-700/80 uppercase dark:text-accent-300/80">
+              <h2 className="mb-2 text-[11px] font-semibold tracking-wider text-accent-700 uppercase dark:text-accent-300">
                 {g.group}
               </h2>
             )}

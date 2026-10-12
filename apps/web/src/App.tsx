@@ -3,10 +3,11 @@ import { AuthProvider, useAuth } from "./auth.js";
 import { Shell } from "./components/Shell.js";
 import { Button } from "./components/ui.js";
 import { LoginPage } from "./pages/Login.js";
-import { SetupPage } from "./pages/Setup.js";
+import { OnboardingPage } from "./pages/Onboarding.js";
+import { WelcomePage } from "./pages/Welcome.js";
 
 function Gate() {
-  const { loading, error, user, setupRequired, refresh } = useAuth();
+  const { loading, error, user, setupRequired, onboarding, refresh } = useAuth();
   if (loading) {
     return (
       <div className="grid min-h-dvh place-items-center text-sm text-slate-500">Connecting…</div>
@@ -25,8 +26,10 @@ function Gate() {
       </div>
     );
   }
-  if (setupRequired) return <SetupPage />;
+  // First launch: the owner account, then the guide until the owner finishes or skips it.
+  if (setupRequired || (user?.role === "owner" && onboarding?.pending)) return <OnboardingPage />;
   if (!user) return <LoginPage />;
+  if (user.welcomePending) return <WelcomePage />;
   return <Shell />;
 }
 

@@ -24,6 +24,7 @@ import { listRoutes } from "./routes/lists.js";
 import { localAiRoutes } from "./routes/local-ai.js";
 import { mcpRoutes } from "./routes/mcp.js";
 import { oidcRoutes } from "./routes/oidc.js";
+import { onboardingRoutes } from "./routes/onboarding.js";
 import { profileRoutes } from "./routes/profiles.js";
 import { providerRoutes } from "./routes/providers.js";
 import { pushRoutes } from "./routes/push.js";
@@ -170,6 +171,7 @@ export async function buildApp(
   await conversationRoutes(app, services);
   await usageRoutes(app, services);
   await settingsRoutes(app, services);
+  await onboardingRoutes(app, services);
   await skillRoutes(app, services);
   await approvalRoutes(app, services);
   await watchRoutes(app, services);

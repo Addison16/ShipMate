@@ -6,6 +6,14 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **First-launch guide**: a new install walks the owner through a step-by-step, skippable setup
+  after creating the account: connect a model (Ollama, ChatGPT plan, Claude subscription or an API
+  key) and pick the crew's default, name the Captain and choose its personality (five presets or
+  your own words, written into its CREW.md), home facts and theme, adding household members, a
+  starter crew, notifications and chat apps, an optional Shipyard project, and a closing tour.
+  It saves as it goes and resumes on the same step after a reload or sign-in; owners can run it
+  again from Settings. Existing instances are not affected. People the owner adds later get a
+  short welcome (profile, theme and notifications, tour) on their first sign-in.
 - **Reverse proxies**: Shipmate believes `X-Forwarded-*` from proxies on the same machine,
   Docker networks and the LAN by default (`SHIPMATE_TRUST_PROXY` to change it), keeps the
   Bridge's WebSocket alive through proxy idle timeouts, and the Health page gains a **Web

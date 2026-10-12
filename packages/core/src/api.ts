@@ -5,6 +5,7 @@
  * All JSON. Timestamps are ISO strings. Auth is a `shipmate_session` http-only cookie set by
  * `/api/setup` and `/api/auth/login`. Errors are `{ error: string }` with a 4xx/5xx status.
  */
+import type { CaptainVoice, OnboardingDto } from "./onboarding.js";
 import type { GitHubWatchEvent } from "./routine.js";
 import type { HouseholdFacts, PersonProfile, UserPreferences, UserRole } from "./user.js";
 
@@ -25,6 +26,8 @@ export interface UserDto {
   slackUserId: string | null;
   /** Appearance settings for the web app; only shown to and changed by this user. */
   preferences: UserPreferences;
+  /** True until this person has seen the first sign-in welcome (people the owner added). */
+  welcomePending: boolean;
   createdAt: string;
 }
 
@@ -33,6 +36,8 @@ export interface MeResponse {
   user: UserDto | null;
   /** True until the owner account exists; the web app shows the first-run setup page. */
   setupRequired: boolean;
+  /** The first-launch guide's state; only sent to the owner. */
+  onboarding?: OnboardingDto;
 }
 
 /** POST /api/setup (only while setupRequired) → { user: UserDto } and sets the session cookie. */
@@ -44,8 +49,26 @@ export interface SetupRequest {
   captainName?: string;
 }
 
+/**
+ * GET /api/onboarding (owner) → { onboarding: OnboardingDto }
+ * PUT /api/onboarding (owner) OnboardingUpdate → { onboarding: OnboardingDto }
+ * GET /api/onboarding/captain (owner) → CaptainSetupDto
+ * PUT /api/onboarding/captain (owner) { name?, voice } → CaptainSetupDto; `voice` is a preset id
+ *   from CAPTAIN_VOICES or free text, written as the `## Voice` section of the Captain's CREW.md.
+ */
+export interface CaptainSetupDto {
+  name: string;
+  /** Preset id, or "custom". */
+  voiceId: string;
+  /** The current `## Voice` section. */
+  voice: string;
+  /** The personality presets to pick from. */
+  voices: CaptainVoice[];
+}
+
 /** PATCH /api/auth/preferences (signed in) → { user: UserDto }. Changes only the given fields. */
-export type UpdatePreferencesRequest = Partial<UserPreferences>;
+/** PATCH /api/auth/preferences; `welcome: "done"` closes the first sign-in welcome. */
+export type UpdatePreferencesRequest = Partial<UserPreferences> & { welcome?: "done" };
 
 /** POST /api/auth/login → { user: UserDto }. POST /api/auth/logout → { ok: true }. */
 export interface LoginRequest {

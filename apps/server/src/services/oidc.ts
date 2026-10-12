@@ -345,6 +345,7 @@ export class OidcService {
         displayName: (name ?? email).trim().slice(0, 80),
         oidcSubject: subject,
         role: "member",
+        preferences: { welcome: "pending" },
       })
       .returning();
     if (!created) throw new Error("insert failed");

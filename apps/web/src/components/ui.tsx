@@ -337,7 +337,7 @@ export function Page({ children, wide }: { children: ReactNode; wide?: boolean }
     // indicator once the page is scrolled to its end.
     <div
       className={cx(
-        "mx-auto w-full px-4 py-6 sm:px-6 md:pb-[calc(1.5rem+env(safe-area-inset-bottom))]",
+        "mx-auto w-full px-4 py-6 sm:px-6 md:pb-[calc(1.5rem+var(--safe-bottom))]",
         wide ? "max-w-6xl" : "max-w-4xl",
       )}
     >

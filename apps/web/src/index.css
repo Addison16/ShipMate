@@ -129,6 +129,24 @@
   color: #f1f5f9;
 }
 
+/*
+ * Room to keep clear at the bottom of the screen (home indicator, rounded corners). Use
+ * var(--safe-bottom) instead of env(safe-area-inset-bottom) for anything pinned to the bottom.
+ * An iPhone home-screen app with the default status bar reports a bottom inset of 0 even though
+ * the page runs to the curved corners, which put the menu's last row under the corner. There we
+ * keep at least 1.5rem clear.
+ */
+:root {
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+@supports (-webkit-touch-callout: none) {
+  @media (display-mode: standalone) {
+    :root {
+      --safe-bottom: max(env(safe-area-inset-bottom, 0px), 1.5rem);
+    }
+  }
+}
+
 html,
 body,
 #root {

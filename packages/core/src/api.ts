@@ -287,6 +287,8 @@ export interface ConversationDto {
   projectId: string | null;
   /** Pinned conversations come first in the list. */
   pinned: boolean;
+  /** The latest thing said ("You: …" for the person's own words); only in the list. */
+  preview: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -308,7 +310,14 @@ export interface MessageDto {
 }
 
 /** GET /api/conversations → { conversations: ConversationDto[] } pinned first, then newest first */
-/** POST /api/conversations { kind?, crewSlug? } → { conversation } */
+/**
+ * POST /api/conversations { kind?, crewSlug?, reuse? } → { conversation }
+ * With `reuse`, a direct chat reopens the person's latest one with that crew member.
+ */
+/**
+ * POST /api/conversations/:id/reset → { message }: the crew start afresh (they forget the chat
+ * so far); the messages stay, below a divider message with meta { sessionReset: true }.
+ */
 /** PATCH /api/conversations/:id { title?, pinned? } → { conversation } */
 /**
  * GET /api/conversations/search?q=<words>&limit=<n> → { results: ConversationSearchResultDto[] }

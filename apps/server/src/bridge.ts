@@ -32,7 +32,7 @@ import {
   splitModelRef,
 } from "@shipmate/crew";
 import { conversations, crewMembers, type Db, messages, users, watches } from "@shipmate/db";
-import { and, asc, desc, eq, ilike, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { HttpError, type UserRow } from "./auth.js";
 import { ClaudeCliTurns } from "./claude-cli-turn.js";
 import { CliToolServer } from "./cli-mcp.js";
@@ -54,6 +54,8 @@ type ConversationRow = typeof conversations.$inferSelect;
 type Send = (event: ServerEvent) => void;
 
 const IDLE_MS = 30 * 60_000;
+/** How much of the latest message the conversation list shows. */
+const PREVIEW_CHARS = 140;
 
 export interface BridgeDeps {
   db: Db;
@@ -196,12 +198,24 @@ export class Bridge {
 
   async listConversations(userId: string): Promise<ConversationDto[]> {
     const rows = await this.deps.db
-      .select({ c: conversations, slug: crewMembers.slug })
+      .select({
+        c: conversations,
+        slug: crewMembers.slug,
+        // The latest thing said, for the list; the person's own words start with "You: ".
+        preview: sql<string | null>`(
+          select case when m.role = 'user' then 'You: ' else '' end
+            || left(regexp_replace(m.content, '[[:space:]]+', ' ', 'g'), ${PREVIEW_CHARS})
+          from ${messages} m
+          where m.conversation_id = ${conversations.id} and m.role <> 'system' and m.content <> ''
+          order by m.created_at desc
+          limit 1
+        )`,
+      })
       .from(conversations)
       .leftJoin(crewMembers, eq(crewMembers.id, conversations.crewMemberId))
       .where(and(eq(conversations.userId, userId), eq(conversations.surface, "web")))
       .orderBy(sql`${conversations.pinnedAt} desc nulls last`, desc(conversations.updatedAt));
-    return rows.map((r) => toConversationDto(r.c, r.slug));
+    return rows.map((r) => toConversationDto(r.c, r.slug, r.preview));
   }
 
   /**
@@ -335,6 +349,8 @@ export class Bridge {
       /** Work in this Shipyard project's workspace. */
       projectId?: string | undefined;
       title?: string | undefined;
+      /** Direct chats: reopen the person's latest web chat with that crew member, if any. */
+      reuse?: boolean | undefined;
     },
   ): Promise<ConversationDto> {
     const kind = input.kind ?? "bridge";
@@ -345,6 +361,23 @@ export class Bridge {
       const row = await this.deps.crew.assertVisible(input.crewSlug, user);
       crewMemberId = row.id;
       slug = row.slug;
+      if (input.reuse && (input.surface ?? "web") === "web" && !input.projectId) {
+        const [existing] = await this.deps.db
+          .select()
+          .from(conversations)
+          .where(
+            and(
+              eq(conversations.userId, user.id),
+              eq(conversations.kind, "direct"),
+              eq(conversations.crewMemberId, row.id),
+              eq(conversations.surface, "web"),
+              isNull(conversations.projectId),
+            ),
+          )
+          .orderBy(desc(conversations.updatedAt))
+          .limit(1);
+        if (existing) return toConversationDto(existing, slug);
+      }
     }
     const [c] = await this.deps.db
       .insert(conversations)
@@ -381,6 +414,39 @@ export class Bridge {
       .returning();
     if (!c) throw new HttpError(404, "conversation not found");
     return toConversationDto(c, await this.#slugOf(c.crewMemberId));
+  }
+
+  /**
+   * Start the crew afresh in a conversation: they forget what was said (their sessions are
+   * dropped) while every message stays on screen, below a divider. Refused while a turn runs.
+   */
+  async resetConversation(user: UserRow, id: string): Promise<MessageDto> {
+    const conv = await this.conversation(user, id);
+    if (conv.surface !== "web") throw new HttpError(400, "only web conversations can start fresh");
+    if (this.#runs.get(id)?.busy) {
+      throw new HttpError(409, "the crew is still answering; stop them first");
+    }
+    this.#dispose(id);
+    conv.sessionFiles = {};
+    await this.deps.db
+      .update(conversations)
+      .set({ sessionFiles: {} })
+      .where(eq(conversations.id, id));
+    const [member] = conv.crewMemberId
+      ? await this.deps.db
+          .select({ name: crewMembers.name })
+          .from(crewMembers)
+          .where(eq(crewMembers.id, conv.crewMemberId))
+      : [];
+    const who = member?.name ?? "The crew";
+    const message = await this.#store(conv, {
+      role: "system",
+      content: `Fresh start. ${who} won't remember the messages above.`,
+      authorName: "Shipmate",
+      meta: { sessionReset: true },
+    });
+    this.emit(user.id, { type: "message", conversationId: id, message });
+    return message;
   }
 
   async deleteConversation(user: UserRow, id: string): Promise<void> {
@@ -1342,7 +1408,11 @@ function lastError(session: CrewSession): string | undefined {
   return undefined;
 }
 
-function toConversationDto(c: ConversationRow, slug: string | null): ConversationDto {
+function toConversationDto(
+  c: ConversationRow,
+  slug: string | null,
+  preview: string | null = null,
+): ConversationDto {
   return {
     id: c.id,
     title: c.title,
@@ -1351,6 +1421,7 @@ function toConversationDto(c: ConversationRow, slug: string | null): Conversatio
     surface: c.surface,
     projectId: c.projectId,
     pinned: c.pinnedAt !== null,
+    preview,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   };

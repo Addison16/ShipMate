@@ -9,6 +9,7 @@ import {
   cx,
   ErrorText,
   focusRing,
+  Loading,
   Muted,
   Table,
   TextField,
@@ -34,7 +35,7 @@ export function SlackPanel() {
   return (
     <div className="space-y-6">
       <ErrorText>{slack.error}</ErrorText>
-      {slack.loading && !s && <Muted>Loading…</Muted>}
+      {slack.loading && !s && <Loading />}
       {s && (
         <StatusCard
           state={slackState(s)}
@@ -340,7 +341,7 @@ function ChannelRow({
               autoCapitalize="characters"
               onChange={(e) => setEditing(e.target.value)}
               className={cx(
-                "w-36 rounded-md border border-slate-300 bg-white px-2 py-1 font-mono text-xs dark:border-slate-600 dark:bg-slate-900",
+                "w-36 rounded-md border border-control bg-white px-2 py-1 font-mono text-xs dark:bg-slate-900",
                 focusRing,
               )}
             />

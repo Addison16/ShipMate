@@ -5,7 +5,7 @@ import { rankStarters } from "../lib/onboarding.js";
 import { browserTimeZone, describeSchedule } from "../lib/starters.js";
 import { useResource } from "../lib/useResource.js";
 import { Avatar } from "./Avatar.js";
-import { Badge, Button, cx, ErrorText, Muted } from "./ui.js";
+import { Badge, Button, cx, ErrorText, Loading, Muted } from "./ui.js";
 
 /**
  * Pick ready-made crew members (Galley, Purser, Navigator, ...) to bring aboard. Used on the
@@ -80,7 +80,7 @@ export function StarterCrewPicker({
   return (
     <div className="space-y-4">
       <ErrorText>{starters.error}</ErrorText>
-      {starters.loading && !starters.data && <Muted>Loading…</Muted>}
+      {starters.loading && !starters.data && <Loading />}
       {starters.data && list.length === 0 && <Muted>No starter crew in this install.</Muted>}
       <ul className="space-y-2">{suggested.map(row)}</ul>
       {others.length > 0 && (

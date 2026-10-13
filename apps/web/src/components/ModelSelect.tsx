@@ -178,7 +178,7 @@ export function CrewModelSelect({
         hint={
           onCli
             ? "Runs on your Claude subscription through Claude Code. Not available in Shipyard projects."
-            : "Crew default follows the model picked in Settings. Pick a provider and model to give this crew member its own."
+            : "Crew default follows the model picked in Settings → General. Pick a provider and model to give this crew member its own."
         }
       />
       <ErrorText>{error}</ErrorText>

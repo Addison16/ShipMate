@@ -8,6 +8,7 @@ import {
   cx,
   ErrorText,
   focusRing,
+  Loading,
   Muted,
   Page,
   PageHeader,
@@ -133,7 +134,7 @@ function CapCells({
       <td className={num}>{capLabel}</td>
       <td className={`${td} min-w-36`}>
         {p === null ? (
-          <span className="text-slate-400 dark:text-slate-500">—</span>
+          <span className="text-slate-500 dark:text-slate-400">—</span>
         ) : (
           <div className="flex items-center justify-end gap-2">
             <div
@@ -364,6 +365,7 @@ export function UsagePage() {
   return (
     <Page wide>
       <PageHeader
+        icon="cost"
         title="Usage and cost"
         description="Spend, tokens, response times and monthly ceilings per calendar month (UTC)."
         actions={
@@ -408,7 +410,7 @@ export function UsagePage() {
       </div>
 
       <ErrorText>{usage.error}</ErrorText>
-      {usage.loading && !data && <Muted>Loading…</Muted>}
+      {usage.loading && !data && <Loading />}
       {data && (
         <div className="space-y-8">
           <div

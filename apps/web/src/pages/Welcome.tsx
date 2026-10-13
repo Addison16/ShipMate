@@ -5,7 +5,7 @@ import { useAuth, useUser } from "../auth.js";
 import { AppearanceSettings } from "../components/AppearanceSettings.js";
 import { Logo } from "../components/Logo.js";
 import { PushSettings } from "../components/PushSettings.js";
-import { Button, ErrorText, Muted, TextAreaField, TextField } from "../components/ui.js";
+import { Button, ErrorText, Loading, TextAreaField, TextField } from "../components/ui.js";
 import { browserTimeZone } from "../lib/starters.js";
 import { useResource } from "../lib/useResource.js";
 import { navigate } from "../router.js";
@@ -136,7 +136,7 @@ function Footer({ children }: { children: ReactNode }) {
 function ProfileStep({ onNext }: { onNext: () => void }) {
   const data = useResource(() => api.getProfile());
   if (data.error) return <ErrorText>{data.error}</ErrorText>;
-  if (!data.data) return <Muted>Loading…</Muted>;
+  if (!data.data) return <Loading />;
   return <ProfileForm initial={data.data.profile} onNext={onNext} />;
 }
 

@@ -9,6 +9,7 @@ import {
   cx,
   ErrorText,
   focusRing,
+  Loading,
   Muted,
   Table,
   TextField,
@@ -34,7 +35,7 @@ export function TelegramPanel() {
   return (
     <div className="space-y-6">
       <ErrorText>{telegram.error}</ErrorText>
-      {telegram.loading && !t && <Muted>Loading…</Muted>}
+      {telegram.loading && !t && <Loading />}
       {t && (
         <StatusCard
           state={telegramState(t)}
@@ -229,7 +230,7 @@ function CrewSelect({
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         className={cx(
-          "rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900",
+          "rounded-md border border-control bg-white px-2 py-1 text-sm dark:bg-slate-900",
           focusRing,
         )}
       >

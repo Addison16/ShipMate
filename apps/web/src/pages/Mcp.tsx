@@ -9,6 +9,7 @@ import {
   cx,
   ErrorText,
   focusRing,
+  Loading,
   Muted,
   Page,
   PageHeader,
@@ -71,6 +72,7 @@ export function McpPage() {
   return (
     <Page wide>
       <PageHeader
+        icon="mcp"
         title="MCP servers"
         description="Tools crew members can use. Each server runs only with the secrets it declares, and a crew member only sees the servers in its manifest."
         actions={
@@ -100,7 +102,7 @@ export function McpPage() {
           />
         )}
         <ErrorText>{servers.error}</ErrorText>
-        {servers.loading && !servers.data && <Muted>Loading…</Muted>}
+        {servers.loading && !servers.data && <Loading />}
         {servers.data &&
           GROUPS.map((g) => {
             const list = servers.data?.filter(g.pick) ?? [];

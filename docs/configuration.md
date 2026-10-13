@@ -119,6 +119,7 @@ Shipmate needs one writable folder, `/data`. Map it to a host folder you back up
 | `/data/files/` | Photos and files people attach in chat. |
 | `/data/pi/` | The agent harness's own files: model sign-ins, model lists, MCP logs. |
 | `/data/claude/` | The Claude Code CLI's sign-in. |
+| `/data/mcp/` | Sign-ins MCP servers read, such as Google Workspace's credentials file. |
 | `/data/backups/` | Backups (unless `SHIPMATE_BACKUP_DIR` points elsewhere). |
 | `/data/postgres/` | The built-in database's files (accounts, conversations, settings, encrypted keys), when `DATABASE_URL` is not set. Owned by the container's `postgres` user. Back it up with Shipmate's backups rather than by copying it while Shipmate runs. |
 | `/var/run/docker.sock` | Optional: the Docker socket, for Shipyard sandboxes and one-click updates. Whatever holds it controls Docker on the host. |

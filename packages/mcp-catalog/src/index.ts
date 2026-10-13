@@ -17,6 +17,8 @@ export const CatalogEntry = z.object({
     .array(z.object({ env: z.string(), label: z.string(), required: z.boolean().default(true) }))
     .default([]),
   homepage: z.string().optional(),
+  /** Signs in through Shipmate with the owner's own OAuth client (Sign in with Google). */
+  oauth: z.enum(["google"]).optional(),
   tags: z.array(z.string()).default([]),
 });
 export type CatalogEntry = z.infer<typeof CatalogEntry>;

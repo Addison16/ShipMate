@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { type ServerEvent, SHIPMATE_VERSION } from "@shipmate/core";
 import { claudeCliStatus } from "@shipmate/crew";
@@ -21,6 +22,7 @@ import { AuditService } from "./services/audit.js";
 import { BackupService } from "./services/backups.js";
 import { CrewService } from "./services/crew.js";
 import { CrewBundleService } from "./services/crew-bundles.js";
+import { type GoogleFetch, GoogleOAuthService } from "./services/google-oauth.js";
 import { ListService } from "./services/lists.js";
 import { LocalAiService } from "./services/local-ai.js";
 import { McpService } from "./services/mcp.js";
@@ -50,6 +52,7 @@ export interface Services {
   providers: ProviderService;
   crew: CrewService;
   mcp: McpService;
+  google: GoogleOAuthService;
   usage: UsageService;
   approvals: ApprovalService;
   audit: AuditService;
@@ -96,6 +99,8 @@ export async function createServices(
     pushFetch?: PushFetch;
     /** Stand-in for speech services (tests). */
     voiceFetch?: VoiceFetch;
+    /** Stand-in for Google's OAuth endpoints (tests). */
+    googleFetch?: GoogleFetch;
   } = {},
 ): Promise<Services> {
   const vault = new SecretVault(config.SHIPMATE_SECRET);
@@ -108,7 +113,15 @@ export async function createServices(
   const settings = new SettingsService(db);
   const providers = new ProviderService(db, vault, runtime, options.extraProviders);
   const crew = new CrewService(db, config.dirs.crew, config.TEMPLATES_DIR);
-  const mcp = new McpService(db, vault, crew, config.SHIPMATE_MCP === "on");
+  const google = new GoogleOAuthService({
+    settings,
+    vault,
+    baseUrl: config.SHIPMATE_URL,
+    port: config.PORT,
+    credentialsDir: join(config.dirs.mcp, "google"),
+    fetch: options.googleFetch,
+  });
+  const mcp = new McpService(db, vault, crew, config.SHIPMATE_MCP === "on", google);
   const usage = new UsageService(db);
   const audit = new AuditService(db);
   const skills = new SkillService(config.dirs.root, crew);
@@ -250,6 +263,7 @@ export async function createServices(
     providers,
     crew,
     mcp,
+    google,
     usage,
     approvals,
     audit,

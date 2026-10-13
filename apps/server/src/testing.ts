@@ -44,6 +44,7 @@ export async function testApp(
     weather?: WeatherService;
     pushFetch?: PushFetch;
     voiceFetch?: VoiceFetch;
+    googleFetch?: typeof fetch;
     /** Extra config variables (e.g. SHIPMATE_UPDATE_CHECK). */
     env?: Record<string, string>;
   } = {},
@@ -80,6 +81,7 @@ export async function testApp(
     ...(options.weather ? { weather: options.weather } : {}),
     ...(options.pushFetch ? { pushFetch: options.pushFetch } : {}),
     ...(options.voiceFetch ? { voiceFetch: options.voiceFetch } : {}),
+    ...(options.googleFetch ? { googleFetch: options.googleFetch } : {}),
   });
   await app.ready();
   return { app, faux, config };

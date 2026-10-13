@@ -1,7 +1,8 @@
 import type { CreateCustomMcpRequest, CrewDto, McpServerDto } from "@shipmate/core";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { isAdmin, useUser } from "../auth.js";
+import { GoogleMcpSetup } from "../components/GoogleMcpSetup.js";
 import {
   Badge,
   Button,
@@ -11,12 +12,14 @@ import {
   focusRing,
   Loading,
   Muted,
+  Notice,
   Page,
   PageHeader,
   SelectField,
   TextAreaField,
   TextField,
 } from "../components/ui.js";
+import { googleResult } from "../lib/google-mcp.js";
 import { useResource } from "../lib/useResource.js";
 import { useServerEvents } from "../ws.js";
 
@@ -59,6 +62,11 @@ export function McpPage() {
   const servers = useResource(() => api.listMcp().then((r) => r.servers));
   const crew = useResource(() => api.listCrew().then((r) => r.crew));
   const [adding, setAdding] = useState(false);
+  // Google sends the browser back to "#/mcp?google=<result>"; say how it went once.
+  const [google, setGoogle] = useState(() => googleResult(window.location.hash));
+  useEffect(() => {
+    if (google) window.history.replaceState(null, "", "#/mcp");
+  }, [google]);
   useServerEvents((ev) => {
     if (ev.type === "crew_changed") {
       void crew.reload();
@@ -91,6 +99,16 @@ export function McpPage() {
               ? "Only the owner can install servers and set their secrets. You can choose which crew members use each server."
               : "Only the owner can change MCP servers."}
           </Muted>
+        )}
+        {google && (
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              {google.ok ? <Notice>{google.text}</Notice> : <ErrorText>{google.text}</ErrorText>}
+            </div>
+            <Button size="sm" variant="ghost" className="mt-1" onClick={() => setGoogle(null)}>
+              Dismiss
+            </Button>
+          </div>
         )}
         {adding && (
           <CustomServerForm
@@ -198,8 +216,10 @@ function ServerCard({
             {s.installed ? (
               s.ready ? (
                 <Badge tone="ok">ready</Badge>
+              ) : s.google && s.secrets.every((x) => x.set || !x.required) ? (
+                <Badge tone="warn">needs sign-in</Badge>
               ) : (
-                <Badge tone="warn">needs secrets</Badge>
+                <Badge tone="warn">{s.google ? "needs setup" : "needs secrets"}</Badge>
               )
             ) : (
               <Badge>not installed</Badge>
@@ -238,7 +258,7 @@ function ServerCard({
       <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
         Used by: {s.crews.length ? s.crews.map(crewName).join(", ") : "no crew members"}
       </p>
-      {s.secrets.length > 0 && (
+      {s.secrets.length > 0 && !s.google && (
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Secrets:{" "}
           {s.secrets.map((x, i) => (
@@ -258,7 +278,7 @@ function ServerCard({
               Install
             </Button>
           )}
-          {owner && s.installed && s.secrets.length > 0 && (
+          {owner && s.installed && s.secrets.length > 0 && !s.google && (
             <Button
               size="sm"
               aria-expanded={panel === "secrets"}
@@ -288,6 +308,7 @@ function ServerCard({
           <ErrorText>{error}</ErrorText>
         </div>
       )}
+      {owner && s.installed && s.google && <GoogleMcpSetup server={s} onChange={onChange} />}
       {panel === "secrets" && (
         <SecretsForm server={s} onSaved={onChange} onClose={() => setPanel(null)} />
       )}

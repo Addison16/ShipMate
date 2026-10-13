@@ -1,7 +1,8 @@
 import type { CreateCustomMcpRequest } from "@shipmate/core";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { requireRole } from "../auth.js";
+import { HttpError, requireRole } from "../auth.js";
+import { GOOGLE_CALLBACK_PATH, GoogleOAuthError } from "../services/google-oauth.js";
 import type { Services } from "../services.js";
 
 const Id = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/, "lowercase letters, digits and dashes");
@@ -12,6 +13,63 @@ export async function mcpRoutes(app: FastifyInstance, s: Services) {
     s.audit.record({ userId, crewMemberId: null, action, summary, decision: null });
 
   app.get("/api/mcp", async () => ({ servers: await s.mcp.list() }));
+
+  // Sign in with Google, for the Google Workspace server and the owner's own OAuth client.
+  const googleServer = async () => {
+    const server = (await s.mcp.list()).find((x) => x.google);
+    if (!server) throw new HttpError(404, "no Google server in the catalog");
+    return server;
+  };
+  const signedIn = async (userId: string, email: string) => {
+    await audit(userId, "mcp.google_signin", `Signed in to Google as ${email}`);
+  };
+
+  app.post("/api/mcp/google/start", async (req) => {
+    requireRole(req.user, "owner");
+    try {
+      return { url: s.google.start(await s.mcp.googleClient(), req.user.id) };
+    } catch (err) {
+      if (err instanceof GoogleOAuthError) throw new HttpError(400, err.message);
+      throw err;
+    }
+  });
+
+  app.get(GOOGLE_CALLBACK_PATH, async (req, reply) => {
+    const query = req.url.split("?")[1] ?? "";
+    try {
+      const { email, userId } = await s.google.finish(query, await s.mcp.googleClient());
+      await signedIn(userId, email);
+      return reply.redirect(s.google.doneUrl("ok"));
+    } catch (err) {
+      if (!(err instanceof GoogleOAuthError)) req.log.error(err);
+      else if (err.code === "failed")
+        req.log.warn({ reason: err.message }, "Google sign-in failed");
+      return reply.redirect(
+        s.google.doneUrl(err instanceof GoogleOAuthError ? err.code : "failed"),
+      );
+    }
+  });
+
+  app.post("/api/mcp/google/finish", async (req) => {
+    requireRole(req.user, "owner");
+    const { url } = z.object({ url: z.string().trim().min(1).max(4000) }).parse(req.body);
+    const query = url.includes("?") ? url.slice(url.indexOf("?") + 1).split("#")[0] : url;
+    try {
+      const { email } = await s.google.finish(query ?? "", await s.mcp.googleClient());
+      await signedIn(req.user.id, email);
+    } catch (err) {
+      if (err instanceof GoogleOAuthError) throw new HttpError(400, googleErrorText(err));
+      throw err;
+    }
+    return { server: await googleServer() };
+  });
+
+  app.delete("/api/mcp/google", async (req) => {
+    requireRole(req.user, "owner");
+    await s.google.signOut();
+    await audit(req.user.id, "mcp.google_signout", "Signed out of Google");
+    return { server: await googleServer() };
+  });
 
   app.post<{ Params: { id: string } }>("/api/mcp/:id/install", async (req) => {
     requireRole(req.user, "owner");
@@ -72,4 +130,20 @@ export async function mcpRoutes(app: FastifyInstance, s: Services) {
     await audit(req.user.id, "mcp.custom", `Added custom server ${server.name}`);
     return { server };
   });
+}
+
+/** Readable reason for a pasted-address sign-in that failed. */
+function googleErrorText(err: GoogleOAuthError): string {
+  switch (err.code) {
+    case "state":
+      return "That sign-in expired or came from another attempt. Start again.";
+    case "denied":
+      return "Sign-in was cancelled at Google.";
+    case "no_client":
+      return "Save a client ID and secret first.";
+    case "no_refresh":
+      return "Google did not send a refresh token. Start again.";
+    default:
+      return `Google could not finish the sign-in: ${err.message}`;
+  }
 }

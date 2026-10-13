@@ -245,7 +245,7 @@ export async function createServices(
 
   return {
     db,
-    sessions: new SessionStore(db, config.secureCookies),
+    sessions: new SessionStore(db),
     settings,
     providers,
     crew,

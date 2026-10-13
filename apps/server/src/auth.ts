@@ -38,12 +38,17 @@ export async function verifyPassword(stored: string | null, password: string): P
 
 const tokenId = (token: string) => createHash("sha256").update(token).digest("hex");
 
+/**
+ * Whether a cookie set on this request may be marked Secure: only when the browser reached
+ * Shipmate over https (directly, or through a trusted proxy's X-Forwarded-Proto). Browsers drop a
+ * Secure cookie sent over plain http, which left sign-in silently doing nothing when the instance
+ * was opened at its LAN address while SHIPMATE_URL named the https one.
+ */
+export const secureCookie = (request: FastifyRequest) => request.protocol === "https";
+
 /** Browser sessions: a random token in an http-only cookie, its hash in the database. */
 export class SessionStore {
-  constructor(
-    private readonly db: Db,
-    private readonly secureCookies: boolean,
-  ) {}
+  constructor(private readonly db: Db) {}
 
   async start(reply: FastifyReply, userId: string): Promise<void> {
     const token = randomBytes(32).toString("base64url");
@@ -53,7 +58,7 @@ export class SessionStore {
       path: "/",
       httpOnly: true,
       sameSite: "lax",
-      secure: this.secureCookies,
+      secure: secureCookie(reply.request),
       expires: expiresAt,
     });
   }

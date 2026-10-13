@@ -13,7 +13,7 @@ On a NAS, see also [the Unraid guide](../deploy/unraid/README.md) and
 | Variable | Default | What it does |
 |---|---|---|
 | `DATABASE_URL` | built-in database | Leave unset to use the Postgres built into the image (see [The database](#the-database)). Or an external Postgres 15 or newer: `postgres://user:password@host:5432/database`. URL-encode special characters in the password (`@` → `%40`, `:` → `%3A`, `/` → `%2F`). |
-| `SHIPMATE_URL` | `http://localhost:3000` | The address people open Shipmate at, exactly as they type it, with no path: `http://192.168.1.10:3000`, or `https://shipmate.example.com` behind a reverse proxy. Used for links in notifications and chat bridges, GitHub webhooks, OIDC redirects, and push notifications. When it starts with `https://`, sign-in cookies are marked Secure, so sign-in only works over https at that address. |
+| `SHIPMATE_URL` | `http://localhost:3000` | The address people open Shipmate at, exactly as they type it, with no path: `http://192.168.1.10:3000`, or `https://shipmate.example.com` behind a reverse proxy. Used for links in notifications and chat bridges, GitHub webhooks, OIDC redirects, and push notifications. Sign-in cookies are marked Secure whenever the browser reached Shipmate over https, so signing in also works at a plain http LAN address. |
 | `SHIPMATE_SECRET` | generated | The key that encrypts stored API keys and tokens. Leave it empty and Shipmate generates one into `/data/.secret` on first start. If you set it, keep it forever: without it, stored secrets cannot be read, even from a backup. |
 
 The **Health** page (owners and admins) checks that `SHIPMATE_URL` matches the address you

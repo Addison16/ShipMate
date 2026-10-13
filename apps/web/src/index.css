@@ -179,6 +179,26 @@ body {
 }
 
 /*
+ * iOS Safari draws date and time fields at their own native width, ignoring width: 100%, so they
+ * ran past their column (the daily briefing's "Every day at" field on Watches). Drop the native
+ * look so they size like every other field, and keep the value left-aligned and full height.
+ */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 2.5rem;
+}
+input[type="date"]::-webkit-date-and-time-value,
+input[type="time"]::-webkit-date-and-time-value,
+input[type="datetime-local"]::-webkit-date-and-time-value {
+  text-align: left;
+}
+
+/*
  * Motion. Short, quiet animations that make things arrive rather than pop in. Every one uses
  * `backwards` fill (never `both`/`forwards`), so no transform is left behind once it ends:
  * a lingering transform would trap `fixed` dialogs inside the animated element.

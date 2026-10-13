@@ -401,7 +401,8 @@ function WatchTemplateCard({
   return (
     <Card className="border-accent-200 bg-accent-50/50 dark:border-accent-900 dark:bg-accent-950/20">
       <form onSubmit={add} className="flex flex-wrap items-end gap-3">
-        <div className="min-w-56 flex-1">
+        {/* Full width on a phone, so the fields below get the card's whole width. */}
+        <div className="w-full sm:w-auto sm:min-w-56 sm:flex-1">
           <h2 className="font-semibold">{template.name}</h2>
           <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
             {template.description}
@@ -412,7 +413,7 @@ function WatchTemplateCard({
           label="Every day at"
           type="time"
           required
-          className="w-32"
+          className="w-40"
           value={time}
           onChange={(e) => setTime(e.target.value)}
         />

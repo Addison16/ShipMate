@@ -200,7 +200,7 @@ export async function buildApp(
   await voiceRoutes(app, services);
   await localAiRoutes(app, services);
   await healthRoutes(app, services);
-  await oidcRoutes(app, services, { secureCookies: config.secureCookies });
+  await oidcRoutes(app, services);
 
   // The Bridge's live channel: streams crew replies and takes messages from the person.
   app.get("/api/ws", { websocket: true }, (socket, req) => {

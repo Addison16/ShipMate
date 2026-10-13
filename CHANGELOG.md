@@ -6,6 +6,14 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Sign-in never just sits there**: the sign-in cookie is marked https-only only when the
+  browser actually came in over https, so signing in at a plain http LAN address works even when
+  `SHIPMATE_URL` names the https one (before, the browser dropped the cookie and the form did
+  nothing). If a browser still refuses the cookie, the sign-in page says so, and a server that
+  never answers gets a "took too long" message instead of an endless spinner.
+- **Phone and desktop layout fixes**: the daily briefing's time field on Watches no longer runs
+  past the card on iPhone, Crew cards no longer run off the right edge on a phone, and the Bridge
+  no longer scrolls far past the chat into empty space.
 - **One container, one command**: the image now has Postgres built in. With no `DATABASE_URL`
   it starts its own database before Shipmate, keeps it in `/data/postgres`, and listens only
   inside the container, so `docker run … ghcr.io/addison16/shipmate:latest` (or one Unraid

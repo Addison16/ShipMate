@@ -96,7 +96,7 @@ function CrewList() {
           Crew members are bots with their own job, persona and memory. Add a starter crew to begin.
         </EmptyState>
       )}
-      <ul className="stagger grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <ul className="stagger grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {crew.data?.map((c) => (
           <li key={c.slug}>
             <a

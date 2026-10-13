@@ -357,7 +357,7 @@ export function CrewPicker({
             )}
           />
         </div>
-        <div className="max-h-[50vh] overflow-y-auto p-2 max-sm:max-h-[60vh]">
+        <div className="relative max-h-[50vh] overflow-y-auto p-2 max-sm:max-h-[60vh]">
           {shown.length === 0 ? (
             <p className="px-2.5 py-6 text-sm text-slate-500 dark:text-slate-400">
               {q ? "No one matches. Try another name or role." : "No crew to chat with yet."}

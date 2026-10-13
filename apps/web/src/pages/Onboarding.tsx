@@ -376,7 +376,7 @@ function ChoiceCard({
 
 // ---------- 1. account ----------
 
-function AccountStep({ onCreated }: { onCreated: () => Promise<void> }) {
+function AccountStep({ onCreated }: { onCreated: () => Promise<unknown> }) {
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");

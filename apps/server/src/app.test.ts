@@ -70,6 +70,30 @@ describe.skipIf(!db)("Shipmate server", () => {
     });
   });
 
+  it("marks the sign-in cookie Secure only when the browser came in over https", async () => {
+    const login = (headers: Record<string, string>) =>
+      t.app.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { email: "owner@example.com", password: "correct horse" },
+        headers,
+      });
+    // Plain http at a LAN address: a Secure cookie would be dropped and sign-in would do nothing.
+    const http = await login({});
+    expect(http.statusCode).toBe(200);
+    expect(String(http.headers["set-cookie"])).not.toMatch(/Secure/);
+    // Through a trusted proxy that terminated https.
+    const https = await login({ "x-forwarded-proto": "https" });
+    expect(String(https.headers["set-cookie"])).toMatch(/Secure/);
+    const wrong = await t.app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "owner@example.com", password: "nope" },
+    });
+    expect(wrong.statusCode).toBe(401);
+    expect(wrong.json().error).toBe("Wrong email or password.");
+  });
+
   it("requires sign-in and enforces roles", async () => {
     expect((await api("GET", "/api/crew", undefined, "")).statusCode).toBe(401);
     const created = await api("POST", "/api/users", {

@@ -30,7 +30,7 @@ export function ApprovalTray({ variant }: { variant: "sidebar" | "topbar" }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  const label = `${count} ${count === 1 ? "approval" : "approvals"} waiting`;
+  const label = `${count} ${count === 1 ? "request" : "requests"} waiting for you`;
 
   return (
     <>
@@ -56,7 +56,7 @@ export function ApprovalTray({ variant }: { variant: "sidebar" | "topbar" }) {
             {count}
           </span>
           {variant === "sidebar" ? label : <span className="sr-only">{label}</span>}
-          {variant === "topbar" && <span aria-hidden="true">Approve</span>}
+          {variant === "topbar" && <span aria-hidden="true">Waiting</span>}
         </button>
       )}
       {open && count > 0 && (
@@ -94,7 +94,15 @@ export function ApprovalTray({ variant }: { variant: "sidebar" | "topbar" }) {
                   >
                     <span className="flex items-baseline justify-between gap-2">
                       <span className="truncate text-sm font-medium">
-                        {a.crew.name}: <span className="font-mono">{a.toolName}</span>
+                        {a.question ? (
+                          `${a.crew.name} asks`
+                        ) : a.everyTime ? (
+                          `${a.crew.name} is asking first`
+                        ) : (
+                          <>
+                            {a.crew.name}: <span className="font-mono">{a.toolName}</span>
+                          </>
+                        )}
                       </span>
                       <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
                         {formatTime(a.createdAt)}

@@ -119,7 +119,7 @@ export class ClaudeCliTurns {
       // Hand-offs show as their own bubbles; Shipmate's tools show under their plain names.
       if (e.type === "tool_start" || e.type === "tool_end") {
         const name = shipmateToolName(e.name);
-        if (name === "delegate" || name === "ask_captain") return;
+        if (name === "delegate" || name === "ask_captain" || name === "ask_person") return;
         e = { ...e, name };
       }
       switch (e.type) {

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { applyManifestForm, cleanList, readManifestForm } from "./crew-manifest.js";
+import {
+  applyManifestForm,
+  cleanList,
+  hasToolGroup,
+  otherCliTools,
+  readManifestForm,
+  setToolGroup,
+} from "./crew-manifest.js";
 
 const CAPTAIN = `# The coordinator
 name: Captain
@@ -96,5 +103,16 @@ describe("applyManifestForm", () => {
 describe("cleanList", () => {
   it("trims and drops blanks and duplicates", () => {
     expect(cleanList([" a", "", "b", "a "])).toEqual(["a", "b"]);
+  });
+});
+
+describe("Claude Code tool groups", () => {
+  it("ticks and unticks groups, keeping other rules", () => {
+    const allowed = ["Bash(npm test)", "Edit(./**)"];
+    expect(hasToolGroup(allowed, ["Edit(./**)"])).toBe(true);
+    expect(hasToolGroup(allowed, ["Bash"])).toBe(false);
+    expect(setToolGroup(allowed, ["Bash"], true)).toEqual(["Bash(npm test)", "Edit(./**)", "Bash"]);
+    expect(setToolGroup(allowed, ["Edit(./**)"], false)).toEqual(["Bash(npm test)"]);
+    expect(otherCliTools(allowed)).toEqual(["Bash(npm test)"]);
   });
 });

@@ -90,14 +90,18 @@ export function pendingFor(state: ApprovalsState, conversationId: string): Appro
   return state.pending.filter((a) => a.conversationId === conversationId);
 }
 
-export function resolutionLabel(r: Resolution | undefined, crewName: string): string {
+export function resolutionLabel(
+  r: Resolution | undefined,
+  crewName: string,
+  everyTime = false,
+): string {
   switch (r) {
     case "allow":
-      return "Allowed once";
+      return everyTime ? "Approved" : "Allowed once";
     case "always":
       return `Always allowed for ${crewName}`;
     case "deny":
-      return "Denied";
+      return everyTime ? "Declined" : "Denied";
     case "expired":
       return "Expired without an answer";
     default:

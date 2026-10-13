@@ -286,8 +286,12 @@ export const api = {
 
   // approvals and audit
   listApprovals: () => request<{ approvals: ApprovalDto[] }>("GET", "/api/approvals"),
-  decideApproval: (id: string, decision: ApprovalDecision) =>
-    request<Ok>("POST", `/api/approvals/${enc(id)}`, { decision }),
+  /** `answer` answers a question card (see ApprovalDto.question). */
+  decideApproval: (id: string, decision: ApprovalDecision, answer?: string) =>
+    request<Ok>("POST", `/api/approvals/${enc(id)}`, {
+      decision,
+      ...(answer !== undefined ? { answer } : {}),
+    }),
   audit: (q: { crew?: string; user?: string; before?: string; limit?: number }) => {
     const params = new URLSearchParams();
     if (q.crew) params.set("crew", q.crew);

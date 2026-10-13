@@ -181,9 +181,15 @@ function runOnce(options: ClaudeCliRunOptions): Promise<ClaudeCliResult> {
     }
     let child: ChildProcess;
     try {
+      const env = options.env ?? childEnv();
       child = spawn(bin, claudeCliArgs(options), {
         cwd: options.cwd,
-        env: options.env ?? childEnv(),
+        // Shipmate runs as root in its container, where the CLI refuses to allow every tool
+        // unless told it is sandboxed. The person picked "Allow all tools" knowing the risk.
+        env:
+          options.settings?.permissionMode === "bypassPermissions"
+            ? { ...env, IS_SANDBOX: "1" }
+            : env,
         stdio: ["pipe", "pipe", "pipe"],
         // Its own process group, so cancelling also stops the tools it started.
         detached: process.platform !== "win32",

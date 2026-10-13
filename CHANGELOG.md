@@ -6,6 +6,18 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Crew questions you answer with a tap**: when a crew member needs your decision, it asks
+  with `ask_person` and you get a card with its choices as buttons (plus "Something else" and
+  Skip), on the Bridge, in Discord, Telegram and Slack, like ChatGPT and Claude do. The crew
+  member carries on with your answer, and the question and answer stay in the conversation.
+- **The Captain equips the crew, asking first**: new `equip_crew_member` gives a crew member
+  MCP servers (installing catalog ones), tools, skills and Claude Code tools. It, installing a
+  server, and any `edit_crew_member` change to what a crew member may do always wait for an
+  Approve or Decline card with a plain summary, whatever the approval setting.
+- **Simpler crew permissions**: Claude Code's options are in plain words, with a new
+  "Allow all tools" (with a warning); its allowed tools, the approval lists and skills are
+  checkboxes with an "Other" field instead of typed names; and "Allow all built-in tools" and
+  "All installed servers" toggles replace the old "leave every box unticked" rule.
 - **Sign-in never just sits there**: the sign-in cookie is marked https-only only when the
   browser actually came in over https, so signing in at a plain http LAN address works even when
   `SHIPMATE_URL` names the https one (before, the browser dropped the cookie and the form did

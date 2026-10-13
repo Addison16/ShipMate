@@ -210,6 +210,16 @@ export class PushService {
 
   /** The notification for an approval request, with a token for its Approve and Deny buttons. */
   approvalPayload(userId: string, a: ApprovalDto, now = Date.now()): PushPayload {
+    // A question is answered in the app: a notification has no room for its choices.
+    if (a.question) {
+      return {
+        kind: "message",
+        title: `${a.crew.name} asks`,
+        body: preview(a.question.text),
+        url: a.conversationId ? `/#/bridge/${a.conversationId}` : "/#/watches",
+        tag: `approval-${a.id}`,
+      };
+    }
     return {
       kind: "approval",
       title: `${a.crew.name} needs your OK`,

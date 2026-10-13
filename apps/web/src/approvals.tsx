@@ -14,7 +14,8 @@ import { type ApprovalsState, approvalsReducer, initialApprovals } from "./lib/a
 import { socket, useServerEvents, useSocketState } from "./ws.js";
 
 interface ApprovalsContextValue extends ApprovalsState {
-  answer: (id: string, decision: ApprovalDecision) => Promise<void>;
+  /** `text` answers a question card. */
+  answer: (id: string, decision: ApprovalDecision, text?: string) => Promise<void>;
   /** Last error from answering or restoring, keyed by approval id ("" for restore). */
   errors: Record<string, string>;
 }
@@ -56,16 +57,16 @@ export function ApprovalsProvider({ children }: { children: ReactNode }) {
     void restore();
   }, [restore]);
 
-  const answer = useCallback(async (id: string, decision: ApprovalDecision) => {
+  const answer = useCallback(async (id: string, decision: ApprovalDecision, text?: string) => {
     dispatch({ type: "answering", id });
     setErrors(({ [id]: _, ...rest }) => rest);
-    if (socket.send({ type: "approve", approvalId: id, decision })) {
+    if (socket.send({ type: "approve", approvalId: id, decision, answer: text })) {
       // If the server never confirms (e.g. the socket dropped mid-send), let the person retry.
       setTimeout(() => dispatch({ type: "answerFailed", id }), 10_000);
       return;
     }
     try {
-      await api.decideApproval(id, decision);
+      await api.decideApproval(id, decision, text);
       dispatch({ type: "resolved", id, decision });
     } catch (err) {
       dispatch({ type: "answerFailed", id });

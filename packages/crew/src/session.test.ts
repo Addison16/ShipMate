@@ -48,6 +48,7 @@ describe("createCrewSession", () => {
         return "Tuesday: pasta.";
       },
       createWatch: async () => ({ id: "w", name: "w" }),
+      equip: async () => "",
       installMcp: async () => "ok",
       crewSettings: async () => "",
       listPeople: async () => "",

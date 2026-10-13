@@ -11,11 +11,18 @@ import { api, errorMessage } from "../api.js";
 import {
   type ApprovalMode,
   applyManifestForm,
+  approvalToolChoices,
   BUILTIN_TOOLS,
+  type Choice,
+  CLI_TOOL_GROUPS,
   cleanList,
+  hasToolGroup,
   type ManifestForm,
+  otherCliTools,
+  PERMISSION_MODES,
   type PermissionMode,
   readManifestForm,
+  setToolGroup,
 } from "../lib/crew-manifest.js";
 import { CLAUDE_CODE_PROVIDER, providerOf } from "../lib/models.js";
 import { useResource } from "../lib/useResource.js";
@@ -258,6 +265,10 @@ function ManifestFields({
 
   const builtin = new Set(BUILTIN_TOOLS.map((t) => t.id));
   const otherTools = form.tools.filter((t) => !builtin.has(t));
+  const installedIds = (servers.data ?? []).filter((s) => s.installed).map((s) => s.id);
+  const toolChoices = approvalToolChoices(
+    form.mcp.map((id) => ({ id, name: servers.data?.find((s) => s.id === id)?.name ?? id })),
+  );
   const skillNames = cleanList(
     (skills.data ?? [])
       .filter((s) => s.scope !== "crew" || s.crewSlug === crew.slug)
@@ -339,23 +350,62 @@ function ManifestFields({
             <h3 className="text-sm font-semibold">Claude Code</h3>
             <div className="grid gap-4 sm:grid-cols-2">
               <SelectField
-                label="Permission mode"
+                label="What it may do"
                 disabled={readOnly}
                 value={form.cliPermissionMode}
                 onChange={(e) => patch({ cliPermissionMode: e.target.value as PermissionMode })}
+                hint={
+                  <span
+                    className={cx(
+                      form.cliPermissionMode === "bypassPermissions" &&
+                        "font-medium text-amber-800 dark:text-amber-200",
+                    )}
+                  >
+                    {PERMISSION_MODES.find((m) => m.id === form.cliPermissionMode)?.hint}
+                  </span>
+                }
               >
-                <option value="dontAsk">Only the tools listed below</option>
-                <option value="acceptEdits">Also edit files in its folder</option>
-                <option value="plan">Read-only (plan)</option>
+                {PERMISSION_MODES.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
               </SelectField>
             </div>
-            <ListInput
-              label="Tools it may use without asking"
-              placeholder="e.g. Read, Edit, Bash(git *)"
-              disabled={readOnly}
-              values={form.cliAllowedTools}
-              onChange={(cliAllowedTools) => patch({ cliAllowedTools })}
-            />
+            {form.cliPermissionMode !== "bypassPermissions" && (
+              <>
+                <fieldset disabled={readOnly} className="grid gap-2.5 sm:grid-cols-2">
+                  <legend className="mb-2 text-sm font-medium">Tools it may use</legend>
+                  {CLI_TOOL_GROUPS.map((g) => (
+                    <Check
+                      key={g.label}
+                      checked={hasToolGroup(form.cliAllowedTools, g.rules)}
+                      onChange={(on) =>
+                        patch({ cliAllowedTools: setToolGroup(form.cliAllowedTools, g.rules, on) })
+                      }
+                    >
+                      {g.label}
+                    </Check>
+                  ))}
+                </fieldset>
+                <ListInput
+                  label="Other tools"
+                  placeholder="e.g. Bash(npm test)"
+                  disabled={readOnly}
+                  values={otherCliTools(form.cliAllowedTools)}
+                  onChange={(next) =>
+                    patch({
+                      cliAllowedTools: [
+                        ...form.cliAllowedTools.filter(
+                          (r) => !otherCliTools(form.cliAllowedTools).includes(r),
+                        ),
+                        ...next,
+                      ],
+                    })
+                  }
+                />
+              </>
+            )}
           </div>
         )}
       </Section>
@@ -365,34 +415,48 @@ function ManifestFields({
         description={
           cli
             ? "Used when this crew member runs on Shipmate (pi)."
-            : "Leave every box unticked to allow all built-in tools. Shipmate's own tools and its MCP servers are always added."
+            : "Shipmate's own tools and its MCP servers are always added."
         }
       >
-        <fieldset disabled={readOnly} className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          <legend className="sr-only">Built-in tools</legend>
-          {BUILTIN_TOOLS.map((t) => (
-            <Check
-              key={t.id}
-              checked={form.tools.includes(t.id)}
-              onChange={(on) =>
-                patch({
-                  tools: on ? [...form.tools, t.id] : form.tools.filter((x) => x !== t.id),
-                })
-              }
-            >
-              {t.label} <code className="font-mono text-xs text-slate-500">{t.id}</code>
-            </Check>
-          ))}
-        </fieldset>
-        <ListInput
-          label="Other tools"
-          placeholder="Tool name"
+        <Check
           disabled={readOnly}
-          values={otherTools}
-          onChange={(next) =>
-            patch({ tools: [...form.tools.filter((t) => builtin.has(t)), ...next] })
-          }
-        />
+          checked={form.tools.length === 0}
+          onChange={(on) => patch({ tools: on ? [] : ["read", "grep", "find", "ls"] })}
+        >
+          <span className="font-medium">Allow all built-in tools</span>
+          <span className="block text-xs text-slate-500 dark:text-slate-400">
+            Includes running shell commands. Approvals below still apply.
+          </span>
+        </Check>
+        {form.tools.length > 0 && (
+          <fieldset disabled={readOnly} className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <legend className="sr-only">Built-in tools</legend>
+            {BUILTIN_TOOLS.map((t) => (
+              <Check
+                key={t.id}
+                checked={form.tools.includes(t.id)}
+                onChange={(on) =>
+                  patch({
+                    tools: on ? [...form.tools, t.id] : form.tools.filter((x) => x !== t.id),
+                  })
+                }
+              >
+                {t.label} <code className="font-mono text-xs text-slate-500">{t.id}</code>
+              </Check>
+            ))}
+          </fieldset>
+        )}
+        {form.tools.length > 0 && (
+          <ListInput
+            label="Other tools"
+            placeholder="Tool name"
+            disabled={readOnly}
+            values={otherTools}
+            onChange={(next) =>
+              patch({ tools: [...form.tools.filter((t) => builtin.has(t)), ...next] })
+            }
+          />
+        )}
       </Section>
 
       <Section
@@ -400,6 +464,21 @@ function ManifestFields({
         description="Install and set up servers on the MCP servers page."
       >
         <ErrorText>{servers.error}</ErrorText>
+        {installedIds.length > 1 && (
+          <Check
+            disabled={readOnly}
+            checked={installedIds.every((id) => form.mcp.includes(id))}
+            onChange={(on) =>
+              patch({
+                mcp: on
+                  ? cleanList([...form.mcp, ...installedIds])
+                  : form.mcp.filter((id) => !installedIds.includes(id)),
+              })
+            }
+          >
+            <span className="font-medium">All installed servers</span>
+          </Check>
+        )}
         <fieldset disabled={readOnly} className="grid gap-2 sm:grid-cols-2">
           <legend className="sr-only">MCP servers</legend>
           {(servers.data ?? [])
@@ -439,11 +518,12 @@ function ManifestFields({
       </Section>
 
       <Section title="Skills">
-        <ListInput
+        <ChoiceList
           label="Skills it loads"
-          placeholder="Skill name"
+          choices={skillNames.map((n) => ({ value: n, label: n }))}
+          empty="No skills yet. Add them on the Skills page."
+          otherPlaceholder="Skill name"
           disabled={readOnly}
-          suggestions={skillNames}
           values={form.skills}
           onChange={(next) => patch({ skills: next })}
         />
@@ -471,22 +551,26 @@ function ManifestFields({
           <option value="never-for">Never ask, and block some tools</option>
         </SelectField>
         {form.approval === "never-for" && (
-          <ListInput
+          <ChoiceList
             label="Never allowed"
-            placeholder="Tool name, e.g. bash"
+            choices={toolChoices}
+            otherPlaceholder="Tool name, e.g. mcp__github__merge_pull_request"
             disabled={readOnly}
             values={form.neverFor}
             onChange={(neverFor) => patch({ neverFor })}
           />
         )}
-        <ListInput
-          label="Always allowed"
-          placeholder="Tool name"
-          hint='Tools it runs without asking. "Always allow" on an approval card adds to this list.'
-          disabled={readOnly}
-          values={form.allow}
-          onChange={(allow) => patch({ allow })}
-        />
+        {form.approval === "ask" && (
+          <ChoiceList
+            label="Runs without asking"
+            hint='"Always allow" on an approval card adds here too.'
+            choices={toolChoices}
+            otherPlaceholder="Tool name"
+            disabled={readOnly}
+            values={form.allow}
+            onChange={(allow) => patch({ allow })}
+          />
+        )}
       </Section>
 
       <Section title="Spending">
@@ -533,6 +617,60 @@ function Check({
       />
       <span className="min-w-0">{children}</span>
     </label>
+  );
+}
+
+/**
+ * Checkboxes for the usual values, plus an "Other" field for anything else, editing one list.
+ * Values keep their order; unticking removes just that value.
+ */
+function ChoiceList({
+  label,
+  hint,
+  choices,
+  values,
+  onChange,
+  otherPlaceholder,
+  empty,
+  disabled,
+}: {
+  label: string;
+  hint?: ReactNode;
+  choices: Choice[];
+  values: string[];
+  onChange: (values: string[]) => void;
+  otherPlaceholder: string;
+  empty?: string;
+  disabled?: boolean;
+}) {
+  const known = new Set(choices.map((c) => c.value));
+  const others = values.filter((v) => !known.has(v));
+  return (
+    <div className="space-y-2.5">
+      <fieldset disabled={disabled} className="grid gap-2.5 sm:grid-cols-2">
+        <legend className="mb-2 text-sm font-medium">{label}</legend>
+        {choices.map((c) => (
+          <Check
+            key={c.value}
+            checked={values.includes(c.value)}
+            onChange={(on) =>
+              onChange(on ? [...values, c.value] : values.filter((v) => v !== c.value))
+            }
+          >
+            {c.label}
+          </Check>
+        ))}
+        {!choices.length && empty && <Muted>{empty}</Muted>}
+      </fieldset>
+      {hint && <p className="text-xs text-slate-500 dark:text-slate-400">{hint}</p>}
+      <ListInput
+        label="Other"
+        placeholder={otherPlaceholder}
+        disabled={disabled}
+        values={others}
+        onChange={(next) => onChange([...values.filter((v) => known.has(v)), ...next])}
+      />
+    </div>
   );
 }
 

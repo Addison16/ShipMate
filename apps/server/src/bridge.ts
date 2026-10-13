@@ -27,14 +27,18 @@ import {
   captainTools,
   createCrewSession,
   crewTools,
+  type EquipSpec,
   gateToolCall,
   MemoryStore,
   memoryTools,
+  type QuestionHost,
+  questionTools,
   skillTools,
   splitModelRef,
 } from "@shipmate/crew";
 import { conversations, crewMembers, type Db, messages, users, watches } from "@shipmate/db";
 import { and, asc, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
+import { accessSummary } from "./access-summary.js";
 import { HttpError, type UserRow } from "./auth.js";
 import { ClaudeCliTurns, onCrewDefault } from "./claude-cli-turn.js";
 import { CliToolServer } from "./cli-mcp.js";
@@ -93,11 +97,15 @@ export interface WorkspaceProvider {
   }>;
 }
 
+/** Tools that show as their own line or card in the conversation, not as a tool chip. */
+const HIDDEN_TOOL_CHIPS = new Set(["delegate", "ask_captain", "ask_person"]);
+
 /** Everything a cached session's tools need from the turn in progress. */
 interface TurnContext {
   captain: CaptainHost;
   crew: CrewHost;
   approvals: ApprovalHost;
+  question: QuestionHost;
 }
 
 export interface RunTurnOptions {
@@ -696,6 +704,7 @@ export class Bridge {
         });
         return { id: w.id, name: w.name };
       },
+      equip: (target, grant) => this.#equip(user, target, grant),
       installMcp: async (id, crews) => {
         const server = await this.deps.mcp.install(id);
         if (crews.length) await this.deps.mcp.assign(id, [...new Set([...server.crews, ...crews])]);
@@ -763,6 +772,9 @@ export class Bridge {
       request: async (call) => {
         options.onWaiting?.(true);
         try {
+          const summary = call.everyTime
+            ? await this.#accessSummary(crew.name, call.toolName, call.input)
+            : undefined;
           return await this.deps.approvals.request({
             userId: user.id,
             conversationId: conv.id,
@@ -770,6 +782,8 @@ export class Bridge {
             crew,
             toolName: call.toolName,
             args: call.input,
+            ...(summary ? { summary } : {}),
+            ...(call.everyTime ? { everyTime: true } : {}),
           });
         } finally {
           options.onWaiting?.(false);
@@ -798,6 +812,37 @@ export class Bridge {
       },
     };
 
+    const question: QuestionHost = {
+      ask: async (q) => {
+        // A watch runs with nobody watching; the crew member decides and says so.
+        if (options.watchId) return null;
+        // What the crew member said so far is stored above the question, and the answer is kept
+        // in the conversation as a note, so it reads in order after a reload.
+        await this.#closeStream(conv, crewRow.id, stream);
+        options.onWaiting?.(true);
+        try {
+          const answer = await this.deps.approvals.ask({
+            userId: user.id,
+            conversationId: conv.id,
+            watchId: null,
+            crew,
+            question: q,
+          });
+          const message = await this.#store(conv, {
+            role: "system",
+            content: `${crew.name} asked: ${q.text} ${user.displayName}: ${answer ?? "(skipped)"}`,
+            authorName: "Shipmate",
+            meta: { question: { crew, text: q.text, answer } },
+          });
+          this.emit(user.id, { type: "message", conversationId: conv.id, message });
+          return answer;
+        } finally {
+          options.onWaiting?.(false);
+          stream = this.#openStream(user.id, conv.id, crew);
+        }
+      },
+    };
+
     if (folder.manifest.backend === "claude-code-cli") {
       if (options.images?.length) {
         await this.#note(
@@ -817,7 +862,12 @@ export class Bridge {
         ? undefined
         : this.cliTools.open(
             {
-              tools: this.#cliTools(user, folder, { captain: host, crew: crewHost }, isCaptain),
+              tools: this.#cliTools(
+                user,
+                folder,
+                { captain: host, crew: crewHost, question },
+                isCaptain,
+              ),
               gate: (call) =>
                 gateToolCall({ approval: folder.manifest.approval, allowed }, approvals, call),
             },
@@ -865,7 +915,7 @@ export class Bridge {
       conv,
       run,
       folder,
-      { captain: host, crew: crewHost, approvals },
+      { captain: host, crew: crewHost, approvals, question },
       options.consultFor,
     );
     // A crew member whose model cannot see images hands this one turn to a model that can.
@@ -1047,7 +1097,7 @@ export class Bridge {
         break;
       case "tool_execution_start":
         // Hand-offs show as their own line, not as a tool chip.
-        if (event.toolName === "delegate" || event.toolName === "ask_captain") break;
+        if (HIDDEN_TOOL_CHIPS.has(event.toolName)) break;
         stream.tools.push(event.toolName);
         this.emit(user.id, {
           type: "tool",
@@ -1060,7 +1110,7 @@ export class Bridge {
         });
         break;
       case "tool_execution_end":
-        if (event.toolName === "delegate" || event.toolName === "ask_captain") break;
+        if (HIDDEN_TOOL_CHIPS.has(event.toolName)) break;
         this.emit(user.id, {
           type: "tool",
           conversationId: conv.id,
@@ -1132,6 +1182,7 @@ export class Bridge {
       delegate: (slug, task, signal) => current().captain.delegate(slug, task, signal),
       createWatch: (spec) => current().captain.createWatch(spec),
       installMcp: (id, crews) => current().captain.installMcp(id, crews),
+      equip: (slug, grant) => current().captain.equip(slug, grant),
       crewSettings: (slug) => current().captain.crewSettings(slug),
       listPeople: () => current().captain.listPeople(),
       updatePerson: (person, changes) => current().captain.updatePerson(person, changes),
@@ -1170,6 +1221,12 @@ export class Bridge {
           : crewTools(
               { askCaptain: (q, signal) => current().crew.askCaptain(q, signal) },
               captainName,
+            )),
+        ...(consultFor
+          ? []
+          : questionTools(
+              { ask: (q, signal) => current().question.ask(q, signal) },
+              user.displayName,
             )),
         ...(this.#everyday?.tools(user, folder) ?? []),
         ...(workspace?.tools ?? []),
@@ -1302,7 +1359,7 @@ export class Bridge {
   #cliTools(
     user: UserRow,
     folder: CrewFolder,
-    hosts: { captain: CaptainHost; crew: CrewHost },
+    hosts: { captain: CaptainHost; crew: CrewHost; question: QuestionHost },
     isCaptain: boolean,
   ): ToolDefinition[] {
     const acting: ActingUser = { id: user.id, displayName: user.displayName, role: user.role };
@@ -1323,8 +1380,74 @@ export class Bridge {
       ...(folder.manifest.captain
         ? []
         : crewTools(hosts.crew, this.deps.crew.captain().manifest.name)),
+      ...questionTools(hosts.question, user.displayName),
       ...(this.#everyday?.tools(user, folder) ?? []),
     ];
+  }
+
+  /** A plain card line for a request to change a crew member's access (access-summary.ts). */
+  async #accessSummary(who: string, toolName: string, input: Record<string, unknown>) {
+    const servers = new Map((await this.deps.mcp.list()).map((s) => [s.id, s.name]));
+    return accessSummary(who, toolName, input, {
+      crew: (slug) => {
+        try {
+          return this.deps.crew.folder(slug).manifest.name;
+        } catch {
+          return slug;
+        }
+      },
+      server: (id) => servers.get(id) ?? id,
+    });
+  }
+
+  /** equip_crew_member, after the person approved it: add servers, tools and skills. */
+  async #equip(user: UserRow, target: string, grant: EquipSpec): Promise<string> {
+    if (!(await this.#roster(user)).some((c) => c.slug === target)) {
+      throw new Error(`no crew member "${target}"; check list_crew`);
+    }
+    const name = this.deps.crew.folder(target).manifest.name;
+    const given: string[] = [];
+    const notes: string[] = [];
+    const servers = await this.deps.mcp.list();
+    for (const id of new Set(grant.mcp ?? [])) {
+      const known = servers.find((s) => s.id === id);
+      const server = known?.installed ? known : await this.deps.mcp.install(id);
+      await this.deps.mcp.assign(id, [...new Set([...server.crews, target])]);
+      given.push(server.name);
+      const missing = server.secrets.filter((x) => x.required && !x.set).map((x) => x.label);
+      if (missing.length) {
+        notes.push(
+          `${server.name} needs ${missing.join(", ")} entered by an owner on the MCP servers page before it starts.`,
+        );
+      }
+    }
+    // Read after assign(), which rewrote the mcp list.
+    const now = this.deps.crew.folder(target).manifest;
+    const union = (have: string[], add: string[] | undefined) => [
+      ...new Set([...have, ...(add ?? [])]),
+    ];
+    const changes: Partial<CrewManifest> = {};
+    if (grant.tools?.length) {
+      // An empty list already means every built-in tool.
+      if (now.tools.length) changes.tools = union(now.tools, grant.tools);
+      given.push(...grant.tools);
+    }
+    if (grant.skills?.length) {
+      changes.skills = union(now.skills, grant.skills);
+      given.push(...grant.skills.map((s) => `${s} skill`));
+    }
+    if (grant.claudeCodeTools?.length) {
+      changes.cli = ClaudeCliSettings.parse({
+        ...now.cli,
+        allowedTools: union(now.cli?.allowedTools ?? [], grant.claudeCodeTools),
+      });
+      given.push(...grant.claudeCodeTools.map((t) => `Claude Code ${t}`));
+    }
+    if (Object.keys(changes).length) await this.deps.crew.patch(target, changes);
+    return [
+      `${name} now has ${given.join(", ")}. It applies from their next conversation.`,
+      ...notes,
+    ].join(" ");
   }
 
   async #roster(user: UserRow): Promise<CrewSummary[]> {

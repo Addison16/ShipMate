@@ -385,7 +385,12 @@ export class SlackService {
           blocks: [
             {
               type: "section",
-              text: { type: "mrkdwn", text: `${text}\n\`\`\`${escapeMrkdwn(card.detail)}\`\`\`` },
+              text: {
+                type: "mrkdwn",
+                text: card.question
+                  ? `${text}\n${escapeMrkdwn(card.detail)}`
+                  : `${text}\n\`\`\`${escapeMrkdwn(card.detail)}\`\`\``,
+              },
             },
             {
               type: "actions",
@@ -393,11 +398,13 @@ export class SlackService {
                 type: "button",
                 action_id: b.actionId,
                 text: { type: "plain_text", text: b.label },
-                ...(b.decision === "allow"
-                  ? { style: "primary" }
-                  : b.decision === "deny"
-                    ? { style: "danger" }
-                    : {}),
+                ...(card.question
+                  ? {}
+                  : b.decision === "allow"
+                    ? { style: "primary" }
+                    : b.decision === "deny"
+                      ? { style: "danger" }
+                      : {}),
               })),
             },
           ],

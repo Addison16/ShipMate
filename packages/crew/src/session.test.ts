@@ -40,12 +40,19 @@ describe("createCrewSession", () => {
         throw new Error("unused");
       },
       retire: async () => {},
+      approve: async () => {
+        throw new Error("unused");
+      },
       delegate: async (slug, task) => {
         delegated.push(`${slug}:${task}`);
         return "Tuesday: pasta.";
       },
       createWatch: async () => ({ id: "w", name: "w" }),
       installMcp: async () => "ok",
+      crewSettings: async () => "",
+      listPeople: async () => "",
+      updatePerson: async () => "",
+      updateHousehold: async () => "",
     };
     faux.setResponses([
       fauxAssistantMessage([

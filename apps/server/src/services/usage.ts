@@ -1,5 +1,6 @@
 import type { Api, Model, Usage } from "@earendil-works/pi-ai";
 import { calculateCost } from "@earendil-works/pi-ai";
+import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import type { UsageResponse, UsageTotals } from "@shipmate/core";
 import { crewMembers, type Db, usageEvents, users, watches } from "@shipmate/db";
 import { and, asc, eq, gte, isNotNull, lt, type SQL, sql } from "drizzle-orm";
@@ -28,19 +29,67 @@ export function costMicroUsd(model: Model<Api>, usage: Usage): number {
   return Math.round(total * 1_000_000);
 }
 
+/**
+ * How a call was paid for. "api": billed per token (an API key, or a free local model).
+ * "subscription": covered by a flat plan the person already pays for (Claude through the Claude
+ * Code CLI, ChatGPT through Sign in with ChatGPT), so it is not spend and does not count
+ * towards caps; its API-price estimate is kept apart.
+ */
+export type Billing = "api" | "subscription";
+
+/** Providers whose calls run on someone's plan rather than an API key. */
+const SUBSCRIPTION_PROVIDERS = new Set(["claude-code", "chatgpt"]);
+
+export const defaultBilling = (model: Pick<Model<Api>, "provider">): Billing =>
+  SUBSCRIPTION_PROVIDERS.has(model.provider) ? "subscription" : "api";
+
+let openaiPrices: Map<string, Model<Api>> | undefined;
+
+/**
+ * The same model with its API prices, for pricing a subscription call: ChatGPT-plan models are
+ * registered at zero cost, so look the id up in pi's OpenAI catalog. Others keep their own table.
+ */
+function apiPriced(model: Model<Api>): Model<Api> {
+  if (model.provider !== "chatgpt") return model;
+  openaiPrices ??= new Map(
+    openaiProvider()
+      .getModels()
+      .map((m) => [m.id, m as Model<Api>]),
+  );
+  return openaiPrices.get(model.id) ?? model;
+}
+
+/**
+ * What one call costs, split by billing. API calls cost what pi (or the model's table) says.
+ * Subscription calls cost nothing; what they would have cost at API prices is estimated from the
+ * provider's own report (the Claude Code CLI's total_cost_usd) or the API price table.
+ */
+export function callCost(
+  model: Model<Api>,
+  usage: Usage,
+  billing: Billing = defaultBilling(model),
+): { billing: Billing; costMicroUsd: number; apiEquivalentMicroUsd: number } {
+  if (billing === "api") {
+    return { billing, costMicroUsd: costMicroUsd(model, usage), apiEquivalentMicroUsd: 0 };
+  }
+  return { billing, costMicroUsd: 0, apiEquivalentMicroUsd: costMicroUsd(apiPriced(model), usage) };
+}
+
 /** One row per model call so cost is attributable per user, crew and routine (Q3, Q4). */
 export class UsageService {
   constructor(private readonly db: Db) {}
 
   /**
    * Store one model call. `durationMs` is how long the model took to answer (request to last
-   * token), so local models, which cost nothing, still show how they perform.
+   * token), so local models, which cost nothing, still show how they perform. `billing` defaults
+   * by provider (see defaultBilling); the Claude Code CLI passes "api" when it ran on an API key.
    */
   async record(
     ctx: UsageContext,
     model: Model<Api>,
     usage: Usage,
     durationMs?: number | null,
+    billing?: Billing,
   ): Promise<void> {
     await this.db.insert(usageEvents).values({
       userId: ctx.userId,
@@ -52,7 +101,7 @@ export class UsageService {
       outputTokens: usage.output,
       cacheReadTokens: usage.cacheRead,
       cacheWriteTokens: usage.cacheWrite,
-      costMicroUsd: costMicroUsd(model, usage),
+      ...callCost(model, usage, billing),
       durationMs:
         durationMs === undefined || durationMs === null || !Number.isFinite(durationMs)
           ? null
@@ -60,7 +109,7 @@ export class UsageService {
     });
   }
 
-  /** This month's spend for a user, in micro-USD (for caps). */
+  /** This month's API spend for a user, in micro-USD (for caps; subscription use is not spend). */
   monthSpend(userId: string, now = new Date()): Promise<number> {
     return this.#spend(eq(usageEvents.userId, userId), now);
   }
@@ -100,6 +149,8 @@ export class UsageService {
       cacheReadTokens: sql<string>`coalesce(sum(${usageEvents.cacheReadTokens}), 0)`,
       cacheWriteTokens: sql<string>`coalesce(sum(${usageEvents.cacheWriteTokens}), 0)`,
       costMicroUsd: sql<string>`coalesce(sum(${usageEvents.costMicroUsd}), 0)`,
+      subscriptionCalls: sql<string>`count(*) filter (where ${usageEvents.billing} = 'subscription')`,
+      apiEquivalentMicroUsd: sql<string>`coalesce(sum(${usageEvents.apiEquivalentMicroUsd}), 0)`,
       // Calls recorded before response times were kept have no duration and are left out.
       avgResponseMs: sql<string | null>`avg(${usageEvents.durationMs})`,
       p95ResponseMs: sql<
@@ -115,6 +166,8 @@ export class UsageService {
       cacheReadTokens: Number(r.cacheReadTokens),
       cacheWriteTokens: Number(r.cacheWriteTokens),
       costMicroUsd: Number(r.costMicroUsd),
+      subscriptionCalls: Number(r.subscriptionCalls),
+      apiEquivalentMicroUsd: Number(r.apiEquivalentMicroUsd),
       avgResponseMs: ms(r.avgResponseMs),
       p95ResponseMs: ms(r.p95ResponseMs),
     });
@@ -160,6 +213,7 @@ export class UsageService {
         date: day,
         calls: totals.calls,
         costMicroUsd: totals.costMicroUsd,
+        apiEquivalentMicroUsd: totals.apiEquivalentMicroUsd,
         tokens: sql<string>`coalesce(sum(${usageEvents.inputTokens} + ${usageEvents.outputTokens}), 0)`,
         avgResponseMs: totals.avgResponseMs,
       })
@@ -178,14 +232,16 @@ export class UsageService {
         date,
         calls: Number(d?.calls ?? 0),
         costMicroUsd: Number(d?.costMicroUsd ?? 0),
+        apiEquivalentMicroUsd: Number(d?.apiEquivalentMicroUsd ?? 0),
         tokens: Number(d?.tokens ?? 0),
         avgResponseMs: ms(d?.avgResponseMs),
       });
     }
 
-    // Most spend first; free (local) usage falls back to most tokens.
+    // Most spend first, then most subscription value; free (local) usage falls back to tokens.
     const byCost = <T extends UsageTotals>(a: T, b: T) =>
       b.costMicroUsd - a.costMicroUsd ||
+      b.apiEquivalentMicroUsd - a.apiEquivalentMicroUsd ||
       b.inputTokens + b.outputTokens - (a.inputTokens + a.outputTokens);
     return {
       month,
@@ -249,6 +305,8 @@ export class UsageService {
       "cache_write_tokens",
       "cost_usd",
       "response_ms",
+      "billing",
+      "api_equivalent_usd",
     ];
     const lines = [header.join(",")];
     for (const { e, user, crew, watch } of rows) {
@@ -267,6 +325,8 @@ export class UsageService {
           e.cacheWriteTokens,
           (e.costMicroUsd / 1_000_000).toFixed(6),
           e.durationMs ?? "",
+          e.billing,
+          e.billing === "subscription" ? (e.apiEquivalentMicroUsd / 1_000_000).toFixed(6) : "",
         ].join(","),
       );
     }

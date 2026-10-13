@@ -252,6 +252,7 @@ describe.skipIf(!db)("Shipmate phase 4: cost ceilings and the cost page", () => 
     expect(past.daily[14]).toEqual({
       date: "2026-09-15",
       costMicroUsd: 250_000,
+      apiEquivalentMicroUsd: 0,
       calls: 1,
       tokens: 15,
       avgResponseMs: null,
@@ -278,7 +279,7 @@ describe.skipIf(!db)("Shipmate phase 4: cost ceilings and the cost page", () => 
     );
     const lines = res.body.trimEnd().split("\r\n");
     expect(lines[0]).toBe(
-      "time,person,crew,watch,watch_id,conversation_id,model,input_tokens,output_tokens,cache_read_tokens,cache_write_tokens,cost_usd,response_ms",
+      "time,person,crew,watch,watch_id,conversation_id,model,input_tokens,output_tokens,cache_read_tokens,cache_write_tokens,cost_usd,response_ms,billing,api_equivalent_usd",
     );
     const usage = (await api("GET", "/api/usage?scope=all")).json();
     expect(lines).toHaveLength(usage.totals.calls + 1);
@@ -297,5 +298,36 @@ describe.skipIf(!db)("Shipmate phase 4: cost ceilings and the cost page", () => 
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((r) => r.includes('"Kid, ""the"" kid"'))).toBe(true);
     expect((await api("GET", "/api/usage/export?month=2026-13")).statusCode).toBe(400);
+  });
+
+  it("keeps subscription use apart from API spend and caps, with its API-price estimate", async () => {
+    // A Claude Code CLI turn on a Claude subscription: no spend, $5 at API prices.
+    await sql`
+      insert into usage_events (user_id, crew_member_id, model, input_tokens, output_tokens,
+        cost_micro_usd, billing, api_equivalent_micro_usd)
+      values (${memberId}, ${captainId}, 'claude-code/opus', 1000, 200, 0, 'subscription',
+        5000000)`;
+    const before = (await api("GET", "/api/usage?scope=all")).json();
+    const member = before.byUser.find((u: { userId: string }) => u.userId === memberId);
+    expect(member.subscriptionCalls).toBe(1);
+    expect(member.apiEquivalentMicroUsd).toBe(5_000_000);
+    expect(before.totals.subscriptionCalls).toBe(1);
+    expect(before.totals.apiEquivalentMicroUsd).toBe(5_000_000);
+    const cli = before.byModel.find((m: { model: string }) => m.model === "claude-code/opus");
+    expect(cli).toMatchObject({ costMicroUsd: 0, subscriptionCalls: 1 });
+    expect(before.daily.at(-1).apiEquivalentMicroUsd).toBe(5_000_000);
+
+    // A $1 cap is not reached by $5 of subscription use: only API spend counts.
+    const spent = member.costMicroUsd;
+    await api("PATCH", `/api/users/${memberId}`, {
+      monthlyCapCents: Math.ceil(spent / 10_000) + 100,
+    });
+    t.faux.setResponses([fauxAssistantMessage("Still here.")]);
+    expect(await send(memberCookie, "hello")).toBeNull();
+    await api("PATCH", `/api/users/${memberId}`, { monthlyCapCents: null });
+
+    const csv = (await api("GET", "/api/usage/export?scope=all")).body;
+    expect(csv).toContain(",claude-code/opus,1000,200,0,0,0.000000,,subscription,5.000000");
+    expect(csv).toMatch(/,faux\/m,[^\r]*,api,\r\n/);
   });
 });

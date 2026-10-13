@@ -6,8 +6,10 @@ import type {
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import {
+  ClaudeCliSettings,
   type ConversationDto,
   type ConversationSearchResultDto,
+  type CrewManifest,
   DEFAULT_MODEL,
   type MessageDto,
   SEARCH_MARK,
@@ -165,6 +167,11 @@ export class Bridge {
   /** Lists and other everyday-life tools every crew member gets. */
   attachEveryday(everyday: EverydayTools) {
     this.#everyday = everyday;
+  }
+
+  #people() {
+    if (!this.#everyday) throw new Error("people settings are not available");
+    return this.#everyday.people;
   }
 
   // ---------- sockets ----------
@@ -632,15 +639,38 @@ export class Bridge {
       listCrew: () => this.#roster(user),
       recruit: (spec) => this.#recruit(user, spec),
       edit: async (target, spec) => {
-        const { persona, ...changes } = spec;
-        const clean = Object.fromEntries(
+        const { persona, cli, ...changes } = spec;
+        const clean: Partial<CrewManifest> = Object.fromEntries(
           Object.entries(changes).filter(([, v]) => v !== undefined),
         );
+        if (cli) {
+          const now = this.deps.crew.folder(target).manifest.cli;
+          clean.cli = ClaudeCliSettings.parse({
+            ...now,
+            ...Object.fromEntries(Object.entries(cli).filter(([, v]) => v !== undefined)),
+            ...(cli.model === "" ? { model: undefined } : {}),
+          });
+        }
         const d = await this.deps.crew.patch(target, clean, persona);
         return { ...d, status: d.status };
       },
+      crewSettings: async (target) => {
+        if (!(await this.#roster(user)).some((c) => c.slug === target)) {
+          throw new Error(`no crew member "${target}"; check list_crew`);
+        }
+        return (await this.deps.crew.detail(target)).manifestYaml;
+      },
+      listPeople: () => this.#people().list(user),
+      updatePerson: (person, changes) => this.#people().update(user, person, changes),
+      updateHousehold: (changes) => this.#people().updateHousehold(user, changes),
       retire: async (target) => {
         await this.deps.crew.setStatus(target, "retired");
+      },
+      approve: async (target) => {
+        const now = (await this.#roster(user)).find((c) => c.slug === target);
+        if (!now) throw new Error(`no crew member "${target}"; check list_crew`);
+        if (now.status !== "pending_review") throw new Error(`${now.name} is not awaiting review`);
+        return { ...(await this.deps.crew.setStatus(target, "active")) };
       },
       createWatch: async (spec) => {
         if (!this.#watches) throw new Error("watches are not available");
@@ -1081,9 +1111,14 @@ export class Bridge {
       recruit: (s) => current().captain.recruit(s),
       edit: (slug, s) => current().captain.edit(slug, s),
       retire: (slug) => current().captain.retire(slug),
+      approve: (slug) => current().captain.approve(slug),
       delegate: (slug, task, signal) => current().captain.delegate(slug, task, signal),
       createWatch: (spec) => current().captain.createWatch(spec),
       installMcp: (id, crews) => current().captain.installMcp(id, crews),
+      crewSettings: (slug) => current().captain.crewSettings(slug),
+      listPeople: () => current().captain.listPeople(),
+      updatePerson: (person, changes) => current().captain.updatePerson(person, changes),
+      updateHousehold: (changes) => current().captain.updateHousehold(changes),
     };
     const skills = this.deps.skills;
     const { servers, skipped } = await this.deps.mcp.serversFor(folder);

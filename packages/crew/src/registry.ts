@@ -7,7 +7,7 @@ import {
   CrewManifest as CrewManifestSchema,
   CrewSlug,
 } from "@shipmate/core";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { parseDocument, parse as parseYaml } from "yaml";
 import { type CrewFolder, loadCrewFolder, writeCrewFolder } from "./folder.js";
 
 /** Thrown for input a person or a bot can fix (bad YAML, a taken slug, ...). */
@@ -72,13 +72,23 @@ export class CrewRegistry {
     return loadCrewFolder(dir);
   }
 
-  /** Merge structured changes into crew.yaml (used by the Captain's edit tool). */
+  /**
+   * Merge structured changes into crew.yaml (the Captain's edit tool, first boot). Only keys whose
+   * value changes are rewritten, so comments and the rest of the file stay as people wrote them.
+   */
   patchManifest(slug: string, changes: Partial<CrewManifest>): CrewFolder {
     const current = this.get(slug);
-    const merged = { ...current.manifest, ...changes, captain: current.manifest.captain };
-    const parsed = CrewManifestSchema.safeParse(merged);
+    const file = join(current.dir, CREW_FILES.manifest);
+    const doc = parseDocument(readFileSync(file, "utf8"));
+    const before = current.manifest as Record<string, unknown>;
+    for (const [key, value] of Object.entries(changes)) {
+      if (key === "captain" || value === undefined) continue;
+      if (JSON.stringify(value) === JSON.stringify(before[key])) continue;
+      doc.set(key, doc.createNode(value, { flow: Array.isArray(value) }));
+    }
+    const parsed = CrewManifestSchema.safeParse(doc.toJS());
     if (!parsed.success) throw new CrewValidationError(formatIssues(parsed.error.issues));
-    writeFileSync(join(current.dir, CREW_FILES.manifest), stringifyYaml(parsed.data));
+    writeFileSync(file, doc.toString({ flowCollectionPadding: false }));
     return loadCrewFolder(current.dir);
   }
 

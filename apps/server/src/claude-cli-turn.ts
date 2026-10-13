@@ -5,6 +5,7 @@ import type { ServerEvent } from "@shipmate/core";
 import {
   type ClaudeCliEvent,
   type CrewFolder,
+  claudeCliBilling,
   MemoryStore,
   runClaudeCli,
   splitModelRef,
@@ -13,7 +14,7 @@ import { conversations, type Db } from "@shipmate/db";
 import { eq } from "drizzle-orm";
 import { HttpError, type UserRow } from "./auth.js";
 import { CLI_MCP_SERVER } from "./cli-mcp.js";
-import type { UsageContext } from "./services/usage.js";
+import type { Billing, UsageContext } from "./services/usage.js";
 import { summarize } from "./summarize.js";
 
 type ConversationRow = typeof conversations.$inferSelect;
@@ -50,7 +51,13 @@ export interface CliTurnInput {
   oneOff?: boolean;
   emit: (event: ServerEvent) => void;
   /** The Bridge's usage writer: the turn waits for it before ending (cap checks stay exact). */
-  record: (ctx: UsageContext, model: Model<Api>, usage: Usage, durationMs?: number) => void;
+  record: (
+    ctx: UsageContext,
+    model: Model<Api>,
+    usage: Usage,
+    durationMs?: number,
+    billing?: Billing,
+  ) => void;
 }
 
 /**
@@ -182,6 +189,8 @@ export class ClaudeCliTurns {
           cliUsage(result.usage, result.costUsd),
           // One CLI run can make several model calls; its wall time is the closest measure.
           performance.now() - startedAt,
+          // On a subscription the CLI's cost is what the run would have cost at API prices.
+          claudeCliBilling(result),
         );
       }
       if (!result.aborted && result.isError) {

@@ -81,6 +81,8 @@ export interface ClaudeCliRunOptions {
    * per-turn tool server here (memory, lists, the Captain's crew tools).
    */
   mcpConfig?: string;
+  /** Extra CLI settings as JSON for `--settings` (Shipmate's approval hook for MCP tools). */
+  settingsJson?: string;
   /** Defaults to claudeCliBin(). */
   bin?: string;
   /** Defaults to process.env without Shipmate's own secrets (see childEnv). */
@@ -91,7 +93,10 @@ export interface ClaudeCliRunOptions {
 
 /** The command line for one print-mode turn. The prompt goes to stdin, never into argv. */
 export function claudeCliArgs(
-  options: Pick<ClaudeCliRunOptions, "appendSystemPrompt" | "resume" | "settings" | "mcpConfig">,
+  options: Pick<
+    ClaudeCliRunOptions,
+    "appendSystemPrompt" | "resume" | "settings" | "mcpConfig" | "settingsJson"
+  >,
 ): string[] {
   const s = options.settings ?? {};
   const args = [
@@ -107,6 +112,7 @@ export function claudeCliArgs(
   if (s.allowedTools?.length) args.push("--allowedTools", s.allowedTools.join(","));
   if (options.appendSystemPrompt) args.push("--append-system-prompt", options.appendSystemPrompt);
   if (options.mcpConfig) args.push("--mcp-config", options.mcpConfig);
+  if (options.settingsJson) args.push("--settings", options.settingsJson);
   if (options.resume) args.push("--resume", options.resume);
   return args;
 }

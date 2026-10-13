@@ -1,5 +1,5 @@
 import type { McpServerConfig } from "@earendil-works/pi-coding-agent";
-import type { CreateCustomMcpRequest, McpServerDto } from "@shipmate/core";
+import type { CreateCustomMcpRequest, McpGoogleDto, McpServerDto } from "@shipmate/core";
 import type { CrewFolder } from "@shipmate/crew";
 import { type Db, mcpServers, secrets } from "@shipmate/db";
 import { CatalogEntry, loadCatalog } from "@shipmate/mcp-catalog";
@@ -7,6 +7,7 @@ import type { SecretVault } from "@shipmate/providers";
 import { eq, like } from "drizzle-orm";
 import { HttpError } from "../auth.js";
 import type { CrewService } from "./crew.js";
+import type { GoogleClient, GoogleOAuthService } from "./google-oauth.js";
 
 /** Vault ref for one MCP server secret, e.g. `mcp:github:GITHUB_PERSONAL_ACCESS_TOKEN`. */
 export const mcpSecretRef = (serverId: string, env: string) => `mcp:${serverId}:${env}`;
@@ -24,6 +25,7 @@ export class McpService {
     private readonly vault: SecretVault,
     private readonly crew: CrewService,
     private readonly enabled: boolean,
+    private readonly google?: GoogleOAuthService,
   ) {}
 
   get isEnabled() {
@@ -34,8 +36,9 @@ export class McpService {
     const { entries, installed } = await this.#entries();
     const stored = await this.#secretRefs();
     const folders = this.crew.registry.list();
+    const google = entries.some((e) => e.oauth === "google") ? await this.#googleDto() : null;
     return entries
-      .map((e) => this.#dto(e, installed, stored, folders))
+      .map((e) => this.#dto(e, installed, stored, folders, google))
       .sort((a, b) => tierOrder[a.tier] - tierOrder[b.tier] || a.name.localeCompare(b.name));
   }
 
@@ -62,6 +65,27 @@ export class McpService {
     await this.assign(id, []);
     await this.db.delete(mcpServers).where(eq(mcpServers.id, id));
     await this.db.delete(secrets).where(like(secrets.ref, `${mcpSecretRef(id, "")}%`));
+    if (entry?.oauth === "google") await this.google?.signOut();
+  }
+
+  /** The Google OAuth client the owner saved on the Google server, or null. */
+  async googleClient(): Promise<GoogleClient | null> {
+    const entry = loadCatalog().find((e) => e.oauth === "google");
+    if (!entry) return null;
+    const stored = await this.#secrets();
+    const clientId = stored.get(mcpSecretRef(entry.id, "GOOGLE_OAUTH_CLIENT_ID"));
+    const clientSecret = stored.get(mcpSecretRef(entry.id, "GOOGLE_OAUTH_CLIENT_SECRET"));
+    return clientId && clientSecret ? { clientId, clientSecret } : null;
+  }
+
+  async #googleDto(): Promise<McpGoogleDto | null> {
+    if (!this.google) return null;
+    const { uri, pasteBack } = this.google.redirect;
+    return {
+      redirectUri: uri,
+      pasteBack,
+      ...(await this.google.status(await this.googleClient())),
+    };
   }
 
   async addCustom(input: CreateCustomMcpRequest): Promise<McpServerDto> {
@@ -160,6 +184,14 @@ export class McpService {
         skipped.push(`${id} (needs ${entry.secrets.map((s) => s.label).join(", ")})`);
         continue;
       }
+      if (entry.oauth === "google") {
+        const signedIn = await this.google?.serverEnv(await this.googleClient());
+        if (!signedIn) {
+          skipped.push(`${id} (needs Sign in with Google)`);
+          continue;
+        }
+        Object.assign(env, signedIn);
+      }
       servers[id] = toConfig(entry, env, crew.dir);
     }
     return { servers, skipped };
@@ -176,7 +208,13 @@ export class McpService {
     return { entries, installed: new Set(rows.map((r) => r.id)) };
   }
 
-  #dto(e: Entry, installed: Set<string>, stored: Set<string>, folders: CrewFolder[]): McpServerDto {
+  #dto(
+    e: Entry,
+    installed: Set<string>,
+    stored: Set<string>,
+    folders: CrewFolder[],
+    google: McpGoogleDto | null,
+  ): McpServerDto {
     const isInstalled = e.tier === "core" || installed.has(e.id);
     const secretDtos = e.secrets.map((s) => ({
       env: s.env,
@@ -195,10 +233,14 @@ export class McpService {
       url: e.url ?? null,
       installed: isInstalled,
       secrets: secretDtos,
-      ready: isInstalled && secretDtos.every((s) => s.set || !s.required),
+      ready:
+        isInstalled &&
+        secretDtos.every((s) => s.set || !s.required) &&
+        (e.oauth !== "google" || Boolean(google?.signedIn && !google.stale)),
       crews: folders.filter((f) => f.manifest.mcp.includes(e.id)).map((f) => f.slug),
       tags: e.tags,
       homepage: e.homepage ?? null,
+      google: e.oauth === "google" ? google : null,
     };
   }
 

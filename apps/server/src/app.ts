@@ -37,6 +37,7 @@ import { settingsRoutes, usageRoutes } from "./routes/usage.js";
 import { userRoutes } from "./routes/users.js";
 import { voiceRoutes } from "./routes/voice.js";
 import { watchRoutes } from "./routes/watches.js";
+import { GOOGLE_CALLBACK_PATH } from "./services/google-oauth.js";
 import { createServices } from "./services.js";
 
 /** Routes reachable without signing in. */
@@ -49,6 +50,8 @@ const PUBLIC = new Set([
   "/api/auth/oidc",
   "/api/auth/oidc/start",
   "/api/auth/oidc/callback",
+  // Checked by its one-time state instead: Google may send the browser to another address.
+  GOOGLE_CALLBACK_PATH,
 ]);
 /** Prefixes reachable without signing in; each route checks its own credential (a token). */
 const PUBLIC_PREFIXES = ["/api/hooks/", "/api/push/act/", CLI_MCP_PATH];
@@ -86,6 +89,7 @@ export async function buildApp(
     pushFetch?: import("./push/webpush.js").PushFetch;
     /** Stand-in for speech services (tests). */
     voiceFetch?: import("./voice/service.js").VoiceFetch;
+    googleFetch?: import("./services/google-oauth.js").GoogleFetch;
   } = {},
 ) {
   const app = Fastify({

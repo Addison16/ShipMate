@@ -603,6 +603,21 @@ export interface McpServerDto {
   crews: string[];
   tags: string[];
   homepage: string | null;
+  /** Set for servers that sign in through Shipmate with the owner's own Google OAuth client. */
+  google: McpGoogleDto | null;
+}
+export interface McpGoogleDto {
+  /** Paste into the OAuth client's "Authorized redirect URIs" in Google Cloud. */
+  redirectUri: string;
+  /**
+   * The redirect is localhost (Google rejects this instance's address, or it is localhost), so
+   * from another device the person pastes the address they land on back into Shipmate.
+   */
+  pasteBack: boolean;
+  signedIn: boolean;
+  email: string | null;
+  /** Signed in with a client that is no longer the saved one: sign in again. */
+  stale: boolean;
 }
 /**
  * GET /api/mcp → { servers: McpServerDto[] } (any signed-in user)
@@ -611,6 +626,10 @@ export interface McpServerDto {
  * PUT /api/mcp/:id/secrets (owner) { values: Record<env, string> } → { server } ("" clears one)
  * PUT /api/mcp/:id/crews (admin) { crews: string[] } → { server } (edits each crew.yaml mcp list)
  * POST /api/mcp/custom (owner) CreateCustomMcpRequest → { server }
+ * POST /api/mcp/google/start (owner) → { url } (send the browser there)
+ * GET /api/mcp/google/callback → redirects to /#/mcp?google=ok|<error>
+ * POST /api/mcp/google/finish (owner) { url } → { server } (the pasted landing address)
+ * DELETE /api/mcp/google (owner) → { server } (signs out)
  */
 export interface CreateCustomMcpRequest {
   id: string;

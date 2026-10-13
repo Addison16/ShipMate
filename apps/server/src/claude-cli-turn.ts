@@ -45,6 +45,8 @@ export interface CliTurnInput {
   usage: UsageContext;
   /** `--mcp-config` for Shipmate's own tools this turn (see cli-mcp.ts); none when unset. */
   mcpConfig?: string;
+  /** `--settings` JSON: the approval hook for the crew member's installed MCP servers. */
+  settingsJson?: string;
   /** Extra system prompt sections (the Captain's crew roster, how to answer a consult). */
   context?: string[];
   /** A one-off answer (the Captain answering a crew question): no resume, nothing stored. */
@@ -170,6 +172,7 @@ export class ClaudeCliTurns {
         appendSystemPrompt: this.#systemPrompt(input),
         ...(resume ? { resume } : {}),
         ...(input.mcpConfig ? { mcpConfig: input.mcpConfig } : {}),
+        ...(input.settingsJson ? { settingsJson: input.settingsJson } : {}),
         settings: { ...settings, ...(model ? { model } : {}) },
         signal: controller.signal,
         onEvent,

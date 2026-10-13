@@ -139,15 +139,27 @@
   {
     "id": "google-workspace",
     "name": "Google Workspace",
-    "description": "Gmail, Calendar and Drive.",
+    "description": "Gmail, Calendar, Drive, Docs, Sheets and Tasks.",
     "tier": "catalog",
     "transport": "stdio",
     "command": "uvx",
-    "args": ["workspace-mcp"],
-    "secrets": [
-      { "env": "GOOGLE_OAUTH_CLIENT_ID", "label": "OAuth client id" },
-      { "env": "GOOGLE_OAUTH_CLIENT_SECRET", "label": "OAuth client secret" }
+    "args": [
+      "workspace-mcp",
+      "--single-user",
+      "--tools",
+      "gmail",
+      "calendar",
+      "drive",
+      "docs",
+      "sheets",
+      "tasks"
     ],
+    "secrets": [
+      { "env": "GOOGLE_OAUTH_CLIENT_ID", "label": "Client ID" },
+      { "env": "GOOGLE_OAUTH_CLIENT_SECRET", "label": "Client secret" }
+    ],
+    "oauth": "google",
+    "homepage": "https://github.com/taylorwilsdon/google_workspace_mcp",
     "tags": ["life", "work"]
   },
   {

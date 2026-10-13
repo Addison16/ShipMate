@@ -96,6 +96,8 @@ function dataDirs(root: string) {
     claudeConfig: join(root, "claude"),
     /** pi's agent directory: auth.json, models.json, mcp logs. */
     pi: join(root, "pi"),
+    /** Sign-ins MCP servers read, e.g. Google Workspace's credentials file. */
+    mcp: join(root, "mcp"),
   };
   for (const d of Object.values(dirs)) mkdirSync(d, { recursive: true });
   return dirs;

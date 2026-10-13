@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { McpServerConfig, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { SHIPMATE_VERSION } from "@shipmate/core";
 import type { FastifyInstance } from "fastify";
 
@@ -7,6 +7,10 @@ import type { FastifyInstance } from "fastify";
 export const CLI_MCP_SERVER = "shipmate";
 /** Where the CLI reaches Shipmate's tools (over loopback, with a per-turn bearer token). */
 export const CLI_MCP_PATH = "/api/cli-mcp";
+/** The CLI's PreToolUse hook asks here before it calls a tool from an installed MCP server. */
+export const CLI_GATE_PATH = `${CLI_MCP_PATH}/gate`;
+/** How long the hook waits for a person to answer an approval, in seconds. */
+const GATE_TIMEOUT_S = 900;
 
 /** What one CLI turn may call: its tools, behind the crew member's approval policy. */
 export interface CliToolGrant {
@@ -51,13 +55,27 @@ export class CliToolServer {
     return this.#baseUrl !== undefined;
   }
 
-  /** Open a grant for one turn: the `--mcp-config` JSON to pass, and a revoke for the end. */
-  open(grant: CliToolGrant): { mcpConfig: string; revoke: () => void } | undefined {
+  /**
+   * Open a grant for one turn: the `--mcp-config` JSON to pass, and a revoke for the end.
+   * `servers` are the crew member's installed MCP servers; the CLI runs them itself, and a
+   * PreToolUse hook (`settingsJson`) sends each of their tool calls through the same approval
+   * gate first. Without the hook's yes, the CLI's dontAsk mode refuses them.
+   */
+  open(
+    grant: CliToolGrant,
+    servers: Record<string, McpServerConfig> = {},
+  ): { mcpConfig: string; settingsJson: string | undefined; revoke: () => void } | undefined {
     if (!this.#baseUrl || !grant.tools.length) return undefined;
     const token = randomBytes(24).toString("base64url");
     this.#grants.set(token, { ...grant, controller: new AbortController() });
+    const extra = Object.fromEntries(
+      Object.entries(servers)
+        .filter(([id]) => id !== CLI_MCP_SERVER)
+        .map(([id, config]) => [id, cliServerConfig(config)]),
+    );
     const mcpConfig = JSON.stringify({
       mcpServers: {
+        ...extra,
         [CLI_MCP_SERVER]: {
           type: "http",
           url: `${this.#baseUrl}${CLI_MCP_PATH}`,
@@ -65,8 +83,28 @@ export class CliToolServer {
         },
       },
     });
+    const ids = Object.keys(extra);
+    const settingsJson = ids.length
+      ? JSON.stringify({
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: `^mcp__(${ids.map(escapeRe).join("|")})__`,
+                hooks: [
+                  {
+                    type: "command",
+                    command: gateCommand(`${this.#baseUrl}${CLI_GATE_PATH}`, token),
+                    timeout: GATE_TIMEOUT_S,
+                  },
+                ],
+              },
+            ],
+          },
+        })
+      : undefined;
     return {
       mcpConfig,
+      settingsJson,
       revoke: () => {
         this.#grants.get(token)?.controller.abort();
         this.#grants.delete(token);
@@ -89,6 +127,33 @@ export class CliToolServer {
 
   has(token: string): boolean {
     return this.#grants.has(token);
+  }
+
+  /**
+   * Answer the CLI's PreToolUse hook for an MCP server's tool: the approval gate decides, and the
+   * reply is the hook's JSON. Anything unexpected denies.
+   */
+  async gate(token: string, body: unknown): Promise<unknown> {
+    const grant = this.#grants.get(token);
+    const input = (body ?? {}) as { tool_name?: unknown; tool_input?: unknown };
+    const decide = (permissionDecision: "allow" | "deny", reason: string) => ({
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision,
+        permissionDecisionReason: reason,
+      },
+    });
+    if (!grant) return decide("deny", "This turn has ended.");
+    const toolName = typeof input.tool_name === "string" ? input.tool_name : "";
+    if (!toolName.startsWith("mcp__")) return decide("deny", "Not an MCP tool.");
+    const blocked = await grant.gate({
+      toolName,
+      input:
+        input.tool_input && typeof input.tool_input === "object"
+          ? (input.tool_input as Record<string, unknown>)
+          : {},
+    });
+    return blocked ? decide("deny", blocked.reason) : decide("allow", "Allowed by Shipmate.");
   }
 
   async #one(grant: Live, msg: RpcRequest): Promise<unknown> {
@@ -156,6 +221,33 @@ export class CliToolServer {
   }
 }
 
+/** pi's MCP server config as the Claude Code CLI's `--mcp-config` takes it. */
+export function cliServerConfig(config: McpServerConfig): Record<string, unknown> {
+  const c = config as {
+    command?: string;
+    args?: string[];
+    env?: Record<string, string>;
+    url?: string;
+    headers?: Record<string, string>;
+  };
+  if (c.url) return { type: "http", url: c.url, ...(c.headers ? { headers: c.headers } : {}) };
+  return { type: "stdio", command: c.command ?? "", args: c.args ?? [], env: c.env ?? {} };
+}
+
+/** The hook command: posts the hook's stdin to Shipmate and prints the decision. */
+function gateCommand(url: string, token: string): string {
+  return [
+    "curl -sS --fail",
+    `--max-time ${GATE_TIMEOUT_S}`,
+    `-H 'Authorization: Bearer ${token}'`,
+    "-H 'content-type: application/json'",
+    "--data-binary @-",
+    `'${url}'`,
+  ].join(" ");
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 /** The endpoint the CLI talks to. Public to cookie auth: the per-turn token is the credential. */
 export async function cliMcpRoutes(app: FastifyInstance, server: CliToolServer) {
   const tokenOf = (header: string | undefined) => /^Bearer (.+)$/.exec(header ?? "")?.[1] ?? "";
@@ -166,6 +258,12 @@ export async function cliMcpRoutes(app: FastifyInstance, server: CliToolServer) 
     const out = await server.handle(token, req.body);
     if (out === undefined) return reply.code(202).send();
     return reply.header("content-type", "application/json").send(out);
+  });
+  app.post(CLI_GATE_PATH, async (req, reply) => {
+    const token = tokenOf(req.headers.authorization);
+    return reply
+      .header("content-type", "application/json")
+      .send(await server.gate(token, req.body));
   });
   // No server-initiated stream: the spec allows 405 here.
   app.get(CLI_MCP_PATH, async (_req, reply) => reply.code(405).send());

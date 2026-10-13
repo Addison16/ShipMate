@@ -6,6 +6,13 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **One container, one command**: the image now has Postgres built in. With no `DATABASE_URL`
+  it starts its own database before Shipmate, keeps it in `/data/postgres`, and listens only
+  inside the container, so `docker run … ghcr.io/addison16/shipmate:latest` (or one Unraid
+  container) is a whole install. Set `DATABASE_URL` to keep using your own Postgres; existing
+  installs carry on unchanged. Backups skip the database's raw files and restores leave them in
+  place, and `shipmate restore` in a stopped container's volumes starts the built-in database
+  for the restore. The Unraid template no longer needs a separate Postgres container.
 - **Direct chats, reworked**: the Bridge opens on "Who would you like to talk to?", with the
   Captain and every crew member one tap away. "Chat with…" opens a searchable crew picker
   (arrow keys and Enter work). Each crew member keeps one chat with you: talking to them again

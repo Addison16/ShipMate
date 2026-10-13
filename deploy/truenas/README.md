@@ -22,7 +22,9 @@ noncommercial use, not open source. Commercial use needs a separate license.
 
 If port 3000 is taken, change the left side of `"3000:3000"` and `SHIPMATE_URL` with it.
 To use a Postgres you already run, delete the `db` service and `depends_on`, and point
-`DATABASE_URL` at it.
+`DATABASE_URL` at it. For a fresh install you can also delete the `db` service, `depends_on`
+and the `DATABASE_URL` line: Shipmate then uses the database built into its image, kept in the
+data dataset under `postgres/` (see [docs/configuration.md](../../docs/configuration.md#the-database)).
 
 **Docker socket:** mounting `/var/run/docker.sock` lets the Shipyard run code in per-project
 sandbox containers. Whatever holds the socket controls Docker on the NAS; remove the line to

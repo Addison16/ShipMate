@@ -103,7 +103,12 @@ export class ClaudeCliTurns {
     };
     const settings = {
       ...own,
-      allowedTools: cliAllowedTools(folder.dir, own.allowedTools, input.mcpConfig !== undefined),
+      allowedTools: cliAllowedTools(
+        folder.dir,
+        own.allowedTools,
+        input.mcpConfig !== undefined,
+        folder.manifest.helpers,
+      ),
     };
     const model = settings.model ?? cliModelFromRef(folder.manifest.model);
 
@@ -244,12 +249,27 @@ export function defaultCliTools(crewDir: string): string[] {
   return [`Read(//${abs}/**)`, "WebSearch", "WebFetch"];
 }
 
-/** The `--allowedTools` for a turn: the defaults, the crew member's own, and Shipmate's tools. */
-export function cliAllowedTools(crewDir: string, own: string[], shipmateTools: boolean): string[] {
+/**
+ * Claude Code's sub agent tool, for crew with `helpers: true`. It was called Task and is now
+ * Agent; both are allowed so either version of the CLI works. Sub agents get the same rules.
+ */
+export const CLI_HELPER_TOOLS = ["Task", "Agent"];
+
+/**
+ * The `--allowedTools` for a turn: the defaults, the crew member's own, its sub agent tool when
+ * helpers are on, and Shipmate's tools.
+ */
+export function cliAllowedTools(
+  crewDir: string,
+  own: string[],
+  shipmateTools: boolean,
+  helpers = false,
+): string[] {
   return [
     ...new Set([
       ...defaultCliTools(crewDir),
       ...own,
+      ...(helpers ? CLI_HELPER_TOOLS : []),
       // Shipmate's tools go through its own approval policy, so the CLI may call them all.
       ...(shipmateTools ? [`mcp__${CLI_MCP_SERVER}`] : []),
     ]),

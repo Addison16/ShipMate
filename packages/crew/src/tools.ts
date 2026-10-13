@@ -47,6 +47,7 @@ export interface EditSpec {
   approval?: "ask" | "auto" | { "never-for": string[] } | undefined;
   allow?: string[] | undefined;
   autoApproveSkills?: boolean | undefined;
+  helpers?: boolean | undefined;
   monthlyCapUsd?: number | null | undefined;
   visibility?: "shared" | "private" | undefined;
   avatar?: string | undefined;
@@ -318,7 +319,7 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
       name: "edit_crew_member",
       label: "Edit crew member",
       description:
-        "Change any of a crew member's settings: name, role, model, backend, Claude Code options, tools, MCP servers, skills, approvals, spending cap, visibility, or persona (replaces CREW.md entirely when given). Only the fields you pass change; read crew_settings first.",
+        "Change any of a crew member's settings: name, role, model, backend, Claude Code options, helper agents, tools, MCP servers, skills, approvals, spending cap, visibility, or persona (replaces CREW.md entirely when given). Only the fields you pass change; read crew_settings first.",
       promptSnippet: "edit_crew_member: change any crew member setting (read crew_settings first)",
       parameters: Type.Object({
         slug: Type.String(),
@@ -358,6 +359,9 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
         neverFor: stringList('tools that are never run, with approval "never-for"'),
         allow: stringList("replaces the tools it may run without asking"),
         autoApproveSkills: Type.Optional(Type.Boolean()),
+        helpers: Type.Optional(
+          Type.Boolean({ description: "let it start helper agents for parts of a task" }),
+        ),
         monthlyCapUsd: Type.Optional(
           Type.Number({ description: "monthly spend ceiling in USD; 0 removes the cap" }),
         ),
@@ -617,6 +621,35 @@ export function questionTools(host: QuestionHost, personName: string): ToolDefin
             ? `${personName} skipped the question or did not answer. Use your best judgment, and say what you assumed.`
             : `${personName} answered: ${answer}`,
         );
+      },
+    }),
+  ];
+}
+
+/** What the `helper` tool needs: run one task in a fresh copy of the crew member. */
+export interface HelperHost {
+  /** Run `task` in a new helper session and return its final reply. */
+  run(task: string, signal: AbortSignal | undefined): Promise<string>;
+}
+
+/** The `helper` tool, for crew members with `helpers: true` in crew.yaml. */
+export function helperTools(host: HelperHost): ToolDefinition[] {
+  return [
+    defineTool({
+      name: "helper",
+      label: "Helper agent",
+      description:
+        "Start a helper agent: a fresh copy of you, with your tools, that works on one task and returns its answer. Use it for parts of a bigger job that can run on their own, such as researching several things at once or checking separate files; call it several times in one go to run helpers side by side. Helpers cannot see this conversation, ask the person anything, or start helpers of their own, so give each one the whole task and the context it needs.",
+      promptSnippet: "helper: hand part of a task to a helper agent; several run side by side",
+      parameters: Type.Object({
+        task: Type.String({
+          description: "what to do and what to report back, with all the context it needs",
+        }),
+      }),
+      executionMode: "parallel",
+      async execute(_id, p, signal) {
+        const reply = await host.run(p.task, signal);
+        return text(reply || "(the helper gave no answer)");
       },
     }),
   ];

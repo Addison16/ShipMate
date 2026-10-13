@@ -26,6 +26,7 @@ import {
   cx,
   ErrorText,
   focusRing,
+  Loading,
   Muted,
   Notice,
   SelectField,
@@ -469,7 +470,7 @@ function PurposeStep({ nav }: { nav: StepNav }) {
         later in Settings.
       </StepHeader>
       <ErrorText>{use.error}</ErrorText>
-      {use.loading && use.data === null && <Muted>Loading…</Muted>}
+      {use.loading && use.data === null && <Loading />}
       {use.data !== null && <PurposeForm initial={use.data} nav={nav} />}
     </>
   );
@@ -701,7 +702,7 @@ function CaptainStep({ nav }: { nav: StepNav }) {
         hands bigger jobs to the rest of the crew.
       </StepHeader>
       <ErrorText>{setup.error}</ErrorText>
-      {setup.loading && !data && <Muted>Loading…</Muted>}
+      {setup.loading && !data && <Loading />}
       {data && (
         <CaptainForm
           key={data.name + data.voice}
@@ -820,7 +821,7 @@ function HouseholdStep({ nav }: { nav: StepNav }) {
           : "Your town and timezone are enough to start. Every crew member reads this, and all of it is optional and stays on your server."}
       </StepHeader>
       <ErrorText>{data.error}</ErrorText>
-      {data.loading && !data.data && <Muted>Loading…</Muted>}
+      {data.loading && !data.data && <Loading />}
       {data.data && <HouseholdForm initial={data.data} nav={nav} />}
     </>
   );
@@ -1133,7 +1134,7 @@ function CrewStep({ nav }: { nav: StepNav }) {
             </div>
           )}
           {use.data === null && !use.error ? (
-            <Muted>Loading…</Muted>
+            <Loading />
           ) : switching ? (
             <Muted>Moving the new crew to Claude Code…</Muted>
           ) : pending ? (

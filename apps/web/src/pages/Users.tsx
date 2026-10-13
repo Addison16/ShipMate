@@ -59,6 +59,7 @@ export function UsersPage() {
   return (
     <Page wide>
       <PageHeader
+        icon="users"
         title="Users"
         description="Everyone shares the same crew and providers; each person has their own conversations."
       />
@@ -99,7 +100,7 @@ export function UsersPage() {
                         value={u.role}
                         onChange={(e) => void update(u.id, { role: e.target.value as UserRole })}
                         className={cx(
-                          "rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900",
+                          "rounded-md border border-control bg-white px-2 py-1 text-sm dark:bg-slate-900",
                           focusRing,
                         )}
                       >
@@ -184,7 +185,7 @@ function CapEditor({
         onChange={(e) => setValue(e.target.value)}
         className={cx(
           "w-24 rounded-md border bg-white px-2 py-1 text-sm tabular-nums dark:bg-slate-900",
-          invalid ? "border-red-500" : "border-slate-300 dark:border-slate-600",
+          invalid ? "border-red-500" : "border-control",
           focusRing,
         )}
       />

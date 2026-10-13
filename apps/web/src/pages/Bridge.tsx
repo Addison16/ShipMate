@@ -15,8 +15,25 @@ import { useApprovals } from "../approvals.js";
 import { useUser } from "../auth.js";
 import { ApprovalCard } from "../components/ApprovalCard.js";
 import { AttachButtons, PendingFiles, useComposerFiles } from "../components/Attachments.js";
+import { Avatar } from "../components/Avatar.js";
+import {
+  ChatLanding,
+  CrewPicker,
+  CrewStrip,
+  directCandidates,
+  useDraft,
+} from "../components/CrewChat.js";
+import { NavIcon } from "../components/icons.js";
 import { TimelineView } from "../components/Timeline.js";
-import { Badge, Button, cx, ErrorText, focusRing } from "../components/ui.js";
+import {
+  Badge,
+  Button,
+  cx,
+  EmptyState,
+  ErrorText,
+  focusRing,
+  IconButton,
+} from "../components/ui.js";
 import { MicButton, speaker, useHandsFree, useVoiceStatus } from "../components/Voice.js";
 import { formatTime } from "../lib/format.js";
 import { splitHighlights } from "../lib/search.js";
@@ -30,7 +47,7 @@ function conversationTitle(c: ConversationDto, crew: CrewDto[]): string {
   if (c.title) return c.title;
   if (c.kind === "direct") {
     const member = crew.find((m) => m.slug === c.crewSlug);
-    return `Direct: ${member?.name ?? c.crewSlug ?? "crew"}`;
+    return member?.name ?? c.crewSlug ?? "Crew member";
   }
   return "New bridge chat";
 }
@@ -79,12 +96,16 @@ function ConversationTags({
   );
 }
 
+/** Thread header buttons: a 36px square tap target on phones, a labelled button from sm up. */
+const headerAction = "max-sm:size-9 max-sm:p-0";
+
 export function BridgePage({ conversationId }: { conversationId: string | null }) {
   const conversations = useResource(() => api.listConversations().then((r) => r.conversations));
   const crew = useResource(() => api.listCrew().then((r) => r.crew));
   const models = useResource(() => api.listModels().then((r) => r.models));
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [picking, setPicking] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const search = useConversationSearch();
 
@@ -115,14 +136,12 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
     conversations.data?.some((c) => c.projectId !== null) ?? false,
   );
 
-  async function create(kind: "bridge" | "direct", crewSlug?: string) {
+  async function createBridge() {
     setCreating(true);
     setCreateError(null);
     try {
-      const { conversation } = await api.createConversation(
-        kind === "direct" ? { kind, crewSlug } : { kind },
-      );
-      conversations.setData([conversation, ...(conversations.data ?? [])]);
+      const { conversation } = await api.createConversation({ kind: "bridge" });
+      opened(conversation);
       navigate(`/bridge/${conversation.id}`);
     } catch (err) {
       setCreateError(errorMessage(err));
@@ -131,7 +150,26 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
     }
   }
 
-  const directCandidates = crewList.filter((m) => m.status === "active" && !m.captain);
+  /** Put a just-opened conversation at the top of the list (once). */
+  /**
+   * Show a just-opened conversation in the list. A reopened one stays where it is (keeping its
+   * preview, which only the list carries); a new one goes first after the pinned ones.
+   */
+  function opened(conversation: ConversationDto) {
+    const list = conversations.data ?? [];
+    if (list.some((x) => x.id === conversation.id)) {
+      conversations.setData(
+        list.map((x) => (x.id === conversation.id ? { ...conversation, preview: x.preview } : x)),
+      );
+      return;
+    }
+    const at = list.findIndex((x) => !x.pinned);
+    const i = at < 0 ? list.length : at;
+    conversations.setData([...list.slice(0, i), conversation, ...list.slice(i)]);
+  }
+
+  const canDirect = directCandidates(crewList).length > 0;
+  const captainName = crewList.find((m) => m.captain)?.name ?? "Captain";
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -153,41 +191,33 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
           aria-label="Conversations"
         >
           <div className="space-y-2 border-b border-slate-200 p-3 dark:border-slate-800">
-            <Button
-              variant="primary"
-              className="w-full"
-              disabled={creating}
-              onClick={() => void create("bridge")}
-            >
-              New bridge chat
-            </Button>
-            {directCandidates.length > 0 && (
-              <div>
-                <label htmlFor="direct-crew" className="sr-only">
-                  Start a direct chat with a crew member
-                </label>
-                <select
-                  id="direct-crew"
-                  value=""
+            <div className="flex gap-2">
+              <Button
+                variant="primary"
+                className="flex-1"
+                disabled={creating}
+                onClick={() => void createBridge()}
+              >
+                New bridge chat
+              </Button>
+              {canDirect && (
+                <Button
                   disabled={creating}
-                  onChange={(e) => {
-                    if (e.target.value) void create("direct", e.target.value);
-                  }}
-                  className={cx(
-                    "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900",
-                    focusRing,
-                  )}
+                  title="Chat with one crew member yourself"
+                  aria-haspopup="dialog"
+                  onClick={() => setPicking(true)}
                 >
-                  <option value="">Direct chat with…</option>
-                  {directCandidates.map((m) => (
-                    <option key={m.slug} value={m.slug}>
-                      {m.name} ({m.role})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+                  Chat with…
+                </Button>
+              )}
+            </div>
             <ErrorText>{createError}</ErrorText>
+            <CrewStrip
+              crew={crewList}
+              creating={creating}
+              onNewBridge={() => void createBridge()}
+              onOpened={opened}
+            />
             <div className="relative">
               <label htmlFor="conv-search" className="sr-only">
                 Search conversations
@@ -202,7 +232,7 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
                 }}
                 placeholder="Search conversations"
                 className={cx(
-                  "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900",
+                  "w-full rounded-md border border-control bg-white px-3 py-2 text-sm dark:bg-slate-900",
                   focusRing,
                 )}
               />
@@ -216,43 +246,37 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
               projectNames={projectNames}
             />
           ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            <div className="min-h-0 flex-1 overflow-y-auto p-2 md:pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
               {conversations.error && <ErrorText>{conversations.error}</ErrorText>}
               {conversations.data?.length === 0 && (
                 <p className="p-3 text-sm text-slate-500 dark:text-slate-400">
-                  No conversations yet. Start one above.
+                  No conversations yet. Start a bridge chat, or chat with one crew member.
                 </p>
               )}
-              <ul className="space-y-0.5">
+              <ul className="stagger space-y-0.5">
                 {conversations.data?.map((c, i, all) => (
                   <li key={c.id}>
                     {c.pinned && i === 0 && <ListLabel>Pinned</ListLabel>}
                     {!c.pinned && i > 0 && all[i - 1]?.pinned && <ListLabel>Recent</ListLabel>}
-                    <a
-                      href={href(`/bridge/${c.id}`)}
-                      aria-current={c.id === conversationId ? "page" : undefined}
-                      className={cx(
-                        "block rounded-md px-3 py-2",
-                        focusRing,
-                        c.id === conversationId
-                          ? "bg-accent-700/10 dark:bg-accent-400/10"
-                          : "hover:bg-slate-100 dark:hover:bg-slate-800",
-                      )}
-                    >
-                      <span className="flex items-baseline justify-between gap-2">
-                        <span className="flex min-w-0 items-center gap-1 text-sm font-medium">
-                          {c.pinned && <PinGlyph />}
-                          <span className="truncate">{conversationTitle(c, crewList)}</span>
-                        </span>
-                        <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
-                          {formatTime(c.updatedAt)}
-                        </span>
-                      </span>
-                      <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-                        {c.kind === "bridge" ? "Bridge" : "Direct"}
-                        <ConversationTags c={c} projectNames={projectNames} />
-                      </span>
-                    </a>
+                    <ConversationRow
+                      c={c}
+                      title={conversationTitle(c, crewList)}
+                      who={withWhom(c, crewList, captainName)}
+                      active={c.id === conversationId}
+                      projectNames={projectNames}
+                      onRenamed={(next) =>
+                        conversations.setData(
+                          (conversations.data ?? []).map((x) => (x.id === next.id ? next : x)),
+                        )
+                      }
+                      onPinned={() => void conversations.reload()}
+                      onDeleted={() => {
+                        conversations.setData(
+                          (conversations.data ?? []).filter((x) => x.id !== c.id),
+                        );
+                        if (c.id === conversationId) navigate("/bridge");
+                      }}
+                    />
                   </li>
                 ))}
               </ul>
@@ -269,6 +293,11 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
               conversationId={conversationId}
               conversation={current}
               title={current ? conversationTitle(current, crewList) : ""}
+              member={
+                current?.kind === "direct"
+                  ? (crewList.find((m) => m.slug === current.crewSlug) ?? null)
+                  : (crewList.find((m) => m.captain) ?? null)
+              }
               tags={
                 current ? (
                   <ConversationTags c={current} projectNames={projectNames} linkProject />
@@ -288,18 +317,197 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
               }}
             />
           ) : (
-            <div className="grid flex-1 place-items-center p-6 text-center">
-              <div className="max-w-sm space-y-2">
-                <h1 className="text-lg font-semibold">The Bridge</h1>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Talk to your coordinator, who pulls in the right crew member for each job. Pick a
-                  conversation or start a new one.
-                </p>
-              </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <ChatLanding
+                crew={crewList}
+                conversations={conversations.data}
+                creating={creating}
+                onNewBridge={() => void createBridge()}
+                onOpened={opened}
+              />
             </div>
           )}
         </section>
       </div>
+      <CrewPicker
+        open={picking}
+        onClose={() => setPicking(false)}
+        crew={crewList}
+        conversations={conversations.data}
+        onOpened={opened}
+      />
+    </div>
+  );
+}
+
+/**
+ * One chat in the list, with pin, rename and delete right on the row so nobody has to open a
+ * chat to find them. Chats from other apps or watches are read-only and only get delete.
+ */
+function ConversationRow({
+  c,
+  title,
+  who,
+  active,
+  projectNames,
+  onRenamed,
+  onPinned,
+  onDeleted,
+}: {
+  c: ConversationDto;
+  title: string;
+  /** Who the chat is with: its crew member, or the Captain. */
+  who: string;
+  active: boolean;
+  projectNames: Map<string, string>;
+  onRenamed: (c: ConversationDto) => void;
+  onPinned: () => void;
+  onDeleted: () => void;
+}) {
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const editable = c.surface === "web";
+
+  async function run(fn: () => Promise<void>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function saveTitle(e: FormEvent) {
+    e.preventDefault();
+    if (renaming === null) return;
+    void run(async () => {
+      const { conversation } = await api.renameConversation(c.id, renaming.trim());
+      onRenamed(conversation);
+      setRenaming(null);
+    });
+  }
+
+  if (renaming !== null) {
+    return (
+      <form
+        onSubmit={saveTitle}
+        className="space-y-1.5 rounded-md bg-slate-100 p-2 dark:bg-slate-800"
+      >
+        <label htmlFor={`rename-${c.id}`} className="sr-only">
+          Chat name
+        </label>
+        <input
+          id={`rename-${c.id}`}
+          // biome-ignore lint/a11y/noAutofocus: the user just pressed Rename on this row
+          autoFocus
+          value={renaming}
+          placeholder={title}
+          maxLength={200}
+          onChange={(e) => setRenaming(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setRenaming(null);
+          }}
+          className={cx(
+            "w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900",
+            focusRing,
+          )}
+        />
+        <ErrorText>{error}</ErrorText>
+        <div className="flex gap-1.5">
+          <Button size="sm" type="submit" variant="primary" disabled={busy}>
+            Save
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setRenaming(null)}>
+            Cancel
+          </Button>
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <div
+      className={cx(
+        "relative rounded-md transition-colors duration-150",
+        active
+          ? "bg-accent-700/10 dark:bg-accent-400/10"
+          : "hover:bg-slate-100 active:bg-slate-200/70 dark:hover:bg-slate-800 dark:active:bg-slate-700/70",
+      )}
+    >
+      <a
+        href={href(`/bridge/${c.id}`)}
+        aria-current={active ? "page" : undefined}
+        className={cx("flex items-start gap-2.5 rounded-md px-2.5 py-2", focusRing)}
+      >
+        <Avatar name={who} />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline justify-between gap-2">
+            <span className="flex min-w-0 items-center gap-1 text-sm font-medium">
+              {c.pinned && <PinGlyph />}
+              <span className="truncate">{title}</span>
+            </span>
+            <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+              {formatTime(c.updatedAt)}
+            </span>
+          </span>
+          {c.preview && (
+            <span className="mt-0.5 block truncate text-xs text-slate-600 dark:text-slate-300">
+              {c.preview}
+            </span>
+          )}
+          <span className="mt-0.5 flex min-h-9 min-w-0 flex-wrap items-center gap-1.5 pr-32 text-xs sm:min-h-7 sm:pr-24 text-slate-500 dark:text-slate-400">
+            {c.kind === "bridge" ? `Bridge · ${who}` : `Direct · ${who}`}
+            <ConversationTags c={c} projectNames={projectNames} />
+          </span>
+        </span>
+      </a>
+      <div className="absolute right-1.5 bottom-1.5 flex items-center gap-0.5">
+        {editable && (
+          <>
+            <IconButton
+              icon="pin"
+              label={c.pinned ? `Unpin ${title}` : `Pin ${title}`}
+              active={c.pinned}
+              aria-pressed={c.pinned}
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  await api.pinConversation(c.id, !c.pinned);
+                  onPinned();
+                })
+              }
+            />
+            <IconButton
+              icon="pencil"
+              label={`Rename ${title}`}
+              disabled={busy}
+              onClick={() => setRenaming(c.title ?? "")}
+            />
+          </>
+        )}
+        <IconButton
+          icon="trash"
+          label={`Delete ${title}`}
+          tone="danger"
+          disabled={busy}
+          onClick={() => {
+            if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return;
+            void run(async () => {
+              await api.deleteConversation(c.id);
+              onDeleted();
+            });
+          }}
+        />
+      </div>
+      {error && (
+        <p role="alert" className="px-3 pb-2 text-xs text-red-700 dark:text-red-300">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -308,6 +516,7 @@ function Thread({
   conversationId,
   conversation,
   title,
+  member,
   tags,
   onRenamed,
   onPinned,
@@ -316,6 +525,8 @@ function Thread({
   conversationId: string;
   conversation: ConversationDto | null;
   title: string;
+  /** Who answers here: the crew member of a direct chat, or the Captain. */
+  member: CrewDto | null;
   tags: ReactNode;
   onRenamed: (c: ConversationDto) => void;
   onPinned: () => void;
@@ -327,7 +538,8 @@ function Thread({
   const readOnly = conversation !== null && conversation.surface !== "web";
   const [state, dispatch] = useReducer(timelineReducer, initialTimeline);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [text, setText] = useState("");
+  const [text, setText] = useDraft(conversationId);
+  const [resetting, setResetting] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -398,10 +610,33 @@ function Thread({
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }
 
+  /** The crew forget the chat so far; the messages stay, below a divider. */
+  async function startFresh() {
+    if (state.busy || resetting) return;
+    setResetting(true);
+    try {
+      const { message } = await api.resetConversation(conversationId);
+      // Shown now even if the live event never arrives (socket down); duplicates are dropped.
+      dispatch({ type: "event", event: { type: "message", conversationId, message } });
+      setSendError(null);
+      stick.current = true;
+    } catch (err) {
+      setSendError(errorMessage(err));
+    } finally {
+      setResetting(false);
+    }
+  }
+
   /** `spoken`: text from the mic in hands-free mode, sent as is (with any attached files). */
   function send(e?: FormEvent, spoken?: string) {
     e?.preventDefault();
     const body = (spoken ?? text).trim();
+    // Typing /new on its own starts fresh, like the button.
+    if (spoken === undefined && body === "/new" && !files.ids.length) {
+      setText("");
+      void startFresh();
+      return;
+    }
     if ((!body && !files.ids.length) || state.busy || files.uploading) return;
     const attachments = files.ids.length ? { attachments: files.ids } : {};
     if (!socket.send({ type: "send", conversationId, text: body, ...attachments })) {
@@ -477,7 +712,7 @@ function Thread({
               value={renaming}
               onChange={(e) => setRenaming(e.target.value)}
               className={cx(
-                "min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900",
+                "min-w-0 flex-1 rounded-md border border-control bg-white px-2 py-1 text-sm dark:bg-slate-900",
                 focusRing,
               )}
             />
@@ -490,9 +725,38 @@ function Thread({
           </form>
         ) : (
           <>
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <h1 className="min-w-0 truncate font-semibold">{title}</h1>
-              <span className="flex shrink-0 items-center gap-1.5">{tags}</span>
+            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+              {member && (
+                <span className="hidden sm:contents">
+                  <Avatar name={member.name} />
+                </span>
+              )}
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-2">
+                  <h1 className="min-w-0 truncate font-semibold">{title}</h1>
+                  <span className="flex shrink-0 items-center gap-1.5">{tags}</span>
+                </div>
+                {member && (
+                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                    {conversation?.kind === "direct"
+                      ? `${member.name} · ${member.role}`
+                      : `${member.name} · brings in the right crew member`}
+                  </p>
+                )}
+              </div>
+              {member && (
+                <a
+                  href={href(`/crew/${member.slug}`)}
+                  title={`${member.name}'s settings`}
+                  aria-label={`${member.name}'s settings`}
+                  className={cx(
+                    "hidden shrink-0 rounded p-1 text-slate-400 transition-colors sm:block hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200",
+                    focusRing,
+                  )}
+                >
+                  <GearGlyph />
+                </a>
+              )}
             </div>
             {voice && voice.stt !== "off" && !readOnly && (
               <Button
@@ -507,23 +771,47 @@ function Thread({
             )}
             {conversation && !readOnly && (
               <>
+                {/* Icons only on phones, so the chat's title keeps the room. */}
                 <Button
                   size="sm"
                   variant="ghost"
+                  className={headerAction}
+                  disabled={state.busy || resetting}
+                  title="Start fresh: the crew forget this chat so far, and the messages stay here. You can also type /new."
+                  onClick={() => void startFresh()}
+                >
+                  <FreshGlyph />
+                  <span className="sr-only sm:not-sr-only">Start fresh</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={headerAction}
                   aria-pressed={conversation.pinned}
                   onClick={() => void togglePin()}
                 >
-                  {conversation.pinned ? "Unpin" : "Pin"}
+                  <NavIcon name="pin" size={16} />
+                  <span className="sr-only sm:not-sr-only">
+                    {conversation.pinned ? "Unpin" : "Pin"}
+                  </span>
                 </Button>
                 <Button
                   size="sm"
                   variant="ghost"
+                  className={headerAction}
                   onClick={() => setRenaming(conversation.title ?? "")}
                 >
-                  Rename
+                  <NavIcon name="pencil" size={16} />
+                  <span className="sr-only sm:not-sr-only">Rename</span>
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => void remove()}>
-                  Delete
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={headerAction}
+                  onClick={() => void remove()}
+                >
+                  <NavIcon name="trash" size={16} />
+                  <span className="sr-only sm:not-sr-only">Delete</span>
                 </Button>
               </>
             )}
@@ -541,9 +829,25 @@ function Thread({
         <div className="mx-auto max-w-3xl">
           {loadError && <ErrorText>{loadError}</ErrorText>}
           {state.items.length === 0 && restoredApprovals.length === 0 && !loadError && (
-            <p className="py-10 text-center text-sm text-slate-500 dark:text-slate-400">
-              No messages yet. Say hello.
-            </p>
+            <EmptyState
+              className="mt-6 border-none bg-transparent dark:bg-transparent"
+              icon={
+                member && conversation?.kind === "direct" ? (
+                  <Avatar name={member.name} size="lg" />
+                ) : (
+                  <NavIcon name="bridge" size={22} />
+                )
+              }
+              title={
+                member && conversation?.kind === "direct"
+                  ? `This is your chat with ${member.name}`
+                  : "No messages yet"
+              }
+            >
+              {member && conversation?.kind === "direct"
+                ? `${member.role}. Ask a question, think something through, or hand over a job.`
+                : "Say hello. Ask for anything, and the right crew member picks it up."}
+            </EmptyState>
           )}
           <TimelineView items={state.items} selfId={user.id} />
           {restoredApprovals.length > 0 && (
@@ -557,7 +861,7 @@ function Thread({
       </div>
 
       {readOnly ? (
-        <p className="border-t border-slate-200 bg-white px-3 py-3 text-center text-sm text-slate-500 sm:px-6 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+        <p className="border-t border-slate-200 bg-white px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] text-center text-sm text-slate-500 sm:px-6 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
           {conversation?.surface === "watch"
             ? "A watch ran this conversation. It is shown here to read."
             : `This conversation happened in ${surfaceLabel(conversation?.surface ?? "") ?? "another app"}. Reply there to continue it.`}
@@ -573,7 +877,7 @@ function Thread({
             e.preventDefault();
             files.add(e.dataTransfer.files);
           }}
-          className="border-t border-slate-200 bg-white px-3 py-3 sm:px-6 dark:border-slate-800 dark:bg-slate-900"
+          className="border-t border-slate-200 bg-white px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-6 dark:border-slate-800 dark:bg-slate-900"
         >
           <div className="mx-auto max-w-3xl space-y-2">
             {state.error && (
@@ -626,9 +930,15 @@ function Thread({
                   e.preventDefault();
                   files.add(e.clipboardData.files);
                 }}
-                placeholder={state.busy ? "The crew is working…" : "Message the crew"}
+                placeholder={
+                  state.busy
+                    ? `${member?.name ?? "The crew"} is working…`
+                    : conversation?.kind === "direct" && member
+                      ? `Message ${member.name}`
+                      : "Message the crew"
+                }
                 className={cx(
-                  "min-h-[42px] flex-1 resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-[15px] dark:border-slate-600 dark:bg-slate-950",
+                  "min-h-[42px] flex-1 resize-none rounded-xl border border-control bg-white px-3.5 py-2 text-[15px] shadow-xs transition-[border-color,box-shadow] duration-150 dark:bg-slate-950",
                   focusRing,
                 )}
               />
@@ -651,10 +961,16 @@ function Thread({
                 </Button>
               )}
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <p
+              className={cx(
+                "text-xs text-slate-500 dark:text-slate-400",
+                // Keyboard tips mean nothing on a phone; the hands-free tip still does.
+                !handsFree && "hidden sm:block",
+              )}
+            >
               {handsFree
                 ? "Hands-free: tap the mic, speak, tap again to send. Replies are read aloud."
-                : "Enter to send, Shift+Enter for a new line."}
+                : "Enter to send, Shift+Enter for a new line, /new to start fresh."}
             </p>
           </div>
         </form>
@@ -668,6 +984,52 @@ function ListLabel({ children }: { children: ReactNode }) {
     <p className="px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wider text-slate-500 uppercase dark:text-slate-400">
       {children}
     </p>
+  );
+}
+
+/** Who a conversation is with: its crew member, or the Captain for a bridge chat. */
+function withWhom(c: ConversationDto, crew: CrewDto[], captainName: string): string {
+  if (c.kind !== "direct") return captainName;
+  return crew.find((m) => m.slug === c.crewSlug)?.name ?? c.crewSlug ?? "Crew member";
+}
+
+function FreshGlyph() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 12a9 9 0 0 1 15.5-6.2L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-15.5 6.2L3 16" />
+      <path d="M3 21v-5h5" />
+    </svg>
+  );
+}
+
+function GearGlyph() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
   );
 }
 
@@ -751,7 +1113,10 @@ function SearchResults({
   projectNames: Map<string, string>;
 }) {
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto p-2" aria-live="polite">
+    <div
+      className="min-h-0 flex-1 overflow-y-auto p-2 md:pb-[calc(0.5rem+env(safe-area-inset-bottom))]"
+      aria-live="polite"
+    >
       <div className="flex items-center justify-between px-3 py-1 text-xs text-slate-500 dark:text-slate-400">
         <span>
           {search.loading && !search.results
@@ -783,7 +1148,7 @@ function SearchResults({
                 focusRing,
                 r.conversation.id === conversationId
                   ? "bg-accent-700/10 dark:bg-accent-400/10"
-                  : "hover:bg-slate-100 dark:hover:bg-slate-800",
+                  : "hover:bg-slate-100 active:bg-slate-200/70 dark:hover:bg-slate-800 dark:active:bg-slate-700/70",
               )}
             >
               <span className="flex items-baseline justify-between gap-2">

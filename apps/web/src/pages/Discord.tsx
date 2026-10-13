@@ -9,6 +9,7 @@ import {
   cx,
   ErrorText,
   focusRing,
+  Loading,
   Muted,
   Page,
   PageHeader,
@@ -25,6 +26,7 @@ export function DiscordPage() {
   return (
     <Page>
       <PageHeader
+        icon="bridges"
         title="Discord"
         description="Talk to the crew from Discord: each crew member gets its own channel and posts under its own name."
       />
@@ -48,7 +50,7 @@ export function DiscordPanel() {
   return (
     <div className="space-y-6">
       <ErrorText>{discord.error}</ErrorText>
-      {discord.loading && !d && <Muted>Loading…</Muted>}
+      {discord.loading && !d && <Loading />}
       {d && <StatusCard d={d} onReload={() => void discord.reload()} busy={discord.loading} />}
       {d && owner && <OwnerCard d={d} onChange={discord.setData} onReload={discord.reload} />}
       {d && admin && !owner && !d.configured && (
@@ -107,7 +109,7 @@ function StatusCard({
             target="_blank"
             rel="noreferrer noopener"
             className={cx(
-              "inline-flex items-center rounded-md bg-accent-700 px-3.5 py-2 text-sm font-medium text-white hover:bg-accent-800 dark:bg-accent-600 dark:hover:bg-accent-500",
+              "inline-flex items-center rounded-md bg-accent-700 px-3.5 py-2 text-sm font-medium text-white hover:bg-accent-800 dark:bg-accent-600 dark:hover:bg-accent-700",
               focusRing,
             )}
           >
@@ -410,7 +412,7 @@ function ChannelRow({
               placeholder="Channel id"
               onChange={(e) => setEditing(e.target.value)}
               className={cx(
-                "w-44 rounded-md border border-slate-300 bg-white px-2 py-1 font-mono text-xs dark:border-slate-600 dark:bg-slate-900",
+                "w-44 rounded-md border border-control bg-white px-2 py-1 font-mono text-xs dark:bg-slate-900",
                 focusRing,
               )}
             />
@@ -443,7 +445,7 @@ function ChannelRow({
             ✓<span className="sr-only">webhook ready</span>
           </span>
         ) : (
-          <span className="text-slate-400">
+          <span className="text-slate-500 dark:text-slate-400">
             –<span className="sr-only">no webhook</span>
           </span>
         )}

@@ -37,13 +37,13 @@ export function Toasts() {
   return (
     <section
       aria-label="Notifications"
-      className="pointer-events-none fixed top-16 right-3 z-40 md:top-3 flex w-[min(24rem,calc(100vw-1.5rem))] flex-col gap-2"
+      className="pointer-events-none fixed top-[calc(4rem+env(safe-area-inset-top))] right-3 z-40 md:top-3 flex w-[min(24rem,calc(100vw-1.5rem))] flex-col gap-2"
     >
       {toasts.map((t) => (
         <div
           key={t.id}
           role="alert"
-          className="pointer-events-auto rounded-lg border border-red-200 bg-white p-3 text-sm shadow-lg dark:border-red-900 dark:bg-slate-900"
+          className="pointer-events-auto animate-toast-in rounded-lg border border-red-200 bg-white p-3 text-sm shadow-lg dark:border-red-900 dark:bg-slate-900"
         >
           <div className="flex items-start gap-2">
             <span aria-hidden="true" className="mt-1.5 size-2 shrink-0 rounded-full bg-red-500" />
@@ -68,7 +68,7 @@ export function Toasts() {
               aria-label="Dismiss"
               onClick={() => dismiss(t.id)}
               className={cx(
-                "rounded p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800",
+                "rounded p-1 text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
                 focusRing,
               )}
             >

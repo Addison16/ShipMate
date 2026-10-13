@@ -338,6 +338,60 @@ describe.skipIf(!db)("Shipmate server", () => {
     ]);
   });
 
+  it("runs helper agents side by side for a crew member that has them", async () => {
+    const yaml = (await api("GET", "/api/crew/galley")).json().crew.manifestYaml as string;
+    const on = await api("PUT", "/api/crew/galley", {
+      manifestYaml: yaml.replace(/^helpers: false$/m, "helpers: true"),
+    });
+    expect(on.statusCode).toBe(200);
+    const conv = (
+      await api("POST", "/api/conversations", { kind: "direct", crewSlug: "galley" })
+    ).json().conversation;
+    const before = (await api("GET", "/api/usage?scope=all")).json().totals.calls as number;
+    const ws = await t.app.injectWS("/api/ws", { headers: { cookie: ownerCookie } });
+    const events: ServerEvent[] = [];
+    ws.on("message", (raw: Buffer) => events.push(JSON.parse(raw.toString())));
+    const idle = new Promise<void>((resolve) => {
+      const timer = setInterval(() => {
+        const last = events.filter((e) => e.type === "status").at(-1);
+        if (last && last.type === "status" && !last.busy) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 20);
+    });
+
+    t.faux.setResponses([
+      fauxAssistantMessage([
+        fauxToolCall("helper", { task: "Find a soup" }),
+        fauxToolCall("helper", { task: "Find a salad" }),
+      ]),
+      fauxAssistantMessage("Found one."),
+      fauxAssistantMessage("Found another."),
+      fauxAssistantMessage("Soup and salad it is."),
+    ]);
+    ws.send(JSON.stringify({ type: "send", conversationId: conv.id, text: "Plan lunch" }));
+    await idle;
+    ws.terminate();
+
+    expect(events.find((e) => e.type === "error")).toBeUndefined();
+    const helperChips = events.filter(
+      (e) => e.type === "tool" && e.phase === "end" && e.toolName === "helper" && !e.isError,
+    );
+    expect(helperChips).toHaveLength(2);
+    // Helpers report to the crew member; only its own reply lands in the conversation.
+    const messages = (await api("GET", `/api/conversations/${conv.id}/messages`)).json().messages;
+    expect(messages.map((m: { content: string }) => m.content)).toEqual([
+      "Plan lunch",
+      "Soup and salad it is.",
+    ]);
+    // Every helper call is metered to the crew member.
+    const usage = (await api("GET", "/api/usage?scope=all")).json();
+    expect(usage.totals.calls - before).toBe(4);
+    await api("PUT", "/api/crew/galley", { manifestYaml: yaml });
+    await api("DELETE", `/api/conversations/${conv.id}`);
+  });
+
   it("keeps one direct chat per crew member and can start it fresh", async () => {
     const first = (
       await api("POST", "/api/conversations", { kind: "direct", crewSlug: "galley", reuse: true })

@@ -286,7 +286,21 @@ export function Shell() {
       <div className="flex h-dvh flex-col bg-slate-50 text-slate-900 md:flex-row dark:bg-slate-950 dark:text-slate-100">
         {/* Top bar on narrow screens */}
         <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 pt-[calc(0.625rem+env(safe-area-inset-top))] pb-2.5 md:hidden dark:border-slate-800 dark:bg-slate-900">
-          <Brand />
+          {/* Menu on the left, the side it slides in from. */}
+          <button
+            type="button"
+            aria-label="Open navigation"
+            aria-expanded={drawer}
+            onClick={() => setDrawer(true)}
+            className={cx(
+              "-ml-2 rounded-md p-2 hover:bg-slate-100 dark:hover:bg-slate-800",
+              focusRing,
+            )}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.8" />
+            </svg>
+          </button>
           <div className="flex items-center gap-1">
             <button
               type="button"
@@ -297,17 +311,9 @@ export function Shell() {
               <NavIcon name="search" size={20} />
             </button>
             <ApprovalTray variant="topbar" />
-            <button
-              type="button"
-              aria-label="Open navigation"
-              aria-expanded={drawer}
-              onClick={() => setDrawer(true)}
-              className={cx("rounded-md p-2 hover:bg-slate-100 dark:hover:bg-slate-800", focusRing)}
-            >
-              <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
-                <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.8" />
-              </svg>
-            </button>
+            <div className="ml-1">
+              <Brand />
+            </div>
           </div>
         </header>
 

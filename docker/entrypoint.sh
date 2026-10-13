@@ -69,17 +69,15 @@ export DATABASE_URL="postgres://shipmate@%2Frun%2Fpostgresql/shipmate"
 
 stop_db() { as_postgres "$PGBIN/pg_ctl" -D "$PGDATA" -m fast -w stop >/dev/null || true; }
 
-if [ -z "$server" ]; then
-  status=0
-  "$@" || status=$?
-  stop_db
-  exit "$status"
-fi
-
-"$@" &
+# Run it in the background so a stop or Ctrl-C reaches it and the database still shuts down
+# cleanly afterwards. fd 3 hands it the real stdin: a background job's would be /dev/null,
+# and a one-off command (e.g. `shipmate restore` without --yes) may ask a question.
+exec 3<&0
+"$@" <&3 3<&- &
 app=$!
+exec 3<&-
 trap 'kill -TERM "$app" 2>/dev/null' TERM INT
-# A trapped signal ends the first wait early; the second waits for Shipmate to finish closing.
+# A trapped signal ends the first wait early; the second waits for the command to finish.
 status=0
 wait "$app" || status=$?
 if kill -0 "$app" 2>/dev/null; then

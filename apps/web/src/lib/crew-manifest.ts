@@ -44,7 +44,6 @@ export const CLI_TOOL_GROUPS: Array<{ label: string; rules: string[] }> = [
   { label: "Run git commands", rules: ["Bash(git *)"] },
   { label: "Run any shell command", rules: ["Bash"] },
   { label: "Read any file Shipmate can reach", rules: ["Read"] },
-  { label: "Use helper agents", rules: ["Task"] },
 ];
 
 const GROUPED = new Set(CLI_TOOL_GROUPS.flatMap((g) => g.rules));
@@ -82,6 +81,8 @@ export interface ManifestForm {
   neverFor: string[];
   allow: string[];
   autoApproveSkills: boolean;
+  /** Let it start helper agents (sub agents) on either engine. */
+  helpers: boolean;
   monthlyCapUsd: number | null;
   visibility: "shared" | "private";
   captain: boolean;
@@ -125,6 +126,7 @@ export function readManifestForm(yaml: string): ReadResult {
       neverFor: typeof m.approval === "object" ? m.approval["never-for"] : [],
       allow: m.allow,
       autoApproveSkills: m.autoApproveSkills,
+      helpers: m.helpers,
       monthlyCapUsd: m.monthlyCapUsd,
       visibility: m.visibility,
       captain: m.captain,
@@ -184,12 +186,28 @@ export function applyManifestForm(yaml: string, form: ManifestForm): string {
   }
   list("allow", form.allow, old.allow);
   scalar("autoApproveSkills", form.autoApproveSkills, old.autoApproveSkills);
+  scalar("helpers", form.helpers, old.helpers);
   scalar("monthlyCapUsd", form.monthlyCapUsd, old.monthlyCapUsd);
   scalar("visibility", form.visibility, old.visibility);
   scalar("captain", form.captain, old.captain);
   optional(["avatar"], form.avatar, old.avatar);
 
   return doc.toString({ flowCollectionPadding: false });
+}
+
+export type Engine = ManifestForm["backend"];
+
+/**
+ * Move a crew member to the other engine. Claude Code runs on the Claude subscription, so a
+ * model from another provider is left for the CLI's own default; back on pi, a Claude
+ * subscription model makes way for the crew default.
+ */
+export function switchEngine(form: ManifestForm, engine: Engine): Partial<ManifestForm> {
+  if (engine === form.backend) return {};
+  const claude = form.model.startsWith("claude-code/");
+  return engine === "pi"
+    ? { backend: "pi", ...(claude ? { model: "default" } : {}) }
+    : { backend: "claude-code-cli" };
 }
 
 /** Trim, drop blanks and duplicates. */

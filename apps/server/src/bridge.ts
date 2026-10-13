@@ -29,6 +29,8 @@ import {
   crewTools,
   type EquipSpec,
   gateToolCall,
+  type HelperHost,
+  helperTools,
   MemoryStore,
   memoryTools,
   type QuestionHost,
@@ -106,7 +108,17 @@ interface TurnContext {
   crew: CrewHost;
   approvals: ApprovalHost;
   question: QuestionHost;
+  helper: HelperHost;
 }
+
+/** Helper agents one crew member may start while answering one message. */
+export const MAX_HELPERS_PER_TURN = 8;
+
+/**
+ * What a pi session is for besides a crew member's own turn: answering a crew member's
+ * `ask_captain`, or one helper agent's task (the id keeps side-by-side helpers apart).
+ */
+type SessionMode = { consultFor: { slug: string; name: string } } | { helper: string };
 
 export interface RunTurnOptions {
   /** Set for watch runs: usage is attributed to the watch and approvals mention it. */
@@ -843,6 +855,24 @@ export class Bridge {
       },
     };
 
+    let helpersStarted = 0;
+    const helper: HelperHost = {
+      run: async (task, signal) => {
+        if (!folder.manifest.helpers) throw new Error("helper agents are off for this crew member");
+        if (++helpersStarted > MAX_HELPERS_PER_TURN) {
+          throw new Error(
+            `at most ${MAX_HELPERS_PER_TURN} helpers per message; finish with what you have`,
+          );
+        }
+        // Helpers spend like the crew member itself, so the same caps stop them.
+        await this.#checkCap(user, slug, options.watchId);
+        return this.#runHelper(user, conv, run, folder, crewRow.id, context, task, signal, {
+          watchId: options.watchId ?? null,
+        });
+      },
+    };
+    const context: TurnContext = { captain: host, crew: crewHost, approvals, question, helper };
+
     if (folder.manifest.backend === "claude-code-cli") {
       if (options.images?.length) {
         await this.#note(
@@ -915,8 +945,8 @@ export class Bridge {
       conv,
       run,
       folder,
-      { captain: host, crew: crewHost, approvals, question },
-      options.consultFor,
+      context,
+      options.consultFor ? { consultFor: options.consultFor } : undefined,
     );
     // A crew member whose model cannot see images hands this one turn to a model that can.
     let images = options.images ?? [];
@@ -1154,17 +1184,17 @@ export class Bridge {
     run: Run,
     folder: CrewFolder,
     context: TurnContext,
-    consultFor?: { slug: string; name: string },
+    mode?: SessionMode,
   ): Promise<CrewSession> {
-    // A consult is the Captain's second session in the run, so it never collides with the main
-    // one, which may be waiting on the delegate that asked.
-    const key = consultFor ? `${folder.slug}#consult` : folder.slug;
+    const consultFor = mode && "consultFor" in mode ? mode.consultFor : undefined;
+    const helperId = mode && "helper" in mode ? mode.helper : undefined;
+    const key = sessionKey(folder.slug, mode);
     run.hosts.set(key, context);
     const existing = run.sessions.get(key);
     if (existing) return existing;
     const acting: ActingUser = { id: user.id, displayName: user.displayName, role: user.role };
     const memory = new MemoryStore(folder.dir);
-    const isCaptain = folder.manifest.captain && conv.kind === "bridge" && !consultFor;
+    const isCaptain = folder.manifest.captain && conv.kind === "bridge" && !mode;
     const captainName = this.deps.crew.captain().manifest.name;
     // A cached session's tools outlive the turn that created them, so they look up the host of
     // the turn in progress.
@@ -1203,34 +1233,41 @@ export class Bridge {
       agentDir: this.deps.agentDir,
       modelRuntime: this.deps.providers.runtime,
       model,
-      customTools: [
-        ...memoryTools(memory, acting),
-        ...skillTools({
-          createSkill: async ({ scope, content }) =>
-            skills.createByCrew(
-              folder.slug,
-              user.id,
-              scope,
-              content,
-              this.deps.crew.folder(folder.slug).manifest.autoApproveSkills,
-            ),
-        }),
-        ...(isCaptain ? captainTools(proxy, acting) : []),
-        ...(folder.manifest.captain
-          ? []
-          : crewTools(
-              { askCaptain: (q, signal) => current().crew.askCaptain(q, signal) },
-              captainName,
-            )),
-        ...(consultFor
-          ? []
-          : questionTools(
-              { ask: (q, signal) => current().question.ask(q, signal) },
-              user.displayName,
-            )),
-        ...(this.#everyday?.tools(user, folder) ?? []),
-        ...(workspace?.tools ?? []),
-      ],
+      customTools: helperId
+        ? // A helper does its one task: no crew management, questions or helpers of its own,
+          // and no Shipyard pushes or comments (the crew member it works for decides those).
+          [...memoryTools(memory, acting), ...(this.#everyday?.tools(user, folder) ?? [])]
+        : [
+            ...memoryTools(memory, acting),
+            ...skillTools({
+              createSkill: async ({ scope, content }) =>
+                skills.createByCrew(
+                  folder.slug,
+                  user.id,
+                  scope,
+                  content,
+                  this.deps.crew.folder(folder.slug).manifest.autoApproveSkills,
+                ),
+            }),
+            ...(isCaptain ? captainTools(proxy, acting) : []),
+            ...(folder.manifest.captain
+              ? []
+              : crewTools(
+                  { askCaptain: (q, signal) => current().crew.askCaptain(q, signal) },
+                  captainName,
+                )),
+            ...(consultFor
+              ? []
+              : questionTools(
+                  { ask: (q, signal) => current().question.ask(q, signal) },
+                  user.displayName,
+                )),
+            ...(consultFor || !folder.manifest.helpers
+              ? []
+              : helperTools({ run: (task, signal) => current().helper.run(task, signal) })),
+            ...(this.#everyday?.tools(user, folder) ?? []),
+            ...(workspace?.tools ?? []),
+          ],
       ...(workspace ? { workspace: { dir: workspace.dir, bash: workspace.bash } } : {}),
       mcpServers: servers,
       skillPaths: this.deps.skills.pathsFor(user.id),
@@ -1243,15 +1280,69 @@ export class Bridge {
               `## Answering the crew\n\nIn this session you only answer questions from crew members who are mid-task. You cannot delegate or change the crew here; if the answer needs that, say so and ${user.displayName} or you can do it on the Bridge.`,
             ]
           : []),
+        ...(helperId
+          ? [
+              `## Helping\n\nYou are a helper agent that ${folder.manifest.name} started for one task. Nobody else sees your work: do the task, then reply with what was asked for. You cannot ask anyone questions or start helpers yourself; if something blocks you, say so in your reply.`,
+            ]
+          : []),
         ...(workspace ? [workspace.prompt] : []),
       ],
-      ...(consultFor ? { inMemory: true } : {}),
-      ...(!consultFor && conv.sessionFiles[folder.slug]
+      ...(mode ? { inMemory: true } : {}),
+      ...(!mode && conv.sessionFiles[folder.slug]
         ? { sessionFile: conv.sessionFiles[folder.slug] }
         : {}),
     });
     run.sessions.set(key, created);
     return created;
+  }
+
+  /**
+   * One helper agent: a fresh, in-memory copy of the crew member that runs `task` and returns
+   * its final reply. Its spend is the crew member's; its text stays out of the conversation (the
+   * crew member reports what matters). Stopping the turn stops it, as it sits in the run.
+   */
+  async #runHelper(
+    user: UserRow,
+    conv: ConversationRow,
+    run: Run,
+    folder: CrewFolder,
+    crewMemberId: string,
+    context: TurnContext,
+    task: string,
+    signal: AbortSignal | undefined,
+    usage: { watchId: string | null },
+  ): Promise<string> {
+    const mode: SessionMode = { helper: randomUUID() };
+    const key = sessionKey(folder.slug, mode);
+    const session = await this.#session(user, conv, run, folder, context, mode);
+    let final = "";
+    const unsubscribe = session.subscribe((event) => {
+      if (event.type !== "message_end" || event.message.role !== "assistant") return;
+      this.#recordUsage(
+        run,
+        { userId: user.id, crewMemberId, conversationId: conv.id, routineId: usage.watchId },
+        session.session.model ?? session.model,
+        event.message.usage,
+        null,
+      );
+      const t = textOf(event.message);
+      if (t) final = t;
+    });
+    const stop = () => void session.abort();
+    signal?.addEventListener("abort", stop, { once: true });
+    try {
+      if (signal?.aborted) throw new Error("stopped");
+      await session.prompt(task);
+      const failure = lastError(session);
+      if (failure && !run.aborted) throw new Error(failure);
+      return final;
+    } finally {
+      signal?.removeEventListener("abort", stop);
+      unsubscribe();
+      run.sessions.delete(key);
+      run.hosts.delete(key);
+      session.dispose();
+    }
   }
 
   /**
@@ -1573,6 +1664,14 @@ function textOf(message: AssistantMessage): string {
     .map((c) => c.text)
     .join("")
     .trim();
+}
+
+/** Where a run keeps a crew member's pi session for `mode` (see SessionMode). */
+function sessionKey(slug: string, mode: SessionMode | undefined): string {
+  if (!mode) return slug;
+  // A consult is the Captain's second session in the run, so it never collides with the main
+  // one, which may be waiting on the delegate that asked.
+  return "consultFor" in mode ? `${slug}#consult` : `${slug}#helper:${mode.helper}`;
 }
 
 function lastError(session: CrewSession): string | undefined {

@@ -1,43 +1,92 @@
 # Shipmate on Unraid
 
-Shipmate is a single container with its database built in: add the template, start it, done.
-No separate Postgres container is needed.
+Shipmate is one container on Unraid. Its database is built in, so there is nothing else to
+install first: no Postgres container, no database password, no compose file.
 
 Shipmate is source-available under the PolyForm Noncommercial 1.0.0 license: free for
 noncommercial use, not open source. Commercial use needs a separate license.
 
-## Install
+## Install (about 5 minutes)
 
-Add the template, either from Community Applications once it is listed, or by hand:
+**You need:** Unraid 6.12 or newer with Docker enabled (**Settings → Docker → Enable Docker:
+Yes**), and your server's IP address (shown at the top of the Unraid web UI, e.g.
+`192.168.1.10`). Below, replace `192.168.1.10` with yours.
+
+### Step 1. Add the Shipmate template
+
+Open the Unraid terminal (the **>_** icon at the top right of the Unraid web UI), paste this
+whole block and press Enter:
 
 ```bash
-# on the Unraid server
-mkdir -p /boot/config/plugins/dockerMan/templates-user
-curl -fsSL -o /boot/config/plugins/dockerMan/templates-user/my-shipmate.xml \
-  https://raw.githubusercontent.com/Addison16/ShipMate/main/deploy/unraid/shipmate.xml
+mkdir -p /boot/config/plugins/dockerMan/templates-user && curl -fsSL -o /boot/config/plugins/dockerMan/templates-user/my-shipmate.xml https://raw.githubusercontent.com/Addison16/ShipMate/main/deploy/unraid/shipmate.xml && echo "Template added"
 ```
 
-Then **Docker → Add Container → Template: shipmate** and fill in:
+It prints `Template added`. Close the terminal. (Once Shipmate is listed in Community
+Applications, searching "Shipmate" in the **Apps** tab does the same thing.)
 
-- **SHIPMATE_URL**: the address people will open, e.g. `http://192.168.1.10:3000`, or
-  `https://shipmate.example.com` behind a reverse proxy (SWAG, Nginx Proxy Manager, Traefik).
-- **Data**: `/mnt/user/appdata/shipmate` (default).
-- **Docker socket**: keep it to use the Shipyard's sandboxes; remove it to turn the Shipyard
-  off. Whatever holds the socket can control Docker on the server.
-- **SHIPMATE_SECRET**: leave empty to have one generated into `/data/.secret`.
-- **DATABASE_URL**: leave empty to use the built-in database, kept in
-  `/mnt/user/appdata/shipmate/postgres`. See [Your own Postgres](#your-own-postgres-optional)
-  to use a separate one instead.
+### Step 2. Create the container
 
-**No socket?** Remove the Docker socket path and run sandboxes elsewhere: rootless Podman on
-another machine, or a Docker host with TLS. Share `/mnt/user/appdata/shipmate/workspaces` with
-it (NFS), then set it up under **Settings → Shipyard sandbox** in Shipmate (or the advanced
-`DOCKER_HOST` variables) and press **Test connection**. Step by step:
+Go to the **Docker** tab, press **Add Container** at the bottom, and in the **Template**
+dropdown pick **Shipmate** (under "User templates"). The form fills itself in.
+
+### Step 3. Check these fields
+
+Most are already right. Change only what the table says:
+
+| Field | What to put | Notes |
+|---|---|---|
+| **Name** | `Shipmate` | Leave as is. |
+| **Repository** | `ghcr.io/addison16/shipmate:latest` | Leave as is. |
+| **Network Type** | `bridge` | Leave as is. |
+| **Web UI port** | `3000` | Change it only if something else already uses 3000, e.g. to `3080`. |
+| **Data** | `/mnt/user/appdata/shipmate` | Leave as is. Everything Shipmate keeps lives here, the database included. |
+| **Docker socket** | `/var/run/docker.sock` | Keep it to let the Shipyard work on code in sandboxes. Delete this entry if you don't want that. |
+| **DATABASE_URL** | *(leave empty)* | Empty means "use the built-in database". |
+| **SHIPMATE_URL** | `http://192.168.1.10:3000` | Your server's IP and the Web UI port. Later, behind a reverse proxy, your https address. |
+| **SHIPMATE_SECRET** | *(leave empty)* | Shipmate makes one on first start and keeps it in the Data folder. |
+
+The other settings (under **Show more settings**) are optional; leave them alone.
+
+### Step 4. Start it
+
+Press **Apply**. Unraid downloads the image (a few minutes the first time) and starts the container.
+When it shows **started** on the Docker tab, the first start takes a few more seconds to set
+up the database.
+
+### Step 5. Open Shipmate
+
+On the Docker tab, click the Shipmate icon and choose **WebUI**, or browse to
+`http://192.168.1.10:3000`. The first visit walks you through creating the owner account,
+choosing a model and meeting the Captain. That is the whole install.
+
+**On your phone:** open the same address and use **Add to Home Screen**. For notifications
+and voice on a phone, Shipmate needs https; see [Reverse proxy](#reverse-proxy) below.
+
+### Updating
+
+When **Health** in Shipmate says a newer release is out, go to the Docker tab and press
+**Check for Updates**, then **apply update** next to Shipmate. Your data stays in the Data
+folder, and the database is upgraded automatically on start.
+
+### If something goes wrong
+
+- **The page doesn't load:** on the Docker tab, click the Shipmate icon → **Logs**. A line
+  ending `Server listening at http://...:3000` means it is running; check the address and
+  port you typed. Anything else in red there says what is wrong.
+- **"Port already in use" on Apply:** set **Web UI port** to another number (e.g. `3080`),
+  and use that port in **SHIPMATE_URL** and the address you open.
+- **"the bundled database did not start":** the lines after it in the log say why. The usual
+  cause is the Data folder on the array with the mover moving it; see the note on cache
+  disks under [What goes where](#what-goes-where).
+- **Check everything at once:** in the Unraid terminal run
+  `docker exec -it Shipmate shipmate doctor`. It checks the database, data folder, key,
+  Docker socket and free space, and says what to fix.
+
+**No socket?** If you removed the Docker socket, you can still run Shipyard sandboxes on
+another machine (rootless Podman, or a Docker host with TLS). Share
+`/mnt/user/appdata/shipmate/workspaces` with it (NFS), then set it up under
+**Settings → Shipyard sandbox** in Shipmate and press **Test connection**. Step by step:
 [docs/shipyard.md](../../docs/shipyard.md#sandboxes-without-the-docker-socket).
-
-Start it, open the Web UI, and create the owner account. That is the whole install. Migrations run on every start, so
-updating is "Check for updates → Apply update". The **Health** page in Shipmate shows when a
-newer release is out; it leaves the update itself to Unraid so the template stays in step.
 
 ## What goes where
 
@@ -81,10 +130,16 @@ and set Shipmate's **DATABASE_URL** to `postgres://shipmate:<password>@<unraid-i
 (or `@shipmate-db:5432` on a shared custom network). Any Postgres 15 or newer works.
 
 **Already running Shipmate with a separate Postgres?** Nothing changes: with DATABASE_URL set,
-the built-in database stays off. To move to the built-in one and retire the Postgres container,
-back up in **Settings → Backups**, stop Shipmate, clear **DATABASE_URL** in the template
-(**Apply** starts it; stop it again), restore as below, and start Shipmate. Once it is
-running fine, the old Postgres container and its appdata folder can go.
+the built-in database stays off. To move to the built-in one and retire the Postgres container:
+
+1. In Shipmate, open **Settings → Backups** and press **Back up now**.
+2. On the Docker tab, stop Shipmate.
+3. Click Shipmate → **Edit**, clear **DATABASE_URL**, and press **Apply** (this starts it on a
+   new, empty built-in database). Stop Shipmate again.
+4. Restore your backup from the Unraid terminal, as under [Backups](#backups) below (no
+   `DATABASE_URL` needed).
+5. Start Shipmate and sign in as before. Once everything looks right, stop and remove the old
+   Postgres container and delete `/mnt/user/appdata/shipmate-db`.
 
 ## Reverse proxy
 

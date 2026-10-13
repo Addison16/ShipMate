@@ -50,6 +50,9 @@ Version 1.0. See [CHANGELOG.md](CHANGELOG.md) for what is in it and
 
 ## Quick start
 
+**On Unraid?** Follow the step-by-step [Unraid install guide](deploy/unraid/README.md): one
+template, five steps, no separate database.
+
 One command, one container (the database comes built in):
 
 ```bash
@@ -93,7 +96,7 @@ admins) says when a newer release is out and can update in one click; see
 To install the web app, open it in a browser and use **Install app** (desktop) or **Add to Home
 Screen** (iOS and Android). The service worker needs HTTPS (or `localhost`).
 
-On a NAS: [Unraid template](deploy/unraid/README.md) or [TrueNAS SCALE custom app](deploy/truenas/README.md).
+On a NAS: [TrueNAS SCALE custom app](deploy/truenas/README.md).
 Back up from **Settings → Backups** or with `shipmate backup`; check an install with `shipmate doctor`.
 
 ### Discord (optional)

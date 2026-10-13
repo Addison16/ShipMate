@@ -20,6 +20,12 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   options, built-in tools, MCP servers, skills, approvals and the monthly cap). **Edit file**
   switches to the raw YAML; both edit the same draft, and the form only rewrites the lines you
   change, so comments and keys it doesn't know about are kept.
+- **Subscription use is not spend**: calls through the Claude Code CLI (on a Claude
+  subscription) or a ChatGPT plan no longer count as cost or towards monthly caps. The Cost page
+  shows real API spend apart from a "Saved by subscriptions" estimate of what that use would have
+  cost at API prices, with a column per person, crew member and model, a daily chart and two new
+  CSV columns (`billing`, `api_equivalent_usd`). A CLI signed in with an API key still counts as
+  spend. Existing Claude Code and ChatGPT usage is moved over on upgrade.
 - **Direct chats, reworked**: the Bridge opens on "Who would you like to talk to?", with the
   Captain and every crew member one tap away. "Chat with…" opens a searchable crew picker
   (arrow keys and Enter work). Each crew member keeps one chat with you: talking to them again

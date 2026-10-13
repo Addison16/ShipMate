@@ -59,6 +59,11 @@ export interface ClaudeCliResult {
   usage: ClaudeCliUsage;
   /** The model that answered, as the CLI names it. */
   model: string | null;
+  /**
+   * Where the CLI got its credentials (`apiKeySource` on its init message): "none" when it is
+   * signed in with a Claude subscription, else the API key's source. Null when not reported.
+   */
+  apiKeySource: string | null;
   aborted: boolean;
 }
 
@@ -119,6 +124,18 @@ export function childEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEn
   return out;
 }
 
+/**
+ * Whether a run was paid by an API key or a Claude subscription. The CLI reports "none" when it
+ * is signed in with a Claude account. When it reports nothing, runClaudeCli fills in
+ * ANTHROPIC_API_KEY if that is set; otherwise the run counts as the subscription, which is what
+ * this backend is for.
+ */
+export function claudeCliBilling(
+  result: Pick<ClaudeCliResult, "apiKeySource">,
+): "api" | "subscription" {
+  return result.apiKeySource && result.apiKeySource !== "none" ? "api" : "subscription";
+}
+
 /** Run one turn. Resolves with the result; rejects only when the CLI cannot be started at all. */
 export async function runClaudeCli(options: ClaudeCliRunOptions): Promise<ClaudeCliResult> {
   const first = await runOnce(options);
@@ -147,6 +164,7 @@ function runOnce(options: ClaudeCliRunOptions): Promise<ClaudeCliResult> {
     costUsd: 0,
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     model: null,
+    apiKeySource: null,
     aborted: false,
   };
 
@@ -194,6 +212,7 @@ function runOnce(options: ClaudeCliRunOptions): Promise<ClaudeCliResult> {
       }
       if (parser.sessionId) result.sessionId ??= parser.sessionId;
       if (parser.model) result.model ??= parser.model;
+      if (parser.apiKeySource) result.apiKeySource ??= parser.apiKeySource;
     };
 
     child.stdout?.setEncoding("utf8");
@@ -223,6 +242,11 @@ function runOnce(options: ClaudeCliRunOptions): Promise<ClaudeCliResult> {
       clearTimeout(killTimer);
       if (buffer.trim()) handle(buffer);
       if (!result.text) result.text = parser.text.trim();
+      // A CLI that does not report its credential source uses an API key when one is set.
+      const env = options.env ?? childEnv();
+      if (!result.apiKeySource && env.ANTHROPIC_API_KEY?.trim()) {
+        result.apiKeySource = "ANTHROPIC_API_KEY";
+      }
       if (result.aborted) {
         result.isError = true;
         result.error = null;
@@ -313,6 +337,7 @@ function applyResult(result: ClaudeCliResult, msg: Json) {
 class StreamParser {
   sessionId: string | null = null;
   model: string | null = null;
+  apiKeySource: string | null = null;
   text = "";
   #streamed = false;
   #toolNames = new Map<string, string>();
@@ -325,6 +350,7 @@ class StreamParser {
         if (msg.subtype === "init" && typeof msg.session_id === "string") {
           this.sessionId = msg.session_id;
           this.model = typeof msg.model === "string" ? msg.model : null;
+          if (typeof msg.apiKeySource === "string") this.apiKeySource = msg.apiKeySource;
           this.emit({ type: "init", sessionId: msg.session_id, model: this.model });
         }
         break;

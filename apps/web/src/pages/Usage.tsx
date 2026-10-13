@@ -26,6 +26,7 @@ import {
   defaultMetric,
   formatAxis,
   formatDuration,
+  formatEstimate,
   formatPercent,
   percentUsed,
   usageExportUrl,
@@ -49,7 +50,8 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 const num = `${td} text-right tabular-nums`;
 const numTh = `${th} text-right`;
 
-function TotalsCells({ t }: { t: UsageTotals }) {
+/** `subs`: the month has subscription calls, so show their API-price estimate column. */
+function TotalsCells({ t, subs }: { t: UsageTotals; subs: boolean }) {
   return (
     <>
       <td className={num}>{formatTokens(t.calls)}</td>
@@ -57,20 +59,43 @@ function TotalsCells({ t }: { t: UsageTotals }) {
       <td className={num}>{formatTokens(t.outputTokens)}</td>
       <td className={num}>{formatTokens(t.cacheReadTokens + t.cacheWriteTokens)}</td>
       <td className={num}>{formatCost(t.costMicroUsd)}</td>
+      {subs && (
+        <td className={num}>
+          {t.subscriptionCalls > 0 ? (
+            formatEstimate(t.apiEquivalentMicroUsd)
+          ) : (
+            <span className="text-slate-400 dark:text-slate-500">—</span>
+          )}
+        </td>
+      )}
       <td className={num}>{formatDuration(t.avgResponseMs)}</td>
       <td className={num}>{formatDuration(t.p95ResponseMs)}</td>
     </>
   );
 }
 
-function TotalsHead() {
+function TotalsHead({ subs }: { subs: boolean }) {
   return (
     <>
       <th className={numTh}>Calls</th>
       <th className={numTh}>Input</th>
       <th className={numTh}>Output</th>
       <th className={numTh}>Cache</th>
-      <th className={numTh}>Cost</th>
+      <th className={numTh}>
+        <abbr title="Real spend on API keys" className="no-underline">
+          API cost
+        </abbr>
+      </th>
+      {subs && (
+        <th className={numTh}>
+          <abbr
+            title="What the calls covered by a subscription would have cost at API prices (estimate)"
+            className="no-underline"
+          >
+            Subscription value
+          </abbr>
+        </th>
+      )}
       <th className={numTh}>
         <abbr title="Average time the model took to answer" className="no-underline">
           Avg time
@@ -140,7 +165,13 @@ function CapHead() {
 }
 
 const METRICS: Array<{ id: ChartMetric; label: string; caption: string }> = [
-  { id: "cost", label: "Cost", caption: "Cost per day (UTC)." },
+  { id: "cost", label: "API cost", caption: "API spend per day (UTC)." },
+  {
+    id: "saved",
+    label: "Subscription value",
+    caption:
+      "What subscription calls would have cost at API prices, per day (UTC). An estimate, not spend.",
+  },
   { id: "tokens", label: "Tokens", caption: "Input and output tokens per day (UTC)." },
   {
     id: "time",
@@ -152,6 +183,7 @@ const METRICS: Array<{ id: ChartMetric; label: string; caption: string }> = [
 /** One day's numbers in every metric, for the hover title and the screen-reader table. */
 const dayCells = (d: UsageResponse["daily"][number]) => ({
   cost: formatCost(d.costMicroUsd),
+  saved: formatEstimate(d.apiEquivalentMicroUsd),
   tokens: formatTokens(d.tokens),
   time: formatDuration(d.avgResponseMs),
   calls: formatTokens(d.calls),
@@ -193,7 +225,7 @@ function DailyChart({ daily, metric }: { daily: UsageResponse["daily"]; metric: 
                 return (
                   <div
                     key={b.date}
-                    title={`${b.date}: ${c.cost} · ${c.tokens} tokens · ${c.calls} calls · avg ${c.time}`}
+                    title={`${b.date}: ${c.cost}${b.apiEquivalentMicroUsd > 0 ? ` (+ ${c.saved} on subscriptions)` : ""} · ${c.tokens} tokens · ${c.calls} calls · avg ${c.time}`}
                     className="group flex h-full flex-1 items-end"
                   >
                     <div
@@ -228,7 +260,8 @@ function DailyChart({ daily, metric }: { daily: UsageResponse["daily"]; metric: 
         <thead>
           <tr>
             <th>Date</th>
-            <th>Cost</th>
+            <th>API cost</th>
+            <th>Subscription value (estimate)</th>
             <th>Tokens</th>
             <th>Calls</th>
             <th>Average response time</th>
@@ -241,6 +274,7 @@ function DailyChart({ daily, metric }: { daily: UsageResponse["daily"]; metric: 
               <tr key={d.date}>
                 <td>{d.date}</td>
                 <td>{c.cost}</td>
+                <td>{c.saved}</td>
                 <td>{c.tokens}</td>
                 <td>{c.calls}</td>
                 <td>{c.time}</td>
@@ -320,8 +354,13 @@ export function UsagePage() {
     [month, scope],
   );
   const data = usage.data;
-  const metric = chosenMetric ?? (data ? defaultMetric(data.totals) : "cost");
-  const free = data !== null && data.totals.calls > 0 && data.totals.costMicroUsd === 0;
+  const subs = data !== null && data.totals.subscriptionCalls > 0;
+  // "Subscription value" is only offered for months with subscription calls; elsewhere fall back.
+  const chosen = chosenMetric === "saved" && !subs ? null : chosenMetric;
+  const metric = chosen ?? (data ? defaultMetric(data.totals) : "cost");
+  // Every call ran on a free (local) model: nothing spent and nothing on a subscription.
+  const free = data !== null && data.totals.calls > 0 && data.totals.costMicroUsd === 0 && !subs;
+  const allOnSubscription = subs && data.totals.subscriptionCalls === data.totals.calls;
 
   return (
     <Page wide>
@@ -374,12 +413,28 @@ export function UsagePage() {
       {usage.loading && !data && <Loading />}
       {data && (
         <div className="space-y-8">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <div
+            className={cx(
+              "grid grid-cols-2 gap-3 sm:grid-cols-3",
+              subs ? "lg:grid-cols-6" : "lg:grid-cols-5",
+            )}
+          >
             <Stat
-              label="Cost"
+              label="API spend"
               value={formatCost(data.totals.costMicroUsd)}
-              {...(free ? { hint: "Free models only" } : {})}
+              {...(free
+                ? { hint: "Free models only" }
+                : allOnSubscription
+                  ? { hint: "All covered by subscriptions" }
+                  : {})}
             />
+            {subs && (
+              <Stat
+                label="Saved by subscriptions"
+                value={formatEstimate(data.totals.apiEquivalentMicroUsd)}
+                hint={`Estimate at API prices · ${formatTokens(data.totals.subscriptionCalls)} calls`}
+              />
+            )}
             <Stat label="Calls" value={formatTokens(data.totals.calls)} />
             <Stat label="Input tokens" value={formatTokens(data.totals.inputTokens)} />
             <Stat label="Output tokens" value={formatTokens(data.totals.outputTokens)} />
@@ -392,19 +447,36 @@ export function UsagePage() {
             />
           </div>
 
+          {subs && (
+            <p className="-mt-5 text-xs text-slate-500 dark:text-slate-400">
+              Calls through the Claude Code CLI or a ChatGPT plan are covered by that subscription,
+              so they are not counted as spend or towards caps. "Saved by subscriptions" estimates
+              what they would have cost on an API key, from the provider's API prices.
+            </p>
+          )}
+
           <Card>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-semibold">Daily usage</h2>
               <Segmented
                 label="Chart"
                 value={metric}
-                options={METRICS.map((m) => ({ id: m.id, label: m.label }))}
+                options={METRICS.filter((m) => subs || m.id !== "saved").map((m) => ({
+                  id: m.id,
+                  label: m.label,
+                }))}
                 onChange={setMetric}
               />
             </div>
-            {free && chosenMetric === null && (
+            {free && chosen === null && (
               <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
                 Everything this month ran on free (local) models, so the chart shows tokens.
+              </p>
+            )}
+            {metric === "saved" && chosen === null && (
+              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                Nothing this month was spent on API keys, so the chart shows what your subscriptions
+                covered.
               </p>
             )}
             <DailyChart daily={data.daily} metric={metric} />
@@ -415,7 +487,7 @@ export function UsagePage() {
               <thead>
                 <tr>
                   <th className={th}>Person</th>
-                  <TotalsHead />
+                  <TotalsHead subs={subs} />
                   <CapHead />
                 </tr>
               </thead>
@@ -423,7 +495,7 @@ export function UsagePage() {
                 {data.byUser.map((u) => (
                   <tr key={u.userId ?? "deleted"}>
                     <td className={td}>{u.displayName}</td>
-                    <TotalsCells t={u} />
+                    <TotalsCells t={u} subs={subs} />
                     <CapCells
                       spent={u.costMicroUsd}
                       capMicro={centsToMicro(u.capCents)}
@@ -440,7 +512,7 @@ export function UsagePage() {
               <thead>
                 <tr>
                   <th className={th}>Crew member</th>
-                  <TotalsHead />
+                  <TotalsHead subs={subs} />
                   <CapHead />
                 </tr>
               </thead>
@@ -448,7 +520,7 @@ export function UsagePage() {
                 {data.byCrew.map((c) => (
                   <tr key={c.slug ?? "none"}>
                     <td className={td}>{c.name}</td>
-                    <TotalsCells t={c} />
+                    <TotalsCells t={c} subs={subs} />
                     <CapCells
                       spent={c.costMicroUsd}
                       capMicro={usdToMicro(c.capUsd)}
@@ -470,7 +542,7 @@ export function UsagePage() {
               <thead>
                 <tr>
                   <th className={th}>Watch</th>
-                  <TotalsHead />
+                  <TotalsHead subs={subs} />
                   <CapHead />
                 </tr>
               </thead>
@@ -488,7 +560,7 @@ export function UsagePage() {
                         {w.name}
                       </a>
                     </td>
-                    <TotalsCells t={w} />
+                    <TotalsCells t={w} subs={subs} />
                     <CapCells
                       spent={w.costMicroUsd}
                       capMicro={centsToMicro(w.capCents)}
@@ -505,14 +577,14 @@ export function UsagePage() {
               <thead>
                 <tr>
                   <th className={th}>Model</th>
-                  <TotalsHead />
+                  <TotalsHead subs={subs} />
                 </tr>
               </thead>
               <tbody>
                 {data.byModel.map((m) => (
                   <tr key={m.model}>
                     <td className={`${td} font-mono text-xs`}>{m.model}</td>
-                    <TotalsCells t={m} />
+                    <TotalsCells t={m} subs={subs} />
                   </tr>
                 ))}
               </tbody>

@@ -2,7 +2,7 @@ import { ColorTheme, parseUserPreferences, ThemeMode, type UserPreferences } fro
 import type { HouseholdChanges, PersonChanges } from "@shipmate/crew";
 import { type Db, users } from "@shipmate/db";
 import { asc, eq } from "drizzle-orm";
-import { ZodError } from "zod";
+import { ZodError, z } from "zod";
 import { atLeast, HttpError, type UserRow } from "./auth.js";
 import {
   householdLines,
@@ -37,10 +37,12 @@ export class PeopleSettings {
         u.monthlyCapCents === null
           ? "no cap"
           : `cap $${(u.monthlyCapCents / 100).toFixed(2)}/month`;
-      out.push(
-        `## ${u.displayName}${self ? " (you are talking with them)" : ""}`,
-        `- ${u.email}, ${u.role}, ${cap}, theme ${prefs.colorTheme} (${prefs.themeMode})`,
-      );
+      out.push(`## ${u.displayName}${self ? " (you are talking with them)" : ""}`);
+      // Account details are for the people who manage accounts (as on the Users page) and for
+      // the person themselves.
+      if (self || manager) {
+        out.push(`- ${u.email}, ${u.role}, ${cap}, theme ${prefs.colorTheme} (${prefs.themeMode})`);
+      }
       // Unshared profiles stay private, except to the managers who set people up.
       if (self || profile.shared || manager) {
         const lines = profileLines(profile);
@@ -72,17 +74,15 @@ export class PeopleSettings {
       throw new HttpError(403, "only the owner can rename other people");
     }
 
+    // Check every field before writing anything, so a bad value never leaves half a change.
     const done: string[] = [];
-    const profilePatch = Object.fromEntries(
-      PROFILE_KEYS.filter((k) => changes[k] !== undefined).map((k) => [k, changes[k]]),
-    );
-    if (Object.keys(profilePatch).length) {
-      await this.profiles.set(
-        target.id,
-        parse(() => UpdateProfileSchema.parse(profilePatch)),
-      );
-      done.push(...Object.keys(profilePatch).map((k) => (k === "shared" ? "profile sharing" : k)));
-    }
+    const profileKeys = PROFILE_KEYS.filter((k) => changes[k] !== undefined);
+    const profilePatch = profileKeys.length
+      ? parse(() =>
+          UpdateProfileSchema.parse(Object.fromEntries(profileKeys.map((k) => [k, changes[k]]))),
+        )
+      : null;
+    done.push(...profileKeys.map((k) => (k === "shared" ? "profile sharing" : k)));
 
     const values: Partial<typeof users.$inferInsert> = {};
     if (changes.displayName !== undefined) {
@@ -101,17 +101,20 @@ export class PeopleSettings {
         target.preferences && typeof target.preferences === "object"
           ? (target.preferences as Record<string, unknown>)
           : {};
-      const appearance: Partial<UserPreferences> = parse(() => ({
-        ...(changes.themeMode !== undefined
-          ? { themeMode: ThemeMode.parse(changes.themeMode) }
-          : {}),
-        ...(changes.colorTheme !== undefined
-          ? { colorTheme: ColorTheme.parse(changes.colorTheme) }
-          : {}),
-      }));
+      const picked = parse(() =>
+        z
+          .object({ themeMode: ThemeMode.optional(), colorTheme: ColorTheme.optional() })
+          .parse({ themeMode: changes.themeMode, colorTheme: changes.colorTheme }),
+      );
+      const appearance: Partial<UserPreferences> = {
+        ...(picked.themeMode ? { themeMode: picked.themeMode } : {}),
+        ...(picked.colorTheme ? { colorTheme: picked.colorTheme } : {}),
+      };
       values.preferences = { ...raw, ...parseUserPreferences(raw), ...appearance };
       done.push("theme");
     }
+
+    if (profilePatch) await this.profiles.set(target.id, profilePatch);
     if (Object.keys(values).length) {
       await this.db.update(users).set(values).where(eq(users.id, target.id));
     }

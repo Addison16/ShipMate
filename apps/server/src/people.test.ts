@@ -162,15 +162,23 @@ describe.skipIf(!db)("Captain sets people up", () => {
         ["update_person", { person: "Addison", diet: "keto" }],
         ["update_person", { person: "me", monthlyCapUsd: 5 }],
         ["update_household", { location: "Bergen" }],
+        ["update_person", { person: "me", diet: "keto", colorTheme: "plaid" }],
+        ["list_people", {}],
       ],
       memberCookie,
     );
+    // A bad value anywhere means nothing is written.
+    expect(results[4]).toContain("colorTheme");
+    // Members see their own account details, not other people's.
+    expect(results[5]).toContain("sam@example.com");
+    expect(results[5]).not.toContain("owner@example.com");
     expect(results[0]).toContain("Updated Sam Rivera: schedule");
     expect(results[1]).toContain("can only change their own settings");
     expect(results[2]).toContain("only the owner can set spending caps");
     expect(results[3]).toContain("only an owner or admin");
     const me = (await api("GET", "/api/profile", undefined, memberCookie)).json();
     expect(me.profile.schedule).toBe("nights");
+    expect(me.profile.diet).toBe("vegetarian");
     expect(me.household.location).toBe("Oslo");
   });
 });

@@ -468,11 +468,11 @@ function ManifestFields({
         >
           <option value="ask">Ask for anything that changes things</option>
           <option value="auto">Never ask</option>
-          <option value="never-for">Never ask, except for some tools</option>
+          <option value="never-for">Never ask, and block some tools</option>
         </SelectField>
         {form.approval === "never-for" && (
           <ListInput
-            label="Always ask before"
+            label="Never allowed"
             placeholder="Tool name, e.g. bash"
             disabled={readOnly}
             values={form.neverFor}

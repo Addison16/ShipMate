@@ -77,6 +77,8 @@ describe("gateToolCall", () => {
     expect(asksEveryTime("install_mcp_server", { id: "todoist", crews: [] })).toBe(true);
     expect(asksEveryTime("edit_crew_member", { slug: "g", mcp: ["github"] })).toBe(true);
     expect(asksEveryTime("edit_crew_member", { slug: "g", cliPermissionMode: "plan" })).toBe(true);
+    expect(asksEveryTime("edit_crew_member", { slug: "g", backend: "claude-code-cli" })).toBe(true);
+    expect(asksEveryTime("edit_crew_member", { slug: "g", skills: ["x"] })).toBe(true);
     expect(asksEveryTime("edit_crew_member", { slug: "g", role: "meals" })).toBe(false);
     expect(asksEveryTime("remember", {})).toBe(false);
 

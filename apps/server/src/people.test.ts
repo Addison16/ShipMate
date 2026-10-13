@@ -93,7 +93,7 @@ describe.skipIf(!db)("Captain sets people up", () => {
       ],
       ["update_person", { person: "Sam Rivera", monthlyCapUsd: 20 }],
       ["update_household", { location: "Oslo", notes: "Two adults" }],
-      ["edit_crew_member", { slug: "captain", monthlyCapUsd: 50, skills: ["triage"] }],
+      ["edit_crew_member", { slug: "captain", monthlyCapUsd: 50, role: "coordinator" }],
       ["crew_settings", { slug: "captain" }],
       ["list_people", {}],
     ]);
@@ -111,7 +111,7 @@ describe.skipIf(!db)("Captain sets people up", () => {
     expect(me.profile.diet).toBe("vegetarian");
     expect(me.household.location).toBe("Oslo");
     const yaml = (await api("GET", "/api/crew/captain")).json().crew.manifestYaml;
-    expect(yaml).toContain("skills: [triage]");
+    expect(yaml).toContain("monthlyCapUsd: 50");
   });
 
   it("approves a recruit only after the person says yes on the card", async () => {

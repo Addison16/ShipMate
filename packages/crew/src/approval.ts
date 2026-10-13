@@ -36,10 +36,15 @@ const SHIPMATE_CONSEQUENTIAL = new Set([
  * putting a new crew member to work, or giving one more access, is never left to a bot alone.
  */
 const ALWAYS_ASK = new Set(["approve_crew_member", "equip_crew_member", "install_mcp_server"]);
-/** edit_crew_member fields that change what a crew member may do; changing one always asks. */
+/**
+ * edit_crew_member fields that change what a crew member may do; changing one always asks.
+ * `backend` counts: moving to Claude Code switches on its saved permission mode and tools.
+ */
 const ACCESS_FIELDS = [
+  "backend",
   "tools",
   "mcp",
+  "skills",
   "allow",
   "approval",
   "neverFor",

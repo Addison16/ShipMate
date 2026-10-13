@@ -35,8 +35,11 @@ export function accessSummary(
       return `${who} wants to put ${target} to work`;
     case "edit_crew_member": {
       const changes = [
+        input.backend !== undefined &&
+          `runs on ${input.backend === "claude-code-cli" ? "Claude Code" : "Shipmate"}`,
         input.mcp !== undefined && `servers: ${list("mcp", names.server).join(", ") || "none"}`,
         input.tools !== undefined && `tools: ${list("tools").join(", ") || "all built-in"}`,
+        input.skills !== undefined && `skills: ${list("skills").join(", ") || "none"}`,
         input.allow !== undefined && `runs without asking: ${list("allow").join(", ") || "none"}`,
         input.approval !== undefined && `approvals: ${String(input.approval)}`,
         input.neverFor !== undefined && `never runs: ${list("neverFor").join(", ")}`,

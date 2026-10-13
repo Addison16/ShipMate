@@ -22,8 +22,9 @@ import { is } from "drizzle-orm";
 import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
-import postgres from "postgres";
+import type postgres from "postgres";
 import type { Db } from "./client.js";
+import { connect } from "./connect.js";
 import * as schema from "./schema.js";
 
 /**
@@ -39,6 +40,9 @@ import * as schema from "./schema.js";
  */
 
 export const BACKUP_FORMAT = 1;
+
+/** Folder under the data dir where the image keeps its bundled Postgres (docker/entrypoint.sh). */
+export const BUNDLED_DB_DIR = "postgres";
 
 export interface MigrationLevel {
   /** Number of applied migrations. */
@@ -168,7 +172,7 @@ export async function createBackup(
   options: CreateBackupOptions,
 ): Promise<{ file: string; sizeBytes: number; manifest: BackupManifest }> {
   if (!options.db && !options.url) throw new Error("createBackup needs db or url");
-  const own = options.db ? null : postgres(options.url as string, { max: 1, onnotice: () => {} });
+  const own = options.db ? null : connect(options.url as string, { max: 1, onnotice: () => {} });
   const sql = (options.db?.$client ?? own) as postgres.Sql;
   const outFile = resolve(options.outFile);
   await mkdir(dirname(outFile), { recursive: true });
@@ -220,6 +224,8 @@ export async function createBackup(
       ...(options.exclude ?? []).map((p) => resolve(p)),
     ]);
     if (!manifest.includeWorkspaces) skip.add(join(dataDir, "workspaces"));
+    // The bundled database's files: its rows are already in the backup as tables.
+    skip.add(join(dataDir, BUNDLED_DB_DIR));
 
     async function* entries(): AsyncGenerator<Buffer> {
       const now = Math.floor(Date.now() / 1000);
@@ -534,7 +540,7 @@ async function* readTarGz(file: string): AsyncGenerator<TarEntry> {
 
 /** runMigrations without Postgres' "already exists, skipping" notices on the console. */
 async function migrateQuietly(url: string) {
-  const sql = postgres(url, { max: 1, onnotice: () => {} });
+  const sql = connect(url, { max: 1, onnotice: () => {} });
   try {
     await migrate(drizzle(sql), {
       migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)),
@@ -621,7 +627,7 @@ export async function restoreBackup(options: RestoreBackupOptions): Promise<Rest
 
     // 2. Database: migrate, then swap every table's rows in one transaction.
     await migrateQuietly(options.url);
-    const sql = postgres(options.url, { max: 1, onnotice: () => {} });
+    const sql = connect(options.url, { max: 1, onnotice: () => {} });
     const rows: Record<string, number> = {};
     const skippedTables: string[] = [];
     try {
@@ -683,7 +689,8 @@ export async function restoreBackup(options: RestoreBackupOptions): Promise<Rest
     }
 
     // 3. Data folder: replace its contents, leaving protected paths alone.
-    const keep = new Set<string>([staging]);
+    // Never the bundled database's files: it is the database being restored into.
+    const keep = new Set<string>([staging, join(dataDir, BUNDLED_DB_DIR)]);
     for (const p of [...(options.keep ?? []), file]) {
       const rel = relative(dataDir, resolve(p));
       if (rel && !rel.startsWith("..") && !isAbsolute(rel)) {

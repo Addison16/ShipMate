@@ -1,8 +1,7 @@
 # Configuration
 
 Everything Shipmate reads from its environment, and what it keeps in `/data`. Most installs set
-three variables (`DATABASE_URL`, `SHIPMATE_URL` and, if you like, `SHIPMATE_SECRET`) and leave
-the rest alone. Everything else (providers, chat bridges, OIDC, backups, the Shipyard sandbox)
+one variable (`SHIPMATE_URL`) and leave the rest alone. Everything else (providers, chat bridges, OIDC, backups, the Shipyard sandbox)
 is set up in the web app by the owner and stored in the database.
 
 On a NAS, see also [the Unraid guide](../deploy/unraid/README.md) and
@@ -13,12 +12,42 @@ On a NAS, see also [the Unraid guide](../deploy/unraid/README.md) and
 
 | Variable | Default | What it does |
 |---|---|---|
-| `DATABASE_URL` | (required) | Postgres 15 or newer: `postgres://user:password@host:5432/database`. URL-encode special characters in the password (`@` → `%40`, `:` → `%3A`, `/` → `%2F`). |
+| `DATABASE_URL` | built-in database | Leave unset to use the Postgres built into the image (see [The database](#the-database)). Or an external Postgres 15 or newer: `postgres://user:password@host:5432/database`. URL-encode special characters in the password (`@` → `%40`, `:` → `%3A`, `/` → `%2F`). |
 | `SHIPMATE_URL` | `http://localhost:3000` | The address people open Shipmate at, exactly as they type it, with no path: `http://192.168.1.10:3000`, or `https://shipmate.example.com` behind a reverse proxy. Used for links in notifications and chat bridges, GitHub webhooks, OIDC redirects, and push notifications. When it starts with `https://`, sign-in cookies are marked Secure, so sign-in only works over https at that address. |
 | `SHIPMATE_SECRET` | generated | The key that encrypts stored API keys and tokens. Leave it empty and Shipmate generates one into `/data/.secret` on first start. If you set it, keep it forever: without it, stored secrets cannot be read, even from a backup. |
 
 The **Health** page (owners and admins) checks that `SHIPMATE_URL` matches the address you
 opened the page at, and says what to change when it does not.
+
+## The database
+
+With no `DATABASE_URL`, the container starts the Postgres 17 built into the image before
+Shipmate and keeps its files in `/data/postgres`, so one container and one folder are a whole
+install. It listens only on a socket inside the container: nothing else on your network (not
+even other containers) can reach it, so it needs no password or port. It stops cleanly with
+the container.
+
+Set `DATABASE_URL` to use your own Postgres 15 or newer instead (a `postgres` container beside
+Shipmate, as `docker-compose.yml` does, or one you already run). Shipmate then never starts the
+built-in one. Installs set up before the built-in database existed have `DATABASE_URL` set and
+carry on unchanged.
+
+**Switching between them** goes through a backup, since each keeps its own data: back up in
+**Settings → Backups**, stop Shipmate, change (or clear) `DATABASE_URL`, then restore with the
+container stopped:
+
+```bash
+docker run --rm -it --volumes-from shipmate ghcr.io/addison16/shipmate:latest \
+  shipmate restore /data/backups/<file>.tar.gz --yes
+```
+
+Start Shipmate again afterwards. (`--volumes-from` takes your container's name; with an
+external database, add `-e DATABASE_URL=…` too.) Backups hold the database as tables, never
+`/data/postgres`'s raw files, and a restore leaves that folder in place.
+
+While Shipmate is running, run the command line inside it instead, e.g.
+`docker exec -it shipmate shipmate doctor` or `shipmate backup`. A `docker run` of the image
+refuses to start the built-in database while another container is using it.
 
 ## Server
 
@@ -73,13 +102,13 @@ These are read by `docker-compose.yml`, not by Shipmate, so put them in a `.env`
 
 | Variable | Default | What it does |
 |---|---|---|
-| `POSTGRES_PASSWORD` | `shipmate` | Password of the bundled Postgres; change it before the first start. |
+| `POSTGRES_PASSWORD` | `shipmate` | Password of the compose file's `db` container; change it before the first start. |
 | `SHIPMATE_URL`, `SHIPMATE_SECRET`, `SHIPMATE_TRUST_PROXY`, `SHIPMATE_OLLAMA_URL`, `SHIPMATE_LOCAL_MODEL` | as above | Passed through to the containers. |
 
 ## Volumes and the `/data` layout
 
-Shipmate needs one writable folder, `/data`, and a Postgres database. Map `/data` to a host
-folder you back up (on Unraid, `/mnt/user/appdata/shipmate`).
+Shipmate needs one writable folder, `/data`. Map it to a host folder you back up (on Unraid,
+`/mnt/user/appdata/shipmate`).
 
 | Path in the container | What is there |
 |---|---|
@@ -91,12 +120,14 @@ folder you back up (on Unraid, `/mnt/user/appdata/shipmate`).
 | `/data/pi/` | The agent harness's own files: model sign-ins, model lists, MCP logs. |
 | `/data/claude/` | The Claude Code CLI's sign-in. |
 | `/data/backups/` | Backups (unless `SHIPMATE_BACKUP_DIR` points elsewhere). |
+| `/data/postgres/` | The built-in database's files (accounts, conversations, settings, encrypted keys), when `DATABASE_URL` is not set. Owned by the container's `postgres` user. Back it up with Shipmate's backups rather than by copying it while Shipmate runs. |
 | `/var/run/docker.sock` | Optional: the Docker socket, for Shipyard sandboxes and one-click updates. Whatever holds it controls Docker on the host. |
 
-Postgres keeps everything else (accounts, conversations, settings, encrypted keys) in its own
-data folder, mapped to `/var/lib/postgresql/data` in the `postgres` image.
+With an external database, Postgres keeps those in its own data folder instead (mapped to
+`/var/lib/postgresql/data` in the `postgres` image).
 
-**Ownership.** Shipmate runs as root inside its container and its files are owned by root.
+**Ownership.** Shipmate runs as root inside its container and its files are owned by root
+(except `/data/postgres`, which the built-in database owns).
 That is on purpose: the Shipyard drives Docker and its sandbox containers write into
 `/data/workspaces` as root, so a non-root Shipmate could not clean up after them. There is no
 `PUID`/`PGID` setting for that reason. Back up the folder as root (Unraid's Appdata Backup

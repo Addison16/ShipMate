@@ -8,6 +8,8 @@ services:
       - "3000:3000"
     environment:
       SHIPMATE_URL: ${SHIPMATE_URL:-http://localhost:3000}
+      # The `db` service below. Without DATABASE_URL (and `db`), Shipmate uses the database
+      # built into its image instead, in the data volume; see docs/configuration.md.
       DATABASE_URL: postgres://shipmate:${POSTGRES_PASSWORD:-shipmate}@db:5432/shipmate
       # Leave unset to generate once on first boot (kept in the data volume).
       SHIPMATE_SECRET: ${SHIPMATE_SECRET:-}

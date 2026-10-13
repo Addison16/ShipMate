@@ -50,16 +50,29 @@ Version 1.0. See [CHANGELOG.md](CHANGELOG.md) for what is in it and
 
 ## Quick start
 
+One command, one container (the database comes built in):
+
+```bash
+docker run -d --name shipmate --restart unless-stopped -p 3000:3000 -v shipmate-data:/data -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/addison16/shipmate:latest
+```
+
+Then open <http://localhost:3000>. The first visit creates the owner account. Everything,
+the database included, lives in the `shipmate-data` volume. Leave out the Docker socket to keep
+the Shipyard off. To use a Postgres you already run, add `-e DATABASE_URL=postgres://…`; see
+[docs/configuration.md](docs/configuration.md#the-database).
+
+Prefer Docker Compose? It runs Postgres as its own container and has the optional local model
+and voice services:
+
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/Addison16/ShipMate/main/docker-compose.yml
 docker compose up -d
-open http://localhost:3000
 ```
 
-The first visit creates the owner account. Then add a provider under **Providers** (an API key,
+Either way, after the first visit add a provider under **Providers** (an API key,
 a local model server, or a subscription sign-in) and say hello to the Captain on the **Bridge**.
 
-**No API key?** Start the bundled local model server too; it downloads a small model on first
+**No API key?** With Compose, start the bundled local model server too; it downloads a small model on first
 start, and setup offers it right after you create the owner account:
 
 ```bash

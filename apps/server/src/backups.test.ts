@@ -181,6 +181,9 @@ describe.skipIf(!db)("Shipmate phase 4: backups", () => {
     symlinkSync("auth.json", join(dataDir, "pi", "auth-link"));
     mkdirSync(join(dataDir, "workspaces", "proj"), { recursive: true });
     writeFileSync(join(dataDir, "workspaces", "proj", "README"), "workspace");
+    // The image's bundled database lives here; its rows are backed up as tables, never as files.
+    mkdirSync(join(dataDir, "postgres"), { recursive: true });
+    writeFileSync(join(dataDir, "postgres", "PG_VERSION"), "17\n");
     const secret = readFileSync(join(dataDir, ".secret"), "utf8");
 
     const before = await snapshot(url);
@@ -194,6 +197,7 @@ describe.skipIf(!db)("Shipmate phase 4: backups", () => {
     expect(listing).toContain(`data/skills/${"a".repeat(60)}/${"b".repeat(60)}/SKILL.md`);
     expect(listing.some((l) => l.startsWith("data/workspaces"))).toBe(false);
     expect(listing.some((l) => l.startsWith("data/backups"))).toBe(false);
+    expect(listing.some((l) => l.startsWith("data/postgres"))).toBe(false);
     const manifest = await readBackupManifest(file);
     expect(manifest.trigger).toBe("manual");
     expect(manifest.migrations.count).toBeGreaterThan(0);
@@ -232,6 +236,7 @@ describe.skipIf(!db)("Shipmate phase 4: backups", () => {
     // Not in the backup, so this install's workspaces and the backups folder stay.
     expect(readFileSync(join(dataDir, "workspaces", "proj", "README"), "utf8")).toBe("workspace");
     expect(existsSync(file)).toBe(true);
+    expect(readFileSync(join(dataDir, "postgres", "PG_VERSION"), "utf8")).toBe("17\n");
     expect(readdirNames(dataDir).some((n) => n.startsWith(".restore-"))).toBe(false);
 
     // The server boots on the restored data and the owner can sign in.

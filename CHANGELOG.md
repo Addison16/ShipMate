@@ -6,6 +6,13 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **One container, one command**: the image now has Postgres built in. With no `DATABASE_URL`
+  it starts its own database before Shipmate, keeps it in `/data/postgres`, and listens only
+  inside the container, so `docker run … ghcr.io/addison16/shipmate:latest` (or one Unraid
+  container) is a whole install. Set `DATABASE_URL` to keep using your own Postgres; existing
+  installs carry on unchanged. Backups skip the database's raw files and restores leave them in
+  place, and `shipmate restore` in a stopped container's volumes starts the built-in database
+  for the restore. The Unraid template no longer needs a separate Postgres container.
 - **The Captain sets people up**: ask the Captain to set someone up and it fills in their
   profile (diet, budget, timezone, schedule, notes), theme and spending cap, the household facts,
   and any crew member setting (model, backend, tools, MCP servers, skills, approvals, cap,

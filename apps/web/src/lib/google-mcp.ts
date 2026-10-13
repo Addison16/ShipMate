@@ -13,6 +13,7 @@ const RESULTS: Record<string, string> = {
   denied: "Sign-in was cancelled at Google.",
   no_client: "Save a client ID and secret first.",
   no_refresh: "Google did not send a refresh token. Try again.",
+  partial: "Some access was left unticked. Sign in again and allow everything Shipmate asks for.",
   failed: "Google could not finish the sign-in. Check the client ID, secret and redirect URI.",
 };
 

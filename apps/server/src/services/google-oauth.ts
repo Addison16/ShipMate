@@ -27,10 +27,21 @@ export const GOOGLE_SCOPES = [
   `${G}tasks`,
 ];
 
+/** The scopes the tools need; the identity ones (openid, email, profile) only name the account. */
+const SERVICE_SCOPES = GOOGLE_SCOPES.filter(
+  (scope) => scope.startsWith(G) && !scope.includes("userinfo"),
+);
+
 export type GoogleFetch = typeof fetch;
 
 /** Why a sign-in failed; the code goes back to the MCP page as ?google=<code>. */
-export type GoogleErrorCode = "state" | "denied" | "no_client" | "no_refresh" | "failed";
+export type GoogleErrorCode =
+  | "state"
+  | "denied"
+  | "no_client"
+  | "no_refresh"
+  | "partial"
+  | "failed";
 
 export class GoogleOAuthError extends Error {
   constructor(
@@ -80,8 +91,27 @@ export function googleAcceptsRedirect(base: string): boolean {
   if (url.protocol === "http:") return loopback;
   if (url.protocol !== "https:") return false;
   const ip = /^[\d.]+$/.test(host) || host.includes(":");
-  return loopback || (!ip && host.includes("."));
+  if (loopback) return true;
+  if (ip || !host.includes(".")) return false;
+  // Google wants a public suffix; these private and special-use ones never are.
+  return !PRIVATE_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
 }
+
+const PRIVATE_SUFFIXES = [
+  "local",
+  "lan",
+  "home",
+  "home.arpa",
+  "internal",
+  "localdomain",
+  "intranet",
+  "corp",
+  "private",
+  "test",
+  "example",
+  "invalid",
+  "localhost",
+];
 
 /** workspace-mcp's file name for an account: Python's quote(email, safe="@._-"). */
 export function credentialFileName(email: string): string {
@@ -236,6 +266,17 @@ export class GoogleOAuthService {
     const info = (await who.json().catch(() => ({}))) as { email?: string };
     if (!who.ok || !info.email) throw new GoogleOAuthError("failed", "could not read the email");
 
+    // Google's consent screen lets people untick services; the tools need all of them.
+    const granted = new Set(tokens.scope ? tokens.scope.split(" ") : GOOGLE_SCOPES);
+    if (SERVICE_SCOPES.some((scope) => !granted.has(scope))) {
+      await this.#revoke(tokens.refresh_token);
+      throw new GoogleOAuthError("partial", "some of the requested access was not allowed");
+    }
+
+    // A different account replaces the old one: its file and grant go too.
+    const previous = await this.#stored();
+    if (previous && previous.email !== info.email.toLowerCase()) await this.#forget(previous);
+
     const stored: Stored = {
       refreshToken: this.deps.vault.encrypt(tokens.refresh_token),
       email: info.email.toLowerCase(),
@@ -250,14 +291,20 @@ export class GoogleOAuthService {
     const s = await this.#stored();
     if (!s) return;
     await this.deps.settings.setJson("mcp-google", {});
+    await this.#forget(s);
+  }
+
+  /** Remove an account's credentials file and revoke its grant. */
+  async #forget(s: Stored): Promise<void> {
     rmSync(join(this.deps.credentialsDir, `${credentialFileName(s.email)}.json`), { force: true });
-    // Best effort: the token is gone from Shipmate either way.
-    await this.#fetch(
-      `${REVOKE_URL}?token=${encodeURIComponent(this.deps.vault.decrypt(s.refreshToken))}`,
-      {
-        method: "POST",
-      },
-    ).catch(() => undefined);
+    await this.#revoke(this.deps.vault.decrypt(s.refreshToken));
+  }
+
+  /** Best effort: the token is gone from Shipmate either way. */
+  async #revoke(token: string): Promise<void> {
+    await this.#fetch(`${REVOKE_URL}?token=${encodeURIComponent(token)}`, {
+      method: "POST",
+    }).catch(() => undefined);
   }
 
   /**

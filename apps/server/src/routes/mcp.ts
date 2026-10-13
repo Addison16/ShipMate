@@ -12,7 +12,14 @@ export async function mcpRoutes(app: FastifyInstance, s: Services) {
   const audit = (userId: string, action: string, summary: string) =>
     s.audit.record({ userId, crewMemberId: null, action, summary, decision: null });
 
-  app.get("/api/mcp", async () => ({ servers: await s.mcp.list() }));
+  app.get("/api/mcp", async (req) => {
+    const servers = await s.mcp.list();
+    // Only the owner sees which Google account is signed in.
+    if (req.user.role === "owner") return { servers };
+    return {
+      servers: servers.map((x) => (x.google ? { ...x, google: { ...x.google, email: null } } : x)),
+    };
+  });
 
   // Sign in with Google, for the Google Workspace server and the owner's own OAuth client.
   const googleServer = async () => {
@@ -143,6 +150,8 @@ function googleErrorText(err: GoogleOAuthError): string {
       return "Save a client ID and secret first.";
     case "no_refresh":
       return "Google did not send a refresh token. Start again.";
+    case "partial":
+      return "Some access was left unticked. Sign in again and allow everything Shipmate asks for.";
     default:
       return `Google could not finish the sign-in: ${err.message}`;
   }

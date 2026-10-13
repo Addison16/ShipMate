@@ -5,6 +5,7 @@ import { SecretVault } from "@shipmate/providers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   credentialFileName,
+  GOOGLE_SCOPES,
   GoogleOAuthService,
   googleAcceptsRedirect,
 } from "./services/google-oauth.js";
@@ -21,11 +22,20 @@ function fakeGoogle() {
       new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json" } });
     if (url.startsWith("https://oauth2.googleapis.com/token")) {
       const body = new URLSearchParams(String(init?.body));
-      if (body.get("code") !== "good-code") return json({ error: "invalid_grant" }, 400);
-      return json({ access_token: "at", refresh_token: "rt-1", scope: "openid email" });
+      const code = body.get("code") ?? "";
+      if (code === "partial-code") {
+        return json({ access_token: "at", refresh_token: "rt-p", scope: "openid" });
+      }
+      if (!code.startsWith("good-code")) return json({ error: "invalid_grant" }, 400);
+      return json({
+        access_token: code === "good-code-2" ? "at-2" : "at",
+        refresh_token: code === "good-code-2" ? "rt-2" : "rt-1",
+        scope: GOOGLE_SCOPES.join(" "),
+      });
     }
     if (url.startsWith("https://openidconnect.googleapis.com/v1/userinfo")) {
-      return json({ email: "Addison@Example.com" });
+      const auth = new Headers(init?.headers).get("authorization");
+      return json({ email: auth === "Bearer at-2" ? "other@example.com" : "Addison@Example.com" });
     }
     if (url.startsWith("https://oauth2.googleapis.com/revoke")) return json({});
     return json({}, 404);
@@ -42,6 +52,9 @@ describe("Google redirect URIs", () => {
     expect(googleAcceptsRedirect("https://192.168.1.20")).toBe(false);
     expect(googleAcceptsRedirect("http://shipmate.example.com")).toBe(false);
     expect(googleAcceptsRedirect("https://tower")).toBe(false);
+    expect(googleAcceptsRedirect("https://shipmate.local")).toBe(false);
+    expect(googleAcceptsRedirect("https://shipmate.home.arpa")).toBe(false);
+    expect(googleAcceptsRedirect("https://ship.tail1234.ts.net")).toBe(true);
   });
 
   it("falls back to localhost when SHIPMATE_URL cannot be used", () => {
@@ -112,6 +125,24 @@ describe("Google sign-in service", () => {
       client_secret: "csecret",
       token_uri: "https://oauth2.googleapis.com/token",
     });
+    // Signing in as another account removes the first one's file.
+    const again = new URL(google.start(client, "u1")).searchParams.get("state");
+    await google.finish(`state=${again}&code=good-code-2`, client);
+    await google.serverEnv(client);
+    expect(() => readFileSync(join(dir, "addison@example.com.json"))).toThrow();
+    expect(
+      JSON.parse(readFileSync(join(dir, "other@example.com.json"), "utf8")).refresh_token,
+    ).toBe("rt-2");
+
+    // Unticked services on Google's consent screen are refused.
+    const partial = new URL(google.start(client, "u1")).searchParams.get("state");
+    await expect(google.finish(`state=${partial}&code=partial-code`, client)).rejects.toMatchObject(
+      {
+        code: "partial",
+      },
+    );
+    expect((await google.status(client)).email).toBe("other@example.com");
+
     // A different client means signing in again.
     expect(await google.serverEnv({ clientId: "other", clientSecret: "s" })).toBeNull();
     expect((await google.status({ clientId: "other", clientSecret: "s" })).stale).toBe(true);
@@ -188,6 +219,25 @@ describe.skipIf(!db)("Sign in with Google for the Google Workspace server", () =
     s = await server();
     expect(s.google).toMatchObject({ signedIn: true, email: "addison@example.com", stale: false });
     expect(s.ready).toBe(true);
+
+    // Members don't see which Google account it is.
+    await api("POST", "/api/users", {
+      email: "kid@example.com",
+      displayName: "Kid",
+      password: "password1",
+      role: "member",
+    });
+    const login = await api(
+      "POST",
+      "/api/auth/login",
+      { email: "kid@example.com", password: "password1" },
+      "",
+    );
+    const kid = String(login.headers["set-cookie"]).split(";")[0] ?? "";
+    const seen = (await api("GET", "/api/mcp", undefined, kid))
+      .json()
+      .servers.find((x: { id: string }) => x.id === "google-workspace");
+    expect(seen.google).toMatchObject({ signedIn: true, email: null });
 
     // A replayed callback is refused.
     const replay = await api("GET", `/api/mcp/google/callback?state=${state}&code=good-code`);

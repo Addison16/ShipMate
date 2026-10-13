@@ -78,6 +78,13 @@
       "when": 1791760525227,
       "tag": "0010_local_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791779204978,
+      "tag": "0011_subscription_billing",
+      "breakpoints": true
     }
   ]
 }

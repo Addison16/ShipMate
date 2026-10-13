@@ -36,15 +36,24 @@ export function capTone(p: number | null): "ok" | "warn" | "danger" | "neutral" 
   return "ok";
 }
 
-/** What the daily chart plots. */
-export type ChartMetric = "cost" | "tokens" | "time";
+/** What the daily chart plots. "saved": subscription calls priced at API rates. */
+export type ChartMetric = "cost" | "saved" | "tokens" | "time";
 
 /**
- * The chart to show first: cost, unless the month has calls but cost nothing (local models),
- * where tokens say more than a flat $0 line.
+ * The chart to show first: cost, unless the month has calls but no API spend. Then the
+ * subscription estimate when there is one, else tokens (local models), rather than a flat $0.
  */
-export function defaultMetric(totals: Pick<UsageTotals, "calls" | "costMicroUsd">): ChartMetric {
-  return totals.calls > 0 && totals.costMicroUsd === 0 ? "tokens" : "cost";
+export function defaultMetric(
+  totals: Pick<UsageTotals, "calls" | "costMicroUsd"> &
+    Partial<Pick<UsageTotals, "apiEquivalentMicroUsd">>,
+): ChartMetric {
+  if (totals.calls === 0 || totals.costMicroUsd > 0) return "cost";
+  return (totals.apiEquivalentMicroUsd ?? 0) > 0 ? "saved" : "tokens";
+}
+
+/** "~$1.23": an estimate at API prices, never shown as if it were spend. */
+export function formatEstimate(micro: number): string {
+  return `~${formatUsdShort(micro)}`;
 }
 
 /**
@@ -64,10 +73,16 @@ type Day = UsageResponse["daily"][number];
 export function metricValue(d: Day, metric: ChartMetric): number {
   if (metric === "tokens") return d.tokens;
   if (metric === "time") return d.avgResponseMs ?? 0;
+  if (metric === "saved") return d.apiEquivalentMicroUsd;
   return d.costMicroUsd;
 }
 
-const EMPTY_MAX: Record<ChartMetric, number> = { cost: 10_000, tokens: 1_000, time: 1_000 };
+const EMPTY_MAX: Record<ChartMetric, number> = {
+  cost: 10_000,
+  saved: 10_000,
+  tokens: 1_000,
+  time: 1_000,
+};
 
 /** Bars for the daily chart: height as a fraction of the axis maximum. */
 export function dailyBars(daily: UsageResponse["daily"], metric: ChartMetric = "cost") {

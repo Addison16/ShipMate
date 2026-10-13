@@ -147,7 +147,14 @@ export const usageEvents = pgTable(
     outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
     cacheReadTokens: bigint("cache_read_tokens", { mode: "number" }).notNull().default(0),
     cacheWriteTokens: bigint("cache_write_tokens", { mode: "number" }).notNull().default(0),
+    /** Real API spend; 0 for calls covered by a subscription (see billing). */
     costMicroUsd: bigint("cost_micro_usd", { mode: "number" }).notNull().default(0),
+    /** "api" (billed per token) or "subscription" (covered by a Claude or ChatGPT plan). */
+    billing: text("billing").$type<"api" | "subscription">().notNull().default("api"),
+    /** For subscription calls: an estimate of what the call would have cost at API prices. */
+    apiEquivalentMicroUsd: bigint("api_equivalent_micro_usd", { mode: "number" })
+      .notNull()
+      .default(0),
     /** How long the model took to answer this call, in ms; null for calls recorded before it was kept. */
     durationMs: integer("duration_ms"),
     createdAt: createdAt(),

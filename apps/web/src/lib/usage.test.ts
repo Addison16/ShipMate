@@ -5,6 +5,7 @@ import {
   defaultMetric,
   formatAxis,
   formatDuration,
+  formatEstimate,
   formatPercent,
   formatTokensShort,
   niceMax,
@@ -29,8 +30,22 @@ describe("usage helpers", () => {
     expect(niceMax(1_300_000)).toBe(2_000_000);
     expect(niceMax(5_000_000)).toBe(5_000_000);
     const { max, bars } = dailyBars([
-      { date: "2026-10-01", costMicroUsd: 1_000_000, calls: 3, tokens: 50, avgResponseMs: 900 },
-      { date: "2026-10-02", costMicroUsd: 0, calls: 0, tokens: 0, avgResponseMs: null },
+      {
+        date: "2026-10-01",
+        costMicroUsd: 1_000_000,
+        apiEquivalentMicroUsd: 0,
+        calls: 3,
+        tokens: 50,
+        avgResponseMs: 900,
+      },
+      {
+        date: "2026-10-02",
+        costMicroUsd: 0,
+        apiEquivalentMicroUsd: 0,
+        calls: 0,
+        tokens: 0,
+        avgResponseMs: null,
+      },
     ]);
     expect(max).toBe(1_000_000);
     expect(bars.map((b) => [b.day, b.height])).toEqual([
@@ -41,8 +56,22 @@ describe("usage helpers", () => {
 
   it("charts tokens or response time when that says more than cost", () => {
     const daily = [
-      { date: "2026-10-01", costMicroUsd: 0, calls: 4, tokens: 1_300, avgResponseMs: 2_400 },
-      { date: "2026-10-02", costMicroUsd: 0, calls: 1, tokens: 650, avgResponseMs: null },
+      {
+        date: "2026-10-01",
+        costMicroUsd: 0,
+        apiEquivalentMicroUsd: 300_000,
+        calls: 4,
+        tokens: 1_300,
+        avgResponseMs: 2_400,
+      },
+      {
+        date: "2026-10-02",
+        costMicroUsd: 0,
+        apiEquivalentMicroUsd: 0,
+        calls: 1,
+        tokens: 650,
+        avgResponseMs: null,
+      },
     ];
     const tokens = dailyBars(daily, "tokens");
     expect(tokens.max).toBe(2_000);
@@ -55,6 +84,12 @@ describe("usage helpers", () => {
     expect(defaultMetric({ calls: 5, costMicroUsd: 0 })).toBe("tokens");
     expect(defaultMetric({ calls: 0, costMicroUsd: 0 })).toBe("cost");
     expect(defaultMetric({ calls: 5, costMicroUsd: 12 })).toBe("cost");
+    expect(defaultMetric({ calls: 5, costMicroUsd: 0, apiEquivalentMicroUsd: 40 })).toBe("saved");
+    expect(defaultMetric({ calls: 5, costMicroUsd: 12, apiEquivalentMicroUsd: 40 })).toBe("cost");
+    const saved = dailyBars(daily, "saved");
+    expect(saved.max).toBe(500_000);
+    expect(saved.bars.map((b) => b.value)).toEqual([300_000, 0]);
+    expect(formatEstimate(1_234_000)).toBe("~$1.23");
   });
 
   it("formats durations and short token counts", () => {

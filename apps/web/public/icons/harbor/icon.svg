@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Shipmate</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#14b8a6"/><stop offset="1" stop-color="#0f766e"/></linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".18"/><stop offset=".55" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="112" fill="url(#shine)"/>
+  <g transform="scale(8)" fill="#ffffff">
+    <path d="M32 7 26.5 26.5 32 32ZM57 32 37.5 26.5 32 32ZM32 57 37.5 37.5 32 32ZM7 32 26.5 37.5 32 32Z"/>
+    <path opacity=".55" d="M32 7 37.5 26.5 32 32ZM57 32 37.5 37.5 32 32ZM32 57 26.5 37.5 32 32ZM7 32 26.5 26.5 32 32Z"/>
+    <circle cx="32" cy="32" r="16" fill="none" stroke="#ffffff" stroke-opacity=".35" stroke-width="2"/>
+  </g>
+</svg>

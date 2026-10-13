@@ -61,6 +61,35 @@ export function barColor(prefs: UserPreferences, systemDark: boolean): string {
 export const systemPrefersDark = () =>
   typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
 
+/** The home-screen icon, tab icon and manifest for a color theme (made by scripts/make-icons.mjs). */
+export function appIconLinks(colorTheme: ColorTheme): {
+  manifest: string;
+  favicon: string;
+  favicon32: string;
+  appleTouch: string;
+} {
+  const dir = `/icons/${colorTheme}`;
+  return {
+    manifest: `${dir}/manifest.webmanifest`,
+    favicon: `${dir}/icon.svg`,
+    favicon32: `${dir}/favicon-32.png`,
+    appleTouch: `${dir}/apple-touch-icon.png`,
+  };
+}
+
+/** Points the icon and manifest links at the color theme, so a saved web app matches it. */
+function applyAppIcons(colorTheme: ColorTheme): void {
+  const links = appIconLinks(colorTheme);
+  const set = (selector: string, href: string) => {
+    const el = document.querySelector<HTMLLinkElement>(selector);
+    if (el && el.getAttribute("href") !== href) el.setAttribute("href", href);
+  };
+  set('link[rel="manifest"]', links.manifest);
+  set('link[rel="icon"][type="image/svg+xml"]', links.favicon);
+  set('link[rel="icon"][type="image/png"]', links.favicon32);
+  set('link[rel="apple-touch-icon"]', links.appleTouch);
+}
+
 /** Puts the appearance on <html> and remembers it for the next page load. */
 export function applyAppearance(prefs: UserPreferences, systemDark = systemPrefersDark()): void {
   const root = document.documentElement;
@@ -69,6 +98,7 @@ export function applyAppearance(prefs: UserPreferences, systemDark = systemPrefe
   document
     .querySelector('meta[name="theme-color"]')
     ?.setAttribute("content", barColor(prefs, systemDark));
+  applyAppIcons(prefs.colorTheme);
   try {
     localStorage.setItem(APPEARANCE_STORAGE_KEY, JSON.stringify(prefs));
   } catch {

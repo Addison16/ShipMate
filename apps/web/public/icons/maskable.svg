@@ -1,9 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <title>Shipmate</title>
-  <rect width="512" height="512" fill="#0f766e"/>
-  <g transform="translate(128 128) scale(10.667)" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round">
-    <circle cx="12" cy="12" r="6.5"/>
-    <circle cx="12" cy="12" r="2"/>
-    <path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#14b8a6"/><stop offset="1" stop-color="#0f766e"/></linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".18"/><stop offset=".55" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <rect width="512" height="512" fill="url(#shine)"/>
+  <g transform="translate(64 64) scale(6)" fill="#ffffff">
+    <path d="M32 7 26.5 26.5 32 32ZM57 32 37.5 26.5 32 32ZM32 57 37.5 37.5 32 32ZM7 32 26.5 37.5 32 32Z"/>
+    <path opacity=".55" d="M32 7 37.5 26.5 32 32ZM57 32 37.5 37.5 32 32ZM32 57 26.5 37.5 32 32ZM7 32 26.5 26.5 32 32Z"/>
+    <circle cx="32" cy="32" r="16" fill="none" stroke="#ffffff" stroke-opacity=".35" stroke-width="2"/>
   </g>
 </svg>

@@ -1,19 +1,21 @@
-/** A simple helm-wheel mark. */
+/** The North Star mark: a faceted four-point compass star. Drawn in currentColor. */
 export function Logo({ size = 24 }: { size?: number }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="6.5" />
-      <circle cx="12" cy="12" r="2" />
-      <path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8" />
+    <svg width={size} height={size} viewBox="7 7 50 50" fill="currentColor" aria-hidden="true">
+      <path d="M32 7 26.5 26.5 32 32ZM57 32 37.5 26.5 32 32ZM32 57 37.5 37.5 32 32ZM7 32 26.5 37.5 32 32Z" />
+      <path
+        opacity=".55"
+        d="M32 7 37.5 26.5 32 32ZM57 32 37.5 37.5 32 32ZM32 57 26.5 37.5 32 32ZM7 32 26.5 26.5 32 32Z"
+      />
+      <circle
+        cx="32"
+        cy="32"
+        r="16"
+        fill="none"
+        stroke="currentColor"
+        strokeOpacity=".35"
+        strokeWidth="2.5"
+      />
     </svg>
   );
 }

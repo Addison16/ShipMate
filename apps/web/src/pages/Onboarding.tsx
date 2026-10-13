@@ -555,7 +555,14 @@ function ModelStep({ nav }: { nav: StepNav }) {
       const yaml = withModel(withBackend(skipper.manifestYaml, "pi"), CREW_DEFAULT);
       await api.updateCrew(CAPTAIN, { manifestYaml: yaml });
     }
-    if (available.length === 0) return;
+    if (available.length === 0) {
+      // Only the Claude subscription is signed in: make it the crew default too, so Settings
+      // shows what the crew really runs on and new crew on the default use it.
+      if (onCli && claudeModel !== settings.data?.defaultModel) {
+        await api.updateSettings({ defaultModel: claudeModel });
+      }
+      return;
+    }
     // Point the crew's default at a model that works; keep the owner's pick when it does.
     const usable = available.some((m) => m.ref === current) ? current : available[0]?.ref;
     if (usable && usable !== settings.data?.defaultModel) {

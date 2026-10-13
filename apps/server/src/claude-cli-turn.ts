@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Api, Model, Usage } from "@earendil-works/pi-ai";
-import type { ServerEvent } from "@shipmate/core";
+import { DEFAULT_MODEL, type ServerEvent } from "@shipmate/core";
 import {
   type ClaudeCliEvent,
   type CrewFolder,
@@ -257,6 +257,24 @@ export function cliAllowedTools(crewDir: string, own: string[], shipmateTools: b
 export function shipmateToolName(name: string): string {
   const prefix = `mcp__${CLI_MCP_SERVER}__`;
   return name.startsWith(prefix) ? name.slice(prefix.length) : name;
+}
+
+/**
+ * A crew member set to the crew default runs where the default does. With the Claude
+ * subscription as the default (`claude-code/<alias>`), it runs on the Claude Code CLI with that
+ * model; a CLI crew member on the default takes a Claude default's model. Anything else is as is.
+ */
+export function onCrewDefault(folder: CrewFolder, defaultModel: string): CrewFolder {
+  const m = folder.manifest;
+  if (m.model !== DEFAULT_MODEL) return folder;
+  const provider = splitModelRef(defaultModel)?.provider;
+  if (provider === "claude-code") {
+    return { ...folder, manifest: { ...m, backend: "claude-code-cli", model: defaultModel } };
+  }
+  if (m.backend === "claude-code-cli" && provider === "anthropic") {
+    return { ...folder, manifest: { ...m, model: defaultModel } };
+  }
+  return folder;
 }
 
 /** `claude-code/sonnet` or `anthropic/claude-…` in crew.yaml → the CLI's --model; else its default. */

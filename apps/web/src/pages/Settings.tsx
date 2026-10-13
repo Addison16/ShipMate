@@ -23,7 +23,14 @@ import {
   TextField,
 } from "../components/ui.js";
 import { VoiceSettings } from "../components/VoiceSettings.js";
-import { CREW_DEFAULT } from "../lib/models.js";
+import { claudeCliApi } from "../lib/claude-cli.js";
+import {
+  CLAUDE_CODE_PROVIDER,
+  CREW_DEFAULT,
+  defaultModelStatus,
+  providerLabel,
+  providerOf,
+} from "../lib/models.js";
 import {
   SETTINGS_GROUPS,
   type SettingsSection,
@@ -200,6 +207,9 @@ function InstanceSettings() {
   const owner = user.role === "owner";
   const settings = useResource(() => api.getSettings());
   const models = useResource(() => api.listModels().then((r) => r.models));
+  // The Claude subscription is not a provider: it can still be the crew default when signed in.
+  const cli = useResource(() => claudeCliApi.status().then((r) => r.claudeCli));
+  const claudeSignedIn = !!cli.data?.signedIn;
   const crew = useResource(() => api.listCrew().then((r) => r.crew));
   const ownModel = (crew.data ?? []).filter(
     (c) => c.backend !== "claude-code-cli" && c.model !== CREW_DEFAULT,
@@ -261,7 +271,15 @@ function InstanceSettings() {
             onChange={setDefaultModel}
             models={models.data}
             disabled={!owner}
+            claudeCode={claudeSignedIn || providerOf(defaultModel) === CLAUDE_CODE_PROVIDER}
           />
+          {models.data && !cli.loading && (
+            <DefaultModelNotice
+              status={defaultModelStatus(defaultModel, models.data, claudeSignedIn)}
+              claudeSignedIn={claudeSignedIn}
+              saved={defaultModel === settings.data.defaultModel}
+            />
+          )}
           {owner && ownModel.length > 0 && (
             <div className="flex flex-wrap items-center gap-3 text-sm">
               <span className="text-slate-600 dark:text-slate-400">
@@ -308,6 +326,31 @@ function InstanceSettings() {
         </form>
       )}
     </Card>
+  );
+}
+
+/** Says when the crew default is not something this instance is signed in to, and what runs instead. */
+function DefaultModelNotice({
+  status,
+  claudeSignedIn,
+  saved,
+}: {
+  status: { usable: boolean; fallback: string | null };
+  claudeSignedIn: boolean;
+  saved: boolean;
+}) {
+  if (status.usable) return null;
+  const pick = claudeSignedIn
+    ? `Pick one you are signed in to, such as your ${providerLabel(CLAUDE_CODE_PROVIDER)}, and save.`
+    : "Pick one you are signed in to and save, or add it on the Providers page.";
+  return (
+    <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-100">
+      {saved ? "This model is not set up on this instance" : "That model is not set up yet"}
+      {status.fallback && saved
+        ? `, so crew on the crew default use ${status.fallback} for now. `
+        : ". "}
+      {pick}
+    </p>
   );
 }
 

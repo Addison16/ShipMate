@@ -36,7 +36,7 @@ import {
 import { conversations, crewMembers, type Db, messages, users, watches } from "@shipmate/db";
 import { and, asc, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { HttpError, type UserRow } from "./auth.js";
-import { ClaudeCliTurns } from "./claude-cli-turn.js";
+import { ClaudeCliTurns, onCrewDefault } from "./claude-cli-turn.js";
 import { CliToolServer } from "./cli-mcp.js";
 import type { EverydayTools } from "./everyday.js";
 import type { AttachmentService } from "./files/service.js";
@@ -629,7 +629,11 @@ export class Bridge {
     prompt: string,
     options: TurnOptions,
   ): Promise<string> {
-    const folder = this.deps.crew.folder(slug);
+    // On the crew default, it runs where the default does (the Claude subscription included).
+    const folder = onCrewDefault(
+      this.deps.crew.folder(slug),
+      (await this.deps.settings.get()).defaultModel,
+    );
     const crewRow = await this.deps.crew.row(slug);
     const crew = { slug, name: folder.manifest.name };
     let stream = this.#openStream(user.id, conv.id, crew);

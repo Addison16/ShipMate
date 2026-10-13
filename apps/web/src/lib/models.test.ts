@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  defaultModelStatus,
   groupByProvider,
   modelLabel,
   providerLabel,
@@ -35,5 +36,22 @@ describe("provider grouping", () => {
     expect(providerLabel("claude-code")).toBe("Claude subscription");
     expect(providerLabel("mystery")).toBe("mystery");
     expect(providerOf("default")).toBe("");
+  });
+
+  it("says when the crew default is not something you are signed in to", () => {
+    const models = [
+      { ref: "anthropic/claude-sonnet-5-5", name: "Claude Sonnet 5.5", available: false },
+      { ref: "openai-codex/gpt-5", name: "GPT-5 (ChatGPT)", available: true },
+    ];
+    expect(defaultModelStatus("anthropic/claude-sonnet-5-5", models, false)).toEqual({
+      usable: false,
+      fallback: "GPT-5 (ChatGPT)",
+    });
+    expect(defaultModelStatus("openai-codex/gpt-5", models, false).usable).toBe(true);
+    expect(defaultModelStatus("claude-code/sonnet", models, true).usable).toBe(true);
+    expect(defaultModelStatus("claude-code/sonnet", [], false)).toEqual({
+      usable: false,
+      fallback: null,
+    });
   });
 });

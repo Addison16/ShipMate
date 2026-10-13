@@ -7,7 +7,7 @@ import { claudeCliArgs, claudeCliBilling, runClaudeCli } from "@shipmate/crew";
 import type { Db } from "@shipmate/db";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ClaudeCliTurns, cliModelFromRef } from "./claude-cli-turn.js";
+import { ClaudeCliTurns, cliModelFromRef, onCrewDefault } from "./claude-cli-turn.js";
 import { chatGptProvider } from "./services/chatgpt.js";
 import { callCost } from "./services/usage.js";
 import { TEST_DATABASE_URL, testApp } from "./testing.js";
@@ -145,6 +145,27 @@ describe("claude-code-cli backend: manifest and runner", () => {
     ).toThrow();
     expect(cliModelFromRef("claude-code/opus")).toBe("opus");
     expect(cliModelFromRef("openai/gpt-5.5")).toBeUndefined();
+  });
+
+  it("runs crew on the crew default where the default does", () => {
+    const folder = (model: string, backend?: "pi" | "claude-code-cli") =>
+      ({
+        slug: "galley",
+        dir: "/tmp/galley",
+        manifest: CrewManifest.parse({ name: "Galley", role: "meals", model, backend }),
+      }) as unknown as Parameters<typeof onCrewDefault>[0];
+    // The Claude subscription as the crew default moves default crew onto the CLI.
+    const moved = onCrewDefault(folder("default"), "claude-code/sonnet").manifest;
+    expect(moved).toMatchObject({ backend: "claude-code-cli", model: "claude-code/sonnet" });
+    // A provider default leaves them on pi; a crew member with its own model is left alone.
+    expect(onCrewDefault(folder("default"), "openai/gpt-5.5").manifest.backend).toBe("pi");
+    const own = folder("openai/gpt-5.5");
+    expect(onCrewDefault(own, "claude-code/sonnet")).toBe(own);
+    // A CLI crew member on the default takes a Claude default's model.
+    expect(
+      onCrewDefault(folder("default", "claude-code-cli"), "anthropic/claude-sonnet-5-5").manifest
+        .model,
+    ).toBe("anthropic/claude-sonnet-5-5");
   });
 
   it("builds a print-mode command line with a conservative permission mode", () => {

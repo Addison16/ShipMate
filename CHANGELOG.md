@@ -11,6 +11,10 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   `SHIPMATE_URL` names the https one (before, the browser dropped the cookie and the form did
   nothing). If a browser still refuses the cookie, the sign-in page says so, and a server that
   never answers gets a "took too long" message instead of an endless spinner.
+- **The crew default can be your Claude subscription**: Settings → General now offers the
+  Claude subscription when it is signed in, and crew on the crew default then run on it. When the
+  saved default is something this instance is not signed in to, the page says so and names what
+  the crew use instead. Setting up with only the Claude subscription makes it the default too.
 - **Phone and desktop layout fixes**: the daily briefing's time field on Watches no longer runs
   past the card on iPhone, Crew cards no longer run off the right edge on a phone, and the Bridge
   no longer scrolls far past the chat into empty space.

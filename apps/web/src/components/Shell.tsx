@@ -327,7 +327,7 @@ export function Shell() {
               <div className="flex items-center justify-between px-4 py-3">
                 <Brand />
               </div>
-              <div className="flex-1 overflow-y-auto px-2">
+              <div className="relative flex-1 overflow-y-auto px-2">
                 <NavLinks current={activeNav} onNavigate={() => setDrawer(false)} />
               </div>
               <UserBox />
@@ -346,7 +346,7 @@ export function Shell() {
             </div>
             <QuickJumpButton onOpen={openJump} />
           </div>
-          <div className="flex-1 overflow-y-auto px-2">
+          <div className="relative flex-1 overflow-y-auto px-2">
             <NavLinks current={activeNav} />
           </div>
           <div className="px-2 pb-2">

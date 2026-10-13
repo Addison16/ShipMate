@@ -11,6 +11,9 @@ function returnRoute(hash: string): string | undefined {
   return hash.startsWith("#/") && !hash.startsWith("#/login") ? hash : undefined;
 }
 
+export const COOKIE_NOT_KEPT =
+  "Your password was accepted, but this browser did not keep the sign-in. Allow cookies for this site, or open Shipmate at the address in SHIPMATE_URL, then try again.";
+
 export function LoginPage() {
   const { refresh } = useAuth();
   const [email, setEmail] = useState("");
@@ -48,7 +51,10 @@ export function LoginPage() {
     try {
       await api.login({ email: email.trim(), password });
       // Reload who is signed in, with the owner's setup guide state if it is still running.
-      await refresh();
+      const me = await refresh();
+      // The password was right but the browser did not keep the sign-in cookie (blocked
+      // cookies, or a proxy rewriting them): say so instead of leaving the form sitting there.
+      if (me && !me.user) setError(COOKIE_NOT_KEPT);
     } catch (err) {
       setError(errorMessage(err));
     } finally {

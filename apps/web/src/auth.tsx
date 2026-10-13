@@ -1,4 +1,4 @@
-import type { OnboardingDto, UserDto } from "@shipmate/core";
+import type { MeResponse, OnboardingDto, UserDto } from "@shipmate/core";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
 import { api, errorMessage } from "./api.js";
 
@@ -12,7 +12,8 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  refresh: () => Promise<void>;
+  /** Reload who is signed in; resolves to the server's answer, or null when it could not be read. */
+  refresh: () => Promise<MeResponse | null>;
   setUser: (user: UserDto | null) => void;
   setOnboarding: (onboarding: OnboardingDto) => void;
   logout: () => Promise<void>;
@@ -29,7 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onboarding: null,
   });
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (): Promise<MeResponse | null> => {
     try {
       const me = await api.me();
       setState({
@@ -39,8 +40,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setupRequired: me.setupRequired,
         onboarding: me.onboarding ?? null,
       });
+      return me;
     } catch (err) {
       setState((s) => ({ ...s, loading: false, error: errorMessage(err) }));
+      return null;
     }
   }, []);
 

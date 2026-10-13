@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { HttpError, requireRole } from "../auth.js";
+import { HttpError, requireRole, secureCookie } from "../auth.js";
 import { OIDC_STATE_TTL_MS, OidcError, safeNext } from "../services/oidc.js";
 import type { Services } from "../services.js";
 
@@ -18,11 +18,7 @@ const Settings = z.object({
   allowedDomains: z.array(z.string().trim().max(253)).max(100).optional(),
 });
 
-export async function oidcRoutes(
-  app: FastifyInstance,
-  s: Services,
-  options: { secureCookies: boolean },
-) {
+export async function oidcRoutes(app: FastifyInstance, s: Services) {
   const loginError = (err: unknown) =>
     s.oidc.url(`/#/login?error=${err instanceof OidcError ? err.code : "failed"}`);
 
@@ -38,7 +34,7 @@ export async function oidcRoutes(
         path: COOKIE_PATH,
         httpOnly: true,
         sameSite: "lax",
-        secure: options.secureCookies,
+        secure: secureCookie(req),
         maxAge: OIDC_STATE_TTL_MS / 1000,
       });
       return reply.redirect(url);

@@ -195,7 +195,7 @@ export function QuickJump({ onClose }: { onClose: () => void }) {
           id="quick-jump-results"
           role="listbox"
           aria-label="Results"
-          className="max-h-[60vh] overflow-y-auto p-2"
+          className="relative max-h-[60vh] overflow-y-auto p-2"
         >
           {results.length === 0 && (
             <p className="px-3 py-6 text-center text-sm text-slate-500">

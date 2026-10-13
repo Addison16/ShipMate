@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { type ServerEvent, SHIPMATE_VERSION } from "@shipmate/core";
+import { DEFAULT_MODEL, type ServerEvent, SHIPMATE_VERSION } from "@shipmate/core";
 import { claudeCliStatus } from "@shipmate/crew";
 import type { Db } from "@shipmate/db";
 import { SecretVault } from "@shipmate/providers";
@@ -229,7 +229,14 @@ export async function createServices(
       providers: () => providers.records(),
       chatgpt: () => providers.chatgpt.status(),
       claudeCli: async () => {
-        const used = crew.registry.list().some((f) => f.manifest.backend === "claude-code-cli");
+        const onDefault = (await settings.get()).defaultModel.startsWith("claude-code/");
+        const used = crew.registry
+          .list()
+          .some(
+            (f) =>
+              f.manifest.backend === "claude-code-cli" ||
+              (onDefault && f.manifest.model === DEFAULT_MODEL),
+          );
         if (!used) return { used, installed: false, signedIn: false };
         const s = await claudeCliStatus();
         return { used, installed: s.installed, signedIn: s.signedIn };
@@ -258,7 +265,7 @@ export async function createServices(
 
   return {
     db,
-    sessions: new SessionStore(db, config.secureCookies),
+    sessions: new SessionStore(db),
     settings,
     providers,
     crew,

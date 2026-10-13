@@ -66,7 +66,7 @@ export async function authRoutes(app: FastifyInstance, s: Services) {
     const body = z.object({ email: Email, password: z.string() }).parse(req.body);
     const [user] = await s.db.select().from(users).where(eq(users.email, body.email)).limit(1);
     if (!user || !(await verifyPassword(user.passwordHash, body.password))) {
-      throw new HttpError(401, "wrong email or password");
+      throw new HttpError(401, "Wrong email or password.");
     }
     await s.sessions.start(reply, user.id);
     return { user: toUserDto(user) };

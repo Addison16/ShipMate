@@ -82,8 +82,18 @@ export class ApiError extends Error {
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-export async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
+/** How long sign-in waits for the server before saying so, rather than spinning forever. */
+const AUTH_TIMEOUT_MS = 20_000;
+
+export async function request<T>(
+  method: Method,
+  path: string,
+  body?: unknown,
+  /** Give up after this long; most calls wait as long as the server works (model pulls, runs). */
+  timeoutMs?: number,
+): Promise<T> {
   const init: RequestInit = { method, credentials: "same-origin", headers: {} };
+  if (timeoutMs) init.signal = AbortSignal.timeout(timeoutMs);
   if (body !== undefined) {
     init.headers = { "content-type": "application/json" };
     init.body = JSON.stringify(body);
@@ -91,10 +101,18 @@ export async function request<T>(method: Method, path: string, body?: unknown): 
   let res: Response;
   try {
     res = await fetch(path, init);
-  } catch {
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new ApiError(0, "The Shipmate server took too long to answer. Try again.");
+    }
     throw new ApiError(0, "Cannot reach the Shipmate server.");
   }
-  const text = await res.text();
+  let text = "";
+  try {
+    text = await res.text();
+  } catch {
+    throw new ApiError(0, "The connection to the Shipmate server dropped. Try again.");
+  }
   let data: unknown = null;
   if (text) {
     try {
@@ -118,9 +136,10 @@ type Ok = { ok: true };
 
 export const api = {
   // auth
-  me: () => request<MeResponse>("GET", "/api/auth/me"),
+  me: () => request<MeResponse>("GET", "/api/auth/me", undefined, AUTH_TIMEOUT_MS),
   setup: (body: SetupRequest) => request<{ user: UserDto }>("POST", "/api/setup", body),
-  login: (body: LoginRequest) => request<{ user: UserDto }>("POST", "/api/auth/login", body),
+  login: (body: LoginRequest) =>
+    request<{ user: UserDto }>("POST", "/api/auth/login", body, AUTH_TIMEOUT_MS),
   updatePreferences: (body: UpdatePreferencesRequest) =>
     request<{ user: UserDto }>("PATCH", "/api/auth/preferences", body),
   logout: () => request<Ok>("POST", "/api/auth/logout"),

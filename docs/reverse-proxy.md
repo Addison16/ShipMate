@@ -35,10 +35,10 @@ Shipmate from a public address (a VPS in front of a home server, for example), l
 
 ### Opening it on the LAN as well
 
-With `SHIPMATE_URL=https://…`, sign-in cookies are https-only, so signing in at
-`http://192.168.1.10:3000` does not work: use the proxy address on the LAN too (split DNS or a
-local DNS rewrite to the proxy helps). Links, webhooks and sign-in redirects always use
-`SHIPMATE_URL`.
+Signing in at `http://192.168.1.10:3000` works too: the sign-in cookie is https-only only when
+the browser came in over https. Links, webhooks and single sign-on redirects always use
+`SHIPMATE_URL`, so they still point at the proxy address (split DNS or a local DNS rewrite to the
+proxy helps on the LAN).
 
 Installing the web app on a phone (PWA) and push notifications need https, which the proxy gives
 you.
@@ -169,7 +169,7 @@ above Shipmate's 25 MB.
 
 | Symptom | Likely cause |
 |---|---|
-| Signing in does nothing, or you are sent back to the sign-in page | You opened an address other than `SHIPMATE_URL`, or the proxy's https did not reach Shipmate. The **Web address** check on Health says which. |
+| The sign-in page says your password was accepted but the browser did not keep the sign-in | The browser or a privacy setting blocked the cookie, or the proxy strips `Set-Cookie`. Allow cookies for the site; the **Web address** check on Health shows what Shipmate sees. |
 | The Bridge says "reconnecting" over and over | WebSockets are off on the proxy (NPM: **Websockets Support**). |
 | Photos or voice messages fail with "413" | The proxy's body size limit; set `client_max_body_size 30m`. |
 | GitHub webhooks fail | `SHIPMATE_URL` is a LAN address GitHub cannot reach, or a second sign-in in front of Shipmate blocks `/api/hooks/`. |

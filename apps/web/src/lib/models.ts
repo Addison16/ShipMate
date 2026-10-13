@@ -65,3 +65,20 @@ export function groupByProvider(
   }
   return out;
 }
+
+/**
+ * Whether the crew default can run on what this instance is signed in to. When it cannot, crew
+ * on the default fall back to the first usable model (as the server does); `fallback` names it.
+ */
+export function defaultModelStatus(
+  defaultModel: string,
+  models: ReadonlyArray<{ ref: string; name: string; available: boolean }>,
+  claudeSignedIn: boolean,
+): { usable: boolean; fallback: string | null } {
+  const usable =
+    providerOf(defaultModel) === CLAUDE_CODE_PROVIDER
+      ? claudeSignedIn
+      : models.some((m) => m.ref === defaultModel && m.available);
+  if (usable) return { usable, fallback: null };
+  return { usable, fallback: models.find((m) => m.available)?.name ?? null };
+}

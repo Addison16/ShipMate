@@ -51,8 +51,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     TEMPLATES_DIR: parsed.TEMPLATES_DIR ?? defaultTemplatesDir(),
     dirs: dataDirs(parsed.SHIPMATE_DATA_DIR),
     trustProxy: parseTrustProxy(parsed.SHIPMATE_TRUST_PROXY),
-    /** Cookies get the Secure flag when the instance is served over https. */
-    secureCookies: parsed.SHIPMATE_URL.startsWith("https://"),
   };
 }
 

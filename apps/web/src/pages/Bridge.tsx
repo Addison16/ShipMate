@@ -246,7 +246,7 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
               projectNames={projectNames}
             />
           ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto p-2 md:pb-[calc(0.5rem+var(--safe-bottom))]">
+            <div className="relative min-h-0 flex-1 overflow-y-auto p-2 md:pb-[calc(0.5rem+var(--safe-bottom))]">
               {conversations.error && <ErrorText>{conversations.error}</ErrorText>}
               {conversations.data?.length === 0 && (
                 <p className="p-3 text-sm text-slate-500 dark:text-slate-400">
@@ -317,7 +317,7 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
               }}
             />
           ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="relative min-h-0 flex-1 overflow-y-auto">
               <ChatLanding
                 crew={crewList}
                 conversations={conversations.data}
@@ -822,7 +822,7 @@ function Thread({
       <div
         ref={scroller}
         onScroll={onScroll}
-        className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6"
+        className="relative min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6"
         aria-live="polite"
         aria-busy={state.busy}
       >
@@ -1114,7 +1114,7 @@ function SearchResults({
 }) {
   return (
     <div
-      className="min-h-0 flex-1 overflow-y-auto p-2 md:pb-[calc(0.5rem+var(--safe-bottom))]"
+      className="relative min-h-0 flex-1 overflow-y-auto p-2 md:pb-[calc(0.5rem+var(--safe-bottom))]"
       aria-live="polite"
     >
       <div className="flex items-center justify-between px-3 py-1 text-xs text-slate-500 dark:text-slate-400">

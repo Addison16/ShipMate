@@ -6,6 +6,13 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Helper agents (sub agents)**: tick "Let it start helper agents" in a crew member's
+  settings (`helpers: true` in crew.yaml). On Shipmate (pi) it gets a `helper` tool that runs
+  short-lived copies of itself side by side, with its tools and approvals, up to 8 per message;
+  on Claude Code it allows Claude Code's own sub agent tool. Helpers spend from the same caps,
+  and the Captain can turn them on with `edit_crew_member`.
+- **Pick the engine**: crew settings now have an Engine choice, Shipmate (pi) or Claude Code
+  (your Claude subscription), instead of switching only by picking a Claude model.
 - **Crew questions you answer with a tap**: when a crew member needs your decision, it asks
   with `ask_person` and you get a card with its choices as buttons (plus "Something else" and
   Skip), on the Bridge, in Discord, Telegram and Slack, like ChatGPT and Claude do. The crew

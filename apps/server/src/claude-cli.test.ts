@@ -7,7 +7,12 @@ import { claudeCliArgs, claudeCliBilling, runClaudeCli } from "@shipmate/crew";
 import type { Db } from "@shipmate/db";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ClaudeCliTurns, cliModelFromRef, onCrewDefault } from "./claude-cli-turn.js";
+import {
+  ClaudeCliTurns,
+  cliAllowedTools,
+  cliModelFromRef,
+  onCrewDefault,
+} from "./claude-cli-turn.js";
 import { chatGptProvider } from "./services/chatgpt.js";
 import { callCost } from "./services/usage.js";
 import { TEST_DATABASE_URL, testApp } from "./testing.js";
@@ -145,6 +150,15 @@ describe("claude-code-cli backend: manifest and runner", () => {
     ).toThrow();
     expect(cliModelFromRef("claude-code/opus")).toBe("opus");
     expect(cliModelFromRef("openai/gpt-5.5")).toBeUndefined();
+  });
+
+  it("allows Claude Code's sub agent tool only when helpers are on", () => {
+    const off = cliAllowedTools("/data/crew/a", ["Edit"], false);
+    expect(off).not.toContain("Task");
+    expect(off).not.toContain("Agent");
+    const on = cliAllowedTools("/data/crew/a", ["Edit", "Task"], false, true);
+    expect(on).toEqual(expect.arrayContaining(["Edit", "Task", "Agent"]));
+    expect(on.filter((r) => r === "Task")).toHaveLength(1);
   });
 
   it("runs crew on the crew default where the default does", () => {

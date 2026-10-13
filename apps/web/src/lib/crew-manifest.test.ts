@@ -6,6 +6,7 @@ import {
   otherCliTools,
   readManifestForm,
   setToolGroup,
+  switchEngine,
 } from "./crew-manifest.js";
 
 const CAPTAIN = `# The coordinator
@@ -114,5 +115,25 @@ describe("Claude Code tool groups", () => {
     expect(setToolGroup(allowed, ["Bash"], true)).toEqual(["Bash(npm test)", "Edit(./**)", "Bash"]);
     expect(setToolGroup(allowed, ["Edit(./**)"], false)).toEqual(["Bash(npm test)"]);
     expect(otherCliTools(allowed)).toEqual(["Bash(npm test)"]);
+  });
+});
+
+describe("helper agents and engine", () => {
+  it("reads and writes helpers", () => {
+    const yaml = "name: A\nrole: r\nmodel: faux/m\n";
+    expect(form(yaml).helpers).toBe(false);
+    const out = applyManifestForm(yaml, { ...form(yaml), helpers: true });
+    expect(out).toContain("helpers: true");
+    expect(form(out).helpers).toBe(true);
+  });
+
+  it("switches engines without leaving a model the engine cannot run", () => {
+    const pi = form("name: A\nrole: r\nmodel: faux/m\n");
+    expect(switchEngine(pi, "pi")).toEqual({});
+    expect(switchEngine(pi, "claude-code-cli")).toEqual({ backend: "claude-code-cli" });
+    const cli = form("name: A\nrole: r\nmodel: claude-code/opus\nbackend: claude-code-cli\n");
+    expect(switchEngine(cli, "pi")).toEqual({ backend: "pi", model: "default" });
+    const cliOnDefault = form("name: A\nrole: r\nmodel: default\nbackend: claude-code-cli\n");
+    expect(switchEngine(cliOnDefault, "pi")).toEqual({ backend: "pi" });
   });
 });

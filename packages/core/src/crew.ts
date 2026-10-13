@@ -71,6 +71,12 @@ export const CrewManifest = z.object({
   approval: ApprovalPolicy.default("ask"),
   /** Tools this crew member may run without asking, added by "always allow" on an approval. */
   allow: z.array(z.string().min(1)).default([]),
+  /**
+   * Let it start helper agents: short-lived copies of itself that work on part of a task and
+   * report back. On pi this adds the `helper` tool; on Claude Code it allows Claude Code's own
+   * sub agent tool. Helpers spend from the same caps.
+   */
+  helpers: z.boolean().default(false),
   /** Load skills this crew member writes without waiting for a person to approve them. */
   autoApproveSkills: z.boolean().default(false),
   /** Monthly spend ceiling for this crew member in USD (all people together); null = none. */

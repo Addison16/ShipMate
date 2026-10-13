@@ -16,6 +16,7 @@ import {
   type Choice,
   CLI_TOOL_GROUPS,
   cleanList,
+  type Engine,
   hasToolGroup,
   type ManifestForm,
   otherCliTools,
@@ -23,6 +24,7 @@ import {
   type PermissionMode,
   readManifestForm,
   setToolGroup,
+  switchEngine,
 } from "../lib/crew-manifest.js";
 import { CLAUDE_CODE_PROVIDER, providerOf } from "../lib/models.js";
 import { useResource } from "../lib/useResource.js";
@@ -322,6 +324,22 @@ function ManifestFields({
       </Section>
 
       <Section title="Model" description="What runs this crew member's turns.">
+        <SelectField
+          label="Engine"
+          disabled={readOnly}
+          value={form.backend}
+          onChange={(e) => patch(switchEngine(form, e.target.value as Engine))}
+          hint={
+            !claudeCode && !cli
+              ? "To use Claude Code, sign in to Claude on the Providers page first."
+              : undefined
+          }
+        >
+          <option value="pi">Shipmate (pi)</option>
+          <option value="claude-code-cli" disabled={!claudeCode && !cli}>
+            Claude Code (your Claude subscription)
+          </option>
+        </SelectField>
         <ModelSelect
           // On Claude Code a non-Claude model means "the CLI's own default": show the Claude
           // subscription with no model picked yet.
@@ -408,6 +426,16 @@ function ManifestFields({
             )}
           </div>
         )}
+      </Section>
+
+      <Section title="Helper agents">
+        <Check disabled={readOnly} checked={form.helpers} onChange={(on) => patch({ helpers: on })}>
+          <span className="font-medium">Let it start helper agents</span>
+          <span className="block text-xs text-slate-500 dark:text-slate-400">
+            Copies of itself that work on parts of a task at the same time. They use its tools and
+            count toward its spending cap.
+          </span>
+        </Check>
       </Section>
 
       <Section

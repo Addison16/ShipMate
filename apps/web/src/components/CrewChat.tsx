@@ -324,7 +324,7 @@ export function CrewPicker({
         if (e.target === dialog.current) onClose();
       }}
       aria-labelledby="crew-picker-title"
-      className="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-xl max-sm:mb-0 max-sm:w-full max-sm:max-w-none max-sm:rounded-b-none max-sm:pb-[env(safe-area-inset-bottom)] border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/40 backdrop:backdrop-blur-[2px] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+      className="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-xl max-sm:mb-0 max-sm:w-full max-sm:max-w-none max-sm:rounded-b-none max-sm:pb-[var(--safe-bottom)] border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/40 backdrop:backdrop-blur-[2px] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
     >
       <div className="flex flex-col">
         <div className="space-y-3 border-b border-slate-200 p-4 dark:border-slate-800">

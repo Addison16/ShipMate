@@ -322,7 +322,7 @@ export function Shell() {
             />
             <nav
               aria-label="Main"
-              className="slide-over-panel absolute inset-y-0 left-0 flex w-64 max-w-[85vw] flex-col bg-white pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-xl dark:bg-slate-900"
+              className="slide-over-panel absolute inset-y-0 left-0 flex w-64 max-w-[85vw] flex-col bg-white pt-[env(safe-area-inset-top)] pb-[var(--safe-bottom)] shadow-xl dark:bg-slate-900"
             >
               <div className="flex items-center justify-between px-4 py-3">
                 <Brand />
@@ -379,7 +379,7 @@ function TabBar({ current }: { current: string }) {
   return (
     <nav
       aria-label="Quick"
-      className="shrink-0 border-t border-slate-200 bg-white pb-[max(env(safe-area-inset-bottom),0.25rem)] md:hidden dark:border-slate-800 dark:bg-slate-900"
+      className="shrink-0 border-t border-slate-200 bg-white pb-[max(var(--safe-bottom),0.25rem)] md:hidden dark:border-slate-800 dark:bg-slate-900"
     >
       <ul className="flex">
         {MAIN_NAV.filter((n) => canSee(user, n.access)).map((n) => {

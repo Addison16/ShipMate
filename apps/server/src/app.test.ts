@@ -314,6 +314,67 @@ describe.skipIf(!db)("Shipmate server", () => {
     ]);
   });
 
+  it("keeps one direct chat per crew member and can start it fresh", async () => {
+    const first = (
+      await api("POST", "/api/conversations", { kind: "direct", crewSlug: "galley", reuse: true })
+    ).json().conversation;
+    const again = (
+      await api("POST", "/api/conversations", { kind: "direct", crewSlug: "galley", reuse: true })
+    ).json().conversation;
+    expect(again.id).toBe(first.id);
+    // Without reuse, a new chat is still possible.
+    const other = (
+      await api("POST", "/api/conversations", { kind: "direct", crewSlug: "galley" })
+    ).json().conversation;
+    expect(other.id).not.toBe(first.id);
+    await api("DELETE", `/api/conversations/${other.id}`);
+
+    const ws = await t.app.injectWS("/api/ws", { headers: { cookie: ownerCookie } });
+    const events: ServerEvent[] = [];
+    ws.on("message", (raw: Buffer) => events.push(JSON.parse(raw.toString())));
+    const idleAfter = (count: number) =>
+      new Promise<void>((resolve) => {
+        const timer = setInterval(() => {
+          const done = events.filter((e) => e.type === "status" && !e.busy).length;
+          if (done >= count) {
+            clearInterval(timer);
+            resolve();
+          }
+        }, 20);
+      });
+    t.faux.setResponses([fauxAssistantMessage("Soup tonight.")]);
+    ws.send(JSON.stringify({ type: "send", conversationId: first.id, text: "Dinner?" }));
+    await idleAfter(1);
+
+    const list = (await api("GET", "/api/conversations")).json().conversations;
+    expect(list.find((c: { id: string }) => c.id === first.id).preview).toBe("Soup tonight.");
+
+    const reset = await api("POST", `/api/conversations/${first.id}/reset`);
+    expect(reset.statusCode).toBe(200);
+    expect(reset.json().message).toMatchObject({
+      role: "system",
+      content: "Fresh start. Galley won't remember the messages above.",
+      meta: { sessionReset: true },
+    });
+    expect(events.some((e) => e.type === "message" && e.message.meta?.sessionReset)).toBe(true);
+
+    // The next turn starts a new session; the messages before the reset stay.
+    t.faux.setResponses([fauxAssistantMessage("Hello again.")]);
+    ws.send(JSON.stringify({ type: "send", conversationId: first.id, text: "Hi" }));
+    await idleAfter(2);
+    ws.terminate();
+    const messages = (await api("GET", `/api/conversations/${first.id}/messages`)).json().messages;
+    expect(messages.map((m: { content: string }) => m.content)).toEqual([
+      "Dinner?",
+      "Soup tonight.",
+      "Fresh start. Galley won't remember the messages above.",
+      "Hi",
+      "Hello again.",
+    ]);
+    const after = (await api("GET", "/api/conversations")).json().conversations;
+    expect(after.find((c: { id: string }) => c.id === first.id).preview).toBe("Hello again.");
+  });
+
   it("blocks sending once a monthly cap is reached", async () => {
     const users = (await api("GET", "/api/users")).json().users;
     const owner = users.find((u: { role: string }) => u.role === "owner");

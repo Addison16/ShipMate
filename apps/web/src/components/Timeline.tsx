@@ -161,6 +161,17 @@ function Bubble({
 
 function MessageView({ message, selfId }: { message: MessageDto; selfId: string }) {
   const a = message.author;
+  if (message.meta?.sessionReset) {
+    return (
+      <div className="flex items-center gap-3 py-1 text-xs text-slate-500 dark:text-slate-400">
+        <span className="h-px min-w-6 flex-1 bg-slate-200 dark:bg-slate-800" />
+        <span className="max-w-[75%] text-center">
+          {message.content} · {formatTime(message.createdAt)}
+        </span>
+        <span className="h-px min-w-6 flex-1 bg-slate-200 dark:bg-slate-800" />
+      </div>
+    );
+  }
   if (a.kind === "system" || message.role === "system") {
     return (
       <div className="mx-auto max-w-[85%] text-center text-xs text-slate-500 dark:text-slate-400">

@@ -104,6 +104,9 @@ export function AppearanceSettings() {
             );
           })}
         </div>
+        <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+          The app icon matches too. On your home screen, add Shipmate again to update it.
+        </p>
       </fieldset>
       {error && (
         <div className="mt-4">

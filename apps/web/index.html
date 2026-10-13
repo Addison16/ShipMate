@@ -25,7 +25,19 @@
           if (p.themeMode === "dark" || (p.themeMode !== "light" && systemDark)) {
             root.classList.add("dark");
           }
-          if (typeof p.colorTheme === "string") root.dataset.colorTheme = p.colorTheme;
+          const themes = ["harbor", "open-sea", "coral-reef", "lighthouse", "kelp-forest", "admiral"];
+          if (themes.includes(p.colorTheme)) {
+            root.dataset.colorTheme = p.colorTheme;
+            // Match the saved app's icon and manifest to the color theme (see appIconLinks).
+            const dir = `/icons/${p.colorTheme}`;
+            const links = {
+              'link[rel="manifest"]': `${dir}/manifest.webmanifest`,
+              'link[rel="icon"][type="image/svg+xml"]': `${dir}/icon.svg`,
+              'link[rel="icon"][type="image/png"]': `${dir}/favicon-32.png`,
+              'link[rel="apple-touch-icon"]': `${dir}/apple-touch-icon.png`,
+            };
+            for (const s in links) document.querySelector(s)?.setAttribute("href", links[s]);
+          }
         } catch {}
       })();
     </script>

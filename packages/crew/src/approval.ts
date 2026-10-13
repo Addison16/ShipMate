@@ -24,6 +24,12 @@ const SHIPMATE_CONSEQUENTIAL = new Set([
   "comment_on_github",
   "submit_pull_request_review",
 ]);
+/**
+ * Shipmate tools that always wait for the person, whatever the approval policy or allow list:
+ * putting a new crew member to work is never left to a bot alone.
+ */
+const ALWAYS_ASK = new Set(["approve_crew_member"]);
+
 /** MCP tool names that send, publish, buy, delete, push or otherwise act on the world. */
 const ACTING_VERB =
   /(^|_)(send|post|publish|create|delete|remove|destroy|update|edit|write|push|merge|close|reopen|purchase|buy|pay|order|transfer|execute|run|deploy|invite|share|move|rename|archive|reply|comment|approve|cancel|book|schedule|set|toggle|turn)(_|$)/i;
@@ -86,13 +92,20 @@ export async function gateToolCall(
     host.audit({ ...call, decision: "blocked" });
     return { block: true, reason: `${call.toolName} is never allowed for this crew member.` };
   }
+  const always = ALWAYS_ASK.has(call.toolName);
   const ask =
-    approval === "ask" && isConsequential(call.toolName) && !matches([...allowed], call.toolName);
+    always ||
+    (approval === "ask" && isConsequential(call.toolName) && !matches([...allowed], call.toolName));
   if (!ask) {
     host.audit({ ...call, decision: "auto" });
     return undefined;
   }
-  const answer = await host.request(call);
+  // "Always allow" counts as a one-time yes for these.
+  const answer = always
+    ? (await host.request(call)) === "deny"
+      ? "deny"
+      : "allow"
+    : await host.request(call);
   if (answer === "deny") {
     host.audit({ ...call, decision: "denied" });
     return {

@@ -6,6 +6,20 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **The Captain sets people up**: ask the Captain to set someone up and it fills in their
+  profile (diet, budget, timezone, schedule, notes), theme and spending cap, the household facts,
+  and any crew member setting (model, backend, tools, MCP servers, skills, approvals, cap,
+  visibility). Members can change only their own settings this way; owners and admins can set up
+  anyone, and caps and renaming others stay with the owner. Edits keep the comments in
+  `crew.yaml`. Unedited Captain standing orders are upgraded to mention this.
+  The Captain can also put a crew member it recruited (or one imported) to work with
+  `approve_crew_member`, which always shows you an approval card in the conversation first,
+  whatever the Captain's approval settings, so no crew member starts work without a person's yes.
+- **Crew settings**: a crew member's Manifest tab is now **Settings**, a form for everything in
+  its `crew.yaml` (name, role, who can use it, what it runs on and its model, Claude Code
+  options, built-in tools, MCP servers, skills, approvals and the monthly cap). **Edit file**
+  switches to the raw YAML; both edit the same draft, and the form only rewrites the lines you
+  change, so comments and keys it doesn't know about are kept.
 - **Subscription use is not spend**: calls through the Claude Code CLI (on a Claude
   subscription) or a ChatGPT plan no longer count as cost or towards monthly caps. The Cost page
   shows real API spend apart from a "Saved by subscriptions" estimate of what that use would have

@@ -11,6 +11,7 @@ import {
 } from "@shipmate/crew";
 import type { Db } from "@shipmate/db";
 import type { UserRow } from "./auth.js";
+import { PeopleSettings } from "./people.js";
 import { dateIn, recentActivity } from "./services/activity.js";
 import type { ListService } from "./services/lists.js";
 import { hasAny, householdLines, type ProfileService, profileLines } from "./services/profiles.js";
@@ -24,6 +25,9 @@ const CONTEXT_FIELD_CHARS = 300;
  * member is working for. The Bridge asks for them when it opens a session.
  */
 export class EverydayTools {
+  /** The Captain's tools for setting people up. */
+  readonly people: PeopleSettings;
+
   constructor(
     private readonly deps: {
       db: Db;
@@ -31,7 +35,9 @@ export class EverydayTools {
       profiles: ProfileService;
       weather: WeatherService;
     },
-  ) {}
+  ) {
+    this.people = new PeopleSettings(deps.db, deps.profiles);
+  }
 
   tools(user: UserRow, crew: CrewFolder): ToolDefinition[] {
     return [

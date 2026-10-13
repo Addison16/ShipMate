@@ -5,8 +5,9 @@ import { isAdmin, useUser } from "../auth.js";
 import { Avatar } from "../components/Avatar.js";
 import { ExportCrewButton, ImportCrewPage } from "../components/CrewBundle.js";
 import { openDirectChat } from "../components/CrewChat.js";
+import { CrewSettings } from "../components/CrewSettings.js";
 import { NavIcon } from "../components/icons.js";
-import { CrewModelSelect, ModelSelect } from "../components/ModelSelect.js";
+import { ModelSelect } from "../components/ModelSelect.js";
 import { StarterCrewPicker } from "../components/StarterCrewPicker.js";
 import {
   Badge,
@@ -299,7 +300,7 @@ function StarterCrew() {
   );
 }
 
-type Tab = "persona" | "manifest" | "memory";
+type Tab = "persona" | "settings" | "memory";
 
 function CrewDetail({ slug }: { slug: string }) {
   const user = useUser();
@@ -340,7 +341,7 @@ function CrewDetail({ slug }: { slug: string }) {
 
   const tabs: Array<{ id: Tab; label: string }> = [
     { id: "persona", label: "Persona" },
-    { id: "manifest", label: "Manifest" },
+    { id: "settings", label: "Settings" },
     { id: "memory", label: "Memory" },
   ];
 
@@ -402,19 +403,11 @@ function CrewDetail({ slug }: { slug: string }) {
             <div className="mb-4">
               <Notice>
                 This crew member is waiting for review (recruited by the coordinator, or imported).
-                Read the persona and manifest, then approve it to put it to work.
+                Read the persona and settings, then approve it to put it to work.
               </Notice>
             </div>
           )}
           <ErrorText>{actionError}</ErrorText>
-          <CrewModelSelect
-            crew={crew}
-            models={models.data}
-            crewDefault={settings.data?.defaultModel ?? ""}
-            claudeCode={!!cli.data?.signedIn}
-            readOnly={!admin}
-            onSaved={detail.setData}
-          />
           <div
             role="tablist"
             aria-label="Crew member sections"
@@ -452,26 +445,19 @@ function CrewDetail({ slug }: { slug: string }) {
                 onSaved={detail.setData}
               />
             )}
-            {tab === "manifest" && (
-              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-                Tool approvals are set here: <code className="font-mono">approval</code> (ask, auto,
-                or <code className="font-mono">never-for</code> a list of tools) and{" "}
-                <code className="font-mono">allow</code>, the tools this crew member may run without
-                asking. "Always allow" on an approval card adds to that list.
-              </p>
-            )}
             {tab === "persona" && (
-              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-                The approval policy and allow list are edited in the Manifest tab.
+              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                Model, tools, approvals and the rest are in the Settings tab.
               </p>
             )}
-            {tab === "manifest" && (
-              <FileEditor
-                key="manifest"
-                label="crew.yaml"
-                initial={crew.manifestYaml}
+            {tab === "settings" && (
+              <CrewSettings
+                key={crew.slug}
+                crew={crew}
+                models={models.data}
+                crewDefault={settings.data?.defaultModel ?? ""}
+                claudeCode={!!cli.data?.signedIn}
                 readOnly={!admin}
-                onSave={(v) => api.updateCrew(slug, { manifestYaml: v })}
                 onSaved={detail.setData}
               />
             )}

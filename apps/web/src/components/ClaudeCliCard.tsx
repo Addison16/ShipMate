@@ -4,7 +4,7 @@ import { isAdmin, useUser } from "../auth.js";
 import { claudeCliApi, describeStatus } from "../lib/claude-cli.js";
 import { useResource } from "../lib/useResource.js";
 import { CopyField } from "./CopyField.js";
-import { Badge, Button, Card, ErrorText } from "./ui.js";
+import { Badge, Button, Card, cx, ErrorText, focusRing } from "./ui.js";
 
 /** Split text into plain and `code` parts, each keyed by its offset (stable for a given text). */
 function codeParts(text: string): Array<{ key: number; code: boolean; text: string }> {
@@ -69,7 +69,7 @@ function ClaudeCliStatusCard({
     <Card>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="font-semibold">Claude subscription (Claude Code)</h2>
+          <h2 className="font-semibold">Claude subscription</h2>
           {state && <Badge tone={state.tone}>{state.label}</Badge>}
           {s?.version && <Badge>v{s.version}</Badge>}
         </div>
@@ -80,23 +80,52 @@ function ClaudeCliStatusCard({
       <ErrorText>{res.error}</ErrorText>
       {s && (
         <>
-          <DocText text={s.docs} />
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <CopyField
-              label="Sign in once (on the Docker host)"
-              value="docker exec -it shipmate claude"
-              hint="Use your container's name if it is not shipmate. Type /login if it does not ask."
-            />
-            <CopyField
-              label="Login kept in"
-              value={s.configDir}
-              hint="CLAUDE_CONFIG_DIR. Shipmate never reads the files in it."
-            />
-          </div>
-          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-            Then pick Claude subscription as the model of any crew member on their Crew page.
-            {s.authMethod ? ` Signed in with: ${s.authMethod}.` : ""}
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            {s.signedIn
+              ? "Ready. Pick Claude subscription as a crew member's model on their Crew page."
+              : "Use your own Claude plan for your crew. Sign in once on the Docker host:"}
           </p>
+          {!s.signedIn && (
+            <div className="mt-3">
+              <CopyField
+                label="Sign in"
+                value="docker exec -it shipmate claude"
+                hint="Use your container's name if it is not shipmate."
+              />
+            </div>
+          )}
+          <details className="mt-3">
+            <summary
+              className={cx(
+                "cursor-pointer rounded text-sm font-medium text-slate-600 dark:text-slate-300",
+                focusRing,
+              )}
+            >
+              More details
+            </summary>
+            <div className="mt-2">
+              <DocText text={s.docs} />
+              <div className="grid gap-3 sm:grid-cols-2">
+                {s.signedIn && (
+                  <CopyField
+                    label="Sign in again (on the Docker host)"
+                    value="docker exec -it shipmate claude"
+                    hint="Use your container's name if it is not shipmate. Type /login if it does not ask."
+                  />
+                )}
+                <CopyField
+                  label="Login kept in"
+                  value={s.configDir}
+                  hint="CLAUDE_CONFIG_DIR. Shipmate never reads the files in it."
+                />
+              </div>
+              {s.authMethod && (
+                <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                  Signed in with: {s.authMethod}.
+                </p>
+              )}
+            </div>
+          </details>
         </>
       )}
     </Card>

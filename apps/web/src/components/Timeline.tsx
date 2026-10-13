@@ -172,6 +172,8 @@ function MessageView({ message, selfId }: { message: MessageDto; selfId: string 
       </div>
     );
   }
+  const question = answeredQuestion(message);
+  if (question) return <AnsweredQuestion {...question} />;
   if (a.kind === "system" || message.role === "system") {
     return (
       <div className="mx-auto max-w-[85%] text-center text-xs text-slate-500 dark:text-slate-400">
@@ -200,6 +202,44 @@ function MessageView({ message, selfId }: { message: MessageDto; selfId: string 
         {message.content || !files.length ? <Markdown text={message.content} /> : null}
       </Bubble>
     </>
+  );
+}
+
+interface Answered {
+  crew: string;
+  text: string;
+  answer: string | null;
+}
+
+function answeredQuestion(m: MessageDto): Answered | null {
+  const q = m.meta?.question as
+    | { crew?: { name?: unknown }; text?: unknown; answer?: unknown }
+    | undefined;
+  if (!q || typeof q.text !== "string") return null;
+  return {
+    crew: typeof q.crew?.name === "string" ? q.crew.name : "The crew",
+    text: q.text,
+    answer: typeof q.answer === "string" ? q.answer : null,
+  };
+}
+
+/** A crew member's question and the person's answer, kept in the conversation. */
+function AnsweredQuestion({ crew, text, answer }: Answered) {
+  return (
+    <div className="mx-auto w-full max-w-md rounded-xl border border-slate-200 bg-white/60 px-3.5 py-2.5 text-sm dark:border-slate-800 dark:bg-slate-900/60">
+      <p className="text-xs text-slate-600 dark:text-slate-300">{crew} asked</p>
+      <p className="mt-0.5 break-words text-slate-800 dark:text-slate-100">{text}</p>
+      <p className="mt-1.5 flex flex-wrap items-baseline gap-x-1.5 text-xs text-slate-600 dark:text-slate-300">
+        You:
+        {answer === null ? (
+          <span className="italic">skipped</span>
+        ) : (
+          <span className="rounded-md bg-accent-100 px-2 py-0.5 text-sm font-medium break-words text-accent-900 dark:bg-accent-500/20 dark:text-accent-100">
+            {answer}
+          </span>
+        )}
+      </p>
+    </div>
   );
 }
 

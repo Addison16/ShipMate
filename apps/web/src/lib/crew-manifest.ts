@@ -13,7 +13,57 @@ export const BUILTIN_TOOLS: Array<{ id: string; label: string }> = [
 ];
 
 export type ApprovalMode = "ask" | "auto" | "never-for";
-export type PermissionMode = "dontAsk" | "acceptEdits" | "plan";
+export type PermissionMode = "dontAsk" | "acceptEdits" | "plan" | "bypassPermissions";
+
+/** The Claude Code permission modes, in plain words. */
+export const PERMISSION_MODES: Array<{ id: PermissionMode; label: string; hint: string }> = [
+  {
+    id: "dontAsk",
+    label: "Only the tools ticked below",
+    hint: "Anything else is refused. It can always read its workspace and look things up online.",
+  },
+  {
+    id: "acceptEdits",
+    label: "Ticked tools, and edit its files",
+    hint: "Also lets it create and change files in its own workspace.",
+  },
+  { id: "plan", label: "Look only, change nothing", hint: "It can read and plan, never change." },
+  {
+    id: "bypassPermissions",
+    label: "Allow all tools",
+    hint: "It can run any command and change any file Shipmate can reach, without asking. Only for crew you trust.",
+  },
+];
+
+/**
+ * Claude Code tools in groups people can tick, as permission rules for `cli.allowedTools`.
+ * Paths starting `./` are inside its workspace (the CLI's working folder).
+ */
+export const CLI_TOOL_GROUPS: Array<{ label: string; rules: string[] }> = [
+  { label: "Edit files in its workspace", rules: ["Edit(./**)"] },
+  { label: "Run git commands", rules: ["Bash(git *)"] },
+  { label: "Run any shell command", rules: ["Bash"] },
+  { label: "Read any file Shipmate can reach", rules: ["Read"] },
+  { label: "Use helper agents", rules: ["Task"] },
+];
+
+const GROUPED = new Set(CLI_TOOL_GROUPS.flatMap((g) => g.rules));
+
+/** Whether every rule of a group is allowed. */
+export function hasToolGroup(allowed: readonly string[], rules: readonly string[]): boolean {
+  return rules.every((r) => allowed.includes(r));
+}
+
+/** Tick or untick a group, keeping every other rule in its place. */
+export function setToolGroup(allowed: string[], rules: readonly string[], on: boolean): string[] {
+  const rest = allowed.filter((r) => !rules.includes(r));
+  return on ? [...rest, ...rules] : rest;
+}
+
+/** Rules that no group covers, for the "Other" field. */
+export function otherCliTools(allowed: readonly string[]): string[] {
+  return allowed.filter((r) => !GROUPED.has(r));
+}
 
 /** Every crew.yaml field as a plain form value. */
 export interface ManifestForm {
@@ -145,4 +195,26 @@ export function applyManifestForm(yaml: string, form: ManifestForm): string {
 /** Trim, drop blanks and duplicates. */
 export function cleanList(values: string[]): string[] {
   return [...new Set(values.map((v) => v.trim()).filter(Boolean))];
+}
+
+export interface Choice {
+  value: string;
+  label: string;
+}
+
+/**
+ * Tools to tick on the approval lists: built-ins and Shipmate actions that ask first, and every
+ * tool of each MCP server the crew member has (`mcp__<id>__*`).
+ */
+export function approvalToolChoices(servers: Array<{ id: string; name: string }>): Choice[] {
+  return [
+    { value: "bash", label: "Run shell commands" },
+    { value: "write", label: "Write files" },
+    { value: "edit", label: "Edit files" },
+    { value: "create_watch", label: "Schedule watches" },
+    { value: "git_push", label: "Push code (Shipyard)" },
+    { value: "open_pull_request", label: "Open pull requests (Shipyard)" },
+    { value: "comment_on_github", label: "Comment on GitHub (Shipyard)" },
+    ...servers.map((s) => ({ value: `mcp__${s.id}__*`, label: `All ${s.name} tools` })),
+  ];
 }

@@ -250,6 +250,46 @@ describe.skipIf(!db)("Telegram bridge", () => {
     await until(() => sentTo(PERSON).some((m) => m.html.includes("Fair enough.")));
   });
 
+  it("shows a question with one button per answer, and takes a typed answer too", async () => {
+    const ask = (question: string) =>
+      fauxAssistantMessage([
+        fauxToolCall("ask_person", {
+          question,
+          options: [{ label: "Saturday" }, { label: "Sunday" }],
+        }),
+      ]);
+    t.faux.setResponses([ask("Which day?"), fauxAssistantMessage("Booked Sunday.")]);
+    let before = port.sent.length;
+    port.message(PERSON, PERSON, "book the picnic");
+    await until(() => port.sent.slice(before).some((m) => m.buttons?.length));
+    let card = port.sent.slice(before).find((m) => m.buttons?.length);
+    if (!card) throw new Error("no card");
+    expect(card.html).toContain("Captain asks: Which day?");
+    expect(card.buttons?.map((row) => row.map((b) => b.text))).toEqual([
+      ["Saturday"],
+      ["Sunday"],
+      ["Skip"],
+    ]);
+    expect(
+      await port.press(PERSON, PERSON, card.id, card.buttons?.[1]?.[0]?.data ?? ""),
+    ).toBeNull();
+    await until(() => port.edits.some((e) => e.messageId === card?.id));
+    expect(port.edits.find((e) => e.messageId === card?.id)?.html).toContain("Addison: Sunday");
+    await until(() => sentTo(PERSON).some((m) => m.html.includes("Booked Sunday.")));
+
+    t.faux.setResponses([ask("Which time?"), fauxAssistantMessage("Noon then.")]);
+    before = port.sent.length;
+    port.message(PERSON, PERSON, "and the time?");
+    await until(() => port.sent.slice(before).some((m) => m.buttons?.length));
+    card = port.sent.slice(before).find((m) => m.buttons?.length);
+    port.message(PERSON, PERSON, "around noon");
+    await until(() => port.edits.some((e) => e.messageId === card?.id));
+    expect(port.edits.find((e) => e.messageId === card?.id)?.html).toContain(
+      "Addison: around noon",
+    );
+    await until(() => sentTo(PERSON).some((m) => m.html.includes("Noon then.")));
+  });
+
   it("shows a dropped connection, unlinks and disconnects", async () => {
     port.drop("Telegram rejected the bot token.");
     await until(async () => {

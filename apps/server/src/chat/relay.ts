@@ -1,4 +1,4 @@
-import type { ApprovalDecision, ServerEvent } from "@shipmate/core";
+import type { ApprovalDecision, ApprovalDto, ServerEvent } from "@shipmate/core";
 
 /** Where a Shipmate conversation lives in a chat app. */
 export interface ChatTarget {
@@ -17,16 +17,19 @@ export interface ApprovalButton {
   /** Opaque id the chat app sends back on a click (see approvalActionId). */
   actionId: string;
   label: string;
+  /** For a question, "allow" is one of its answers and "deny" skips it. */
   decision: ApprovalDecision;
 }
 
 export interface ApprovalCard {
   /** One line, already shortened. */
   summary: string;
-  /** The tool input, shortened, with code fences defused. */
+  /** The tool input (or a question's numbered choices), shortened, with code fences defused. */
   detail: string;
   crewName: string;
   buttons: ApprovalButton[];
+  /** A crew member's question: one button per answer, then Skip. */
+  question?: boolean;
 }
 
 /** How one chat app shows the relay's posts. Each method may throw; the relay logs it. */
@@ -57,14 +60,16 @@ export interface ChatRelayLookup {
 }
 
 export interface RelayApprovals {
-  decide(userId: string, approvalId: string, decision: ApprovalDecision): void;
+  decide(userId: string, approvalId: string, decision: ApprovalDecision, answer?: string): void;
 }
 
 const ACTION_PREFIX = "ap:";
 const DETAIL_LIMIT = 900;
 
-/** Short enough for Telegram's 64-byte callback data. */
-export const approvalActionId = (approvalId: string, decision: ApprovalDecision) =>
+/**
+ * Short enough for Telegram's 64-byte callback data. A question's answers are `o0`, `o1`, ...
+ */
+export const approvalActionId = (approvalId: string, decision: ApprovalDecision | `o${number}`) =>
   `${ACTION_PREFIX}${approvalId}:${decision}`;
 
 interface Card {
@@ -74,6 +79,8 @@ interface Card {
   userName: string;
   summary: string;
   crewName: string;
+  /** A question's answers, in button order. */
+  options?: string[];
 }
 
 /**
@@ -138,15 +145,16 @@ export class ChatRelay {
         this.#cardConversation.set(a.id, conversationId);
         this.#withTarget(conversationId, async (t) => {
           const userName = await this.lookup.userName(userId);
-          const summary = oneLine(a.summary, 300);
-          const detail = a.detail.replaceAll("```", "ʼʼʼ");
+          const summary = oneLine(cardTitle(a), 300);
+          const detail = cardDetail(a).replaceAll("```", "ʼʼʼ");
           const shown =
             detail.length > DETAIL_LIMIT ? `${detail.slice(0, DETAIL_LIMIT)}\n…` : detail;
           const messageRef = await this.sink.postApproval(t, {
             summary,
             detail: shown,
             crewName: a.crew.name,
-            buttons: approvalButtons(a.id, a.crew.name),
+            buttons: approvalButtons(a),
+            ...(a.question ? { question: true } : {}),
           });
           this.#cards.set(a.id, {
             chatId: t.chatId,
@@ -155,6 +163,7 @@ export class ChatRelay {
             userName,
             summary,
             crewName: a.crew.name,
+            ...(a.question ? { options: a.question.options.map((o) => o.label) } : {}),
           });
         });
         return;
@@ -171,7 +180,7 @@ export class ChatRelay {
             card.chatId,
             card.messageRef,
             card.summary,
-            outcomeLine(card, event.decision),
+            outcomeText(card, event.decision, event.answer),
           );
         });
         return;
@@ -187,16 +196,15 @@ export class ChatRelay {
    */
   async click(externalUserId: string, actionId: string): Promise<string | null> {
     if (!actionId.startsWith(ACTION_PREFIX)) return null;
-    const [approvalId, decision] = actionId.slice(ACTION_PREFIX.length).split(":");
-    if (!approvalId || (decision !== "allow" && decision !== "always" && decision !== "deny")) {
-      return null;
-    }
+    const [approvalId, action] = actionId.slice(ACTION_PREFIX.length).split(":");
+    const parsed = approvalId && action ? parseAction(action) : null;
+    if (!approvalId || !parsed) return null;
     const card = this.#cards.get(approvalId);
     if (!card) return "This request is no longer waiting for an answer.";
     const clicker = await this.lookup.userByExternalId(externalUserId);
     if (clicker?.id !== card.userId) return `Only ${card.userName} can answer this.`;
     try {
-      this.approvals.decide(card.userId, approvalId, decision);
+      decideCard(this.approvals, card, approvalId, parsed);
     } catch {
       return "This request is no longer waiting for an answer.";
     }
@@ -213,7 +221,7 @@ export class ChatRelay {
       [...this.#cards.entries()].filter(([, c]) => c.chatId === chatId),
       userId,
       text,
-      (id, decision) => this.approvals.decide(userId, id, decision),
+      (id, decision, answer) => this.approvals.decide(userId, id, decision, answer),
     );
   }
 
@@ -283,22 +291,40 @@ export function parseApprovalReply(text: string): ApprovalDecision | null {
   return null;
 }
 
+/**
+ * What typed text means for a question card: a choice's number or label picks it, "skip"
+ * skips, and anything else is the person's own answer (the crew member is paused on it).
+ */
+export function parseQuestionReply(
+  text: string,
+  options: readonly string[],
+): { decision: "allow"; answer: string } | { decision: "deny" } {
+  const t = text.trim();
+  const plain = t.toLowerCase().replace(/[.!\s]+$/, "");
+  if (/^[!/]?skip$/.test(plain)) return { decision: "deny" };
+  const n = /^\d$/.test(plain) ? Number(plain) : 0;
+  const picked = options[n - 1] ?? options.find((o) => o.toLowerCase() === plain);
+  return { decision: "allow", answer: picked ?? t };
+}
+
 /** Shared by the chat relays: answer the newest of the person's cards among `cards`. */
-export function answerTyped<C extends { userId: string }>(
+export function answerTyped<C extends { userId: string; options?: string[] }>(
   cards: Array<[string, C]>,
   userId: string,
   text: string,
-  decide: (approvalId: string, decision: ApprovalDecision) => void,
+  decide: (approvalId: string, decision: ApprovalDecision, answer?: string) => void,
 ): TypedAnswer {
-  const decision = parseApprovalReply(text);
-  if (!decision) return { handled: false };
   // Shared channels hold one conversation per person: someone else's "ok" or "no" is a
   // message to their own crew conversation, not an answer to this person's card.
   const mine = cards.filter(([, c]) => c.userId === userId);
   const newest = mine[mine.length - 1];
   if (!newest) return { handled: false };
+  const options = newest[1].options;
+  const reply = options ? parseQuestionReply(text, options) : null;
+  const decision = reply?.decision ?? parseApprovalReply(text);
+  if (!decision) return { handled: false };
   try {
-    decide(newest[0], decision);
+    decide(newest[0], decision, reply && "answer" in reply ? reply.answer : undefined);
   } catch {
     return { handled: true, reply: "This request is no longer waiting for an answer." };
   }
@@ -306,19 +332,83 @@ export function answerTyped<C extends { userId: string }>(
   return { handled: true, reply: null };
 }
 
-export function approvalButtons(approvalId: string, crewName: string): ApprovalButton[] {
+export function approvalButtons(
+  a: Pick<ApprovalDto, "id" | "crew" | "question" | "everyTime">,
+): ApprovalButton[] {
+  if (a.question) {
+    return [
+      ...a.question.options.map((o, i) => ({
+        actionId: approvalActionId(a.id, `o${i}`),
+        label: o.label.slice(0, 60),
+        decision: "allow" as const,
+      })),
+      { actionId: approvalActionId(a.id, "deny"), label: "Skip", decision: "deny" },
+    ];
+  }
+  if (a.everyTime) {
+    return [
+      { actionId: approvalActionId(a.id, "allow"), label: "Approve", decision: "allow" },
+      { actionId: approvalActionId(a.id, "deny"), label: "Decline", decision: "deny" },
+    ];
+  }
   return [
-    { actionId: approvalActionId(approvalId, "allow"), label: "Allow once", decision: "allow" },
+    { actionId: approvalActionId(a.id, "allow"), label: "Allow once", decision: "allow" },
     {
-      actionId: approvalActionId(approvalId, "always"),
-      label: `Always allow for ${crewName}`.slice(0, 60),
+      actionId: approvalActionId(a.id, "always"),
+      label: `Always allow for ${a.crew.name}`.slice(0, 60),
       decision: "always",
     },
-    { actionId: approvalActionId(approvalId, "deny"), label: "Deny", decision: "deny" },
+    { actionId: approvalActionId(a.id, "deny"), label: "Deny", decision: "deny" },
   ];
 }
 
-function outcomeLine(card: Card, decision: ApprovalDecision | "expired"): string {
+/** The card's heading: the request, or "<crew> asks: <question>". */
+export function cardTitle(a: Pick<ApprovalDto, "summary" | "crew" | "question">): string {
+  return a.question ? `❓ ${a.crew.name} asks: ${a.question.text}` : a.summary;
+}
+
+/** The card's body: the tool input, or the question's numbered choices. */
+export function cardDetail(a: Pick<ApprovalDto, "detail" | "question">): string {
+  if (!a.question) return a.detail;
+  return [
+    ...a.question.options.map((o, i) => `${i + 1}. ${o.label}${o.detail ? ` (${o.detail})` : ""}`),
+    "Tap one, or type your own answer.",
+  ].join("\n");
+}
+
+/** A button's action: allow/always/deny, or a question's answer by index. */
+export function parseAction(action: string): ApprovalDecision | { option: number } | null {
+  if (action === "allow" || action === "always" || action === "deny") return action;
+  const m = /^o(\d)$/.exec(action);
+  return m ? { option: Number(m[1]) } : null;
+}
+
+/** Answer a card from a click; throws when it is no longer waiting. */
+export function decideCard(
+  approvals: RelayApprovals,
+  card: { userId: string; options?: string[] },
+  approvalId: string,
+  action: ApprovalDecision | { option: number },
+): void {
+  if (typeof action === "string") {
+    approvals.decide(card.userId, approvalId, action);
+    return;
+  }
+  const answer = card.options?.[action.option];
+  if (answer === undefined) throw new Error("no such answer");
+  approvals.decide(card.userId, approvalId, "allow", answer);
+}
+
+export function outcomeText(
+  card: { userName: string; crewName: string; options?: string[] },
+  decision: ApprovalDecision | "expired",
+  answer?: string,
+): string {
+  if (card.options) {
+    if (decision === "expired") return "⌛ Nobody answered in time.";
+    if (decision === "deny") return `⏭️ ${card.userName} skipped this.`;
+    return `💬 ${card.userName}: ${oneLine(answer ?? "", 300)}`;
+  }
   return {
     allow: `✅ ${card.userName} allowed it once.`,
     always: `✅ ${card.userName} always allows this for ${card.crewName}.`,

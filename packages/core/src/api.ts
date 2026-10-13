@@ -304,7 +304,11 @@ export interface MessageDto {
   role: "user" | "assistant" | "system";
   content: string;
   author: MessageAuthor;
-  /** e.g. { handoff: { from, to, task } } for a delegated reply, { tools: [...] } summaries. */
+  /**
+   * e.g. { handoff: { from, to, task } } for a delegated reply, { tools: [...] } summaries, or
+   * { question: { crew, text, answer } } on the note left by an answered question (answer null
+   * when skipped or unanswered).
+   */
   meta: Record<string, unknown> | null;
   createdAt: string;
 }
@@ -470,7 +474,21 @@ export interface ApprovalDto {
   summary: string;
   /** The tool arguments, pretty-printed JSON, for "show details". */
   detail: string;
+  /**
+   * Set when a crew member asks the person something (`ask_person`) instead of asking to run a
+   * tool: the card shows the options as buttons. Answer with decision "allow" and `answer`
+   * (an option's label or the person's own words); "deny" skips the question.
+   */
+  question?: QuestionDto;
+  /** Asked every time (giving crew access, putting new crew to work): no "always allow". */
+  everyTime?: boolean;
   createdAt: string;
+}
+
+export interface QuestionDto {
+  text: string;
+  /** 2 to 6 choices, in the order the crew member gave them. */
+  options: Array<{ label: string; detail?: string }>;
 }
 /**
  * Consequential tool calls (shell, sending, publishing, deleting, pushing, installing) pause
@@ -478,7 +496,8 @@ export interface ApprovalDto {
  * `allow` list in crew.yaml so it is not asked again.
  *
  * GET /api/approvals → { approvals: ApprovalDto[] } (the caller's pending ones)
- * POST /api/approvals/:id { decision: ApprovalDecision } → { ok: true }
+ * POST /api/approvals/:id { decision: ApprovalDecision, answer?: string } → { ok: true }
+ *   (`answer` is required to answer a question with "allow")
  */
 
 export interface AuditEventDto {
@@ -1383,7 +1402,12 @@ export type ClientEvent =
   | { type: "send"; conversationId: string; text: string; attachments?: string[] | undefined }
   | { type: "abort"; conversationId: string }
   /** Answer an approval_request (phase 2). */
-  | { type: "approve"; approvalId: string; decision: ApprovalDecision };
+  | {
+      type: "approve";
+      approvalId: string;
+      decision: ApprovalDecision;
+      answer?: string | undefined;
+    };
 
 export type ServerEvent =
   | { type: "hello"; version: string; userId: string }
@@ -1424,7 +1448,13 @@ export type ServerEvent =
   /** A crew member wants to run a consequential tool; show a card with allow/deny/always. */
   | { type: "approval_request"; approval: ApprovalDto }
   /** Decided (here or on another tab); remove the card. */
-  | { type: "approval_resolved"; approvalId: string; decision: ApprovalDecision | "expired" }
+  | {
+      type: "approval_resolved";
+      approvalId: string;
+      decision: ApprovalDecision | "expired";
+      /** A question's answer, when it was answered. */
+      answer?: string;
+    }
   /** Skill list changed (created, approved, deleted); refetch /api/skills. */
   | { type: "skills_changed" }
   /** A watch run started or finished; failures should surface as a notice. */

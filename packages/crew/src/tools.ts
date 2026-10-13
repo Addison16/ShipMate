@@ -38,7 +38,7 @@ export interface EditSpec {
     | {
         model?: string | undefined;
         allowedTools?: string[] | undefined;
-        permissionMode?: "dontAsk" | "acceptEdits" | "plan" | undefined;
+        permissionMode?: "dontAsk" | "acceptEdits" | "plan" | "bypassPermissions" | undefined;
       }
     | undefined;
   tools?: string[] | undefined;
@@ -99,6 +99,19 @@ export interface CaptainHost {
   createWatch(spec: WatchSpec): Promise<{ id: string; name: string }>;
   /** Install a server from the MCP catalog and give it to crew members. */
   installMcp(id: string, crews: string[]): Promise<string>;
+  /**
+   * Add access to a crew member (the person approved it on a card first): MCP servers (installed
+   * from the catalog when needed), built-in tools, skills and Claude Code tools. Returns a summary.
+   */
+  equip(slug: string, grant: EquipSpec): Promise<string>;
+}
+
+/** What equip_crew_member adds; each list is added to what the crew member already has. */
+export interface EquipSpec {
+  mcp?: string[] | undefined;
+  tools?: string[] | undefined;
+  skills?: string[] | undefined;
+  claudeCodeTools?: string[] | undefined;
 }
 
 export interface WatchSpec {
@@ -323,7 +336,15 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
         ),
         cliAllowedTools: stringList("claude-code-cli only: tools it may use, e.g. Read, Edit"),
         cliPermissionMode: Type.Optional(
-          Type.Union([Type.Literal("dontAsk"), Type.Literal("acceptEdits"), Type.Literal("plan")]),
+          Type.Union(
+            [
+              Type.Literal("dontAsk"),
+              Type.Literal("acceptEdits"),
+              Type.Literal("plan"),
+              Type.Literal("bypassPermissions"),
+            ],
+            { description: "bypassPermissions allows every tool; only when the person asks" },
+          ),
         ),
         tools: stringList("replaces the built-in tool list; empty means all built-in tools"),
         mcp: stringList("replaces the MCP server list"),
@@ -415,6 +436,33 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
         if (!p.cron && !p.everyMinutes) throw new Error("give either cron or everyMinutes");
         const w = await host.createWatch(p);
         return text(`Created watch "${w.name}". It shows on the Watches page.`);
+      },
+    }),
+    defineTool({
+      name: "equip_crew_member",
+      label: "Equip crew member",
+      description:
+        "Give a crew member what they need for their job: MCP servers (installed from the catalog if needed), built-in tools, skills, and for crew on Claude Code the Claude Code tools they may use. Adds to what they have. The person approves it on a card first, so give a short reason. Use crew_settings first to see what they have.",
+      promptSnippet:
+        "equip_crew_member: give a crew member servers, tools or skills (the person approves)",
+      parameters: Type.Object({
+        slug: Type.String(),
+        reason: Type.String({
+          description: "one short line the person reads on the card: why they need it",
+        }),
+        mcp: stringList("MCP server ids to add, e.g. github, fetch, web-search"),
+        tools: stringList("built-in tools to add, e.g. read, bash"),
+        skills: stringList("skills to add"),
+        claudeCodeTools: stringList(
+          "claude-code-cli only: tools to allow without asking, e.g. Read, Edit, Bash, WebFetch",
+        ),
+      }),
+      async execute(_id, { slug, reason: _reason, ...grant }) {
+        requireManager();
+        if (!Object.values(grant).some((list) => list?.length)) {
+          throw new Error("name at least one thing to add");
+        }
+        return text(await host.equip(slug, grant));
       },
     }),
     defineTool({
@@ -514,6 +562,61 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
       async execute(_id, p, signal) {
         const reply = await host.delegate(p.crew, p.task, signal);
         return text(reply || "(no reply)");
+      },
+    }),
+  ];
+}
+
+/** What `ask_person` needs: show the question with answer buttons and wait for the answer. */
+export interface QuestionHost {
+  /** The person's answer, or null when they skip it or do not answer in time. */
+  ask(
+    question: { text: string; options: Array<{ label: string; detail?: string }> },
+    signal: AbortSignal | undefined,
+  ): Promise<string | null>;
+}
+
+/**
+ * Every crew member can ask the person a question with tap-to-answer choices, like the
+ * question cards in ChatGPT and Claude, and carry on with the answer in the same turn.
+ */
+export function questionTools(host: QuestionHost, personName: string): ToolDefinition[] {
+  return [
+    defineTool({
+      name: "ask_person",
+      label: `Ask ${personName}`,
+      description: `Ask ${personName} a question they answer by tapping a choice, when you need their decision or a missing detail to carry on: which option, which time, which project. Give 2 to 6 short choices; they can also type their own answer or skip. You wait for the answer and continue in this turn. Ask one question at a time, only when you cannot reasonably decide yourself.`,
+      promptSnippet: `ask_person: ask ${personName} a question with tap-to-answer choices`,
+      parameters: Type.Object({
+        question: Type.String({ description: "one short question" }),
+        options: Type.Array(
+          Type.Object({
+            label: Type.String({ description: "the answer as a few words, e.g. Saturday 10am" }),
+            detail: Type.Optional(
+              Type.String({ description: "a short line under it, when the label needs it" }),
+            ),
+          }),
+          { minItems: 2, maxItems: 6 },
+        ),
+      }),
+      executionMode: "sequential",
+      async execute(_id, p, signal) {
+        const options = p.options
+          .map((o) => ({
+            label: o.label.trim().slice(0, 80),
+            ...(o.detail?.trim() ? { detail: o.detail.trim().slice(0, 200) } : {}),
+          }))
+          .filter((o) => o.label);
+        if (options.length < 2) throw new Error("give at least two choices");
+        const answer = await host.ask(
+          { text: p.question.trim().slice(0, 500), options: options.slice(0, 6) },
+          signal,
+        );
+        return text(
+          answer === null
+            ? `${personName} skipped the question or did not answer. Use your best judgment, and say what you assumed.`
+            : `${personName} answered: ${answer}`,
+        );
       },
     }),
   ];

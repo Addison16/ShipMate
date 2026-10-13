@@ -9,8 +9,10 @@ export async function approvalRoutes(app: FastifyInstance, s: Services) {
   app.get("/api/approvals", async (req) => ({ approvals: s.approvals.list(req.user.id) }));
 
   app.post<{ Params: { id: string } }>("/api/approvals/:id", async (req) => {
-    const { decision } = z.object({ decision: DecisionSchema }).parse(req.body);
-    s.approvals.decide(req.user.id, req.params.id, decision);
+    const { decision, answer } = z
+      .object({ decision: DecisionSchema, answer: z.string().max(4000).optional() })
+      .parse(req.body);
+    s.approvals.decide(req.user.id, req.params.id, decision, answer);
     return { ok: true };
   });
 

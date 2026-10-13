@@ -5,8 +5,15 @@ export type ApprovalAnswer = "allow" | "deny" | "always";
 export type AuditDecision = "auto" | "approved" | "denied" | "blocked" | "always";
 
 export interface ApprovalHost {
-  /** Ask the person who started this turn; resolves when they decide (or it expires: deny). */
-  request(call: { toolName: string; input: Record<string, unknown> }): Promise<ApprovalAnswer>;
+  /**
+   * Ask the person who started this turn; resolves when they decide (or it expires: deny).
+   * `everyTime`: the card offers only Approve and Decline.
+   */
+  request(call: {
+    toolName: string;
+    input: Record<string, unknown>;
+    everyTime?: boolean;
+  }): Promise<ApprovalAnswer>;
   /** Record the call and how it was decided. */
   audit(call: { toolName: string; input: Record<string, unknown>; decision: AuditDecision }): void;
   /** Persist "always allow" for this crew member (adds the tool to crew.yaml `allow`). */
@@ -26,9 +33,31 @@ const SHIPMATE_CONSEQUENTIAL = new Set([
 ]);
 /**
  * Shipmate tools that always wait for the person, whatever the approval policy or allow list:
- * putting a new crew member to work is never left to a bot alone.
+ * putting a new crew member to work, or giving one more access, is never left to a bot alone.
  */
-const ALWAYS_ASK = new Set(["approve_crew_member"]);
+const ALWAYS_ASK = new Set(["approve_crew_member", "equip_crew_member", "install_mcp_server"]);
+/**
+ * edit_crew_member fields that change what a crew member may do; changing one always asks.
+ * `backend` counts: moving to Claude Code switches on its saved permission mode and tools.
+ */
+const ACCESS_FIELDS = [
+  "backend",
+  "tools",
+  "mcp",
+  "skills",
+  "allow",
+  "approval",
+  "neverFor",
+  "autoApproveSkills",
+  "cliAllowedTools",
+  "cliPermissionMode",
+];
+
+/** Whether this call waits for the person every time, whatever the policy and allow list. */
+export function asksEveryTime(toolName: string, input: Record<string, unknown>): boolean {
+  if (ALWAYS_ASK.has(toolName)) return true;
+  return toolName === "edit_crew_member" && ACCESS_FIELDS.some((k) => input[k] !== undefined);
+}
 
 /** MCP tool names that send, publish, buy, delete, push or otherwise act on the world. */
 const ACTING_VERB =
@@ -92,7 +121,7 @@ export async function gateToolCall(
     host.audit({ ...call, decision: "blocked" });
     return { block: true, reason: `${call.toolName} is never allowed for this crew member.` };
   }
-  const always = ALWAYS_ASK.has(call.toolName);
+  const always = asksEveryTime(call.toolName, call.input);
   const ask =
     always ||
     (approval === "ask" && isConsequential(call.toolName) && !matches([...allowed], call.toolName));
@@ -102,7 +131,7 @@ export async function gateToolCall(
   }
   // "Always allow" counts as a one-time yes for these.
   const answer = always
-    ? (await host.request(call)) === "deny"
+    ? (await host.request({ ...call, everyTime: true })) === "deny"
       ? "deny"
       : "allow"
     : await host.request(call);

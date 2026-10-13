@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gateToolCall, isConsequential, matches } from "./approval.js";
+import { asksEveryTime, gateToolCall, isConsequential, matches } from "./approval.js";
 
 describe("approval rules", () => {
   it("treats the shell, instance changes and acting MCP tools as consequential", () => {
@@ -70,5 +70,31 @@ describe("gateToolCall", () => {
     expect(allowed.size).toBe(0);
     expect(a.log.remembered).toEqual([]);
     expect(a.log.decisions).toEqual(["approved"]);
+  });
+
+  it("always asks before a crew member gets more access", async () => {
+    expect(asksEveryTime("equip_crew_member", { slug: "g", mcp: ["github"] })).toBe(true);
+    expect(asksEveryTime("install_mcp_server", { id: "todoist", crews: [] })).toBe(true);
+    expect(asksEveryTime("edit_crew_member", { slug: "g", mcp: ["github"] })).toBe(true);
+    expect(asksEveryTime("edit_crew_member", { slug: "g", cliPermissionMode: "plan" })).toBe(true);
+    expect(asksEveryTime("edit_crew_member", { slug: "g", backend: "claude-code-cli" })).toBe(true);
+    expect(asksEveryTime("edit_crew_member", { slug: "g", skills: ["x"] })).toBe(true);
+    expect(asksEveryTime("edit_crew_member", { slug: "g", role: "meals" })).toBe(false);
+    expect(asksEveryTime("remember", {})).toBe(false);
+
+    const requests: Array<{ everyTime?: boolean }> = [];
+    const a = host("allow");
+    await gateToolCall(
+      { approval: "auto", allowed: new Set(["equip_crew_member"]) },
+      {
+        ...a.host,
+        request: async (c) => {
+          requests.push(c);
+          return "allow";
+        },
+      },
+      { toolName: "equip_crew_member", input: { slug: "g", mcp: ["github"] } },
+    );
+    expect(requests).toMatchObject([{ toolName: "equip_crew_member", everyTime: true }]);
   });
 });

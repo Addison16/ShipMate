@@ -303,15 +303,21 @@ export class DiscordJsPort implements DiscordClientPort {
   }
 }
 
+/** Discord takes at most five buttons a row (a question can have six answers and Skip). */
 function rows(buttons: BotButton[] | undefined) {
-  if (!buttons?.length) return [];
-  return [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
-      buttons.map((b) =>
-        new ButtonBuilder().setCustomId(b.customId).setLabel(b.label).setStyle(STYLES[b.style]),
+  const out: ActionRowBuilder<ButtonBuilder>[] = [];
+  for (let i = 0; i < (buttons?.length ?? 0); i += 5) {
+    out.push(
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        (buttons ?? [])
+          .slice(i, i + 5)
+          .map((b) =>
+            new ButtonBuilder().setCustomId(b.customId).setLabel(b.label).setStyle(STYLES[b.style]),
+          ),
       ),
-    ),
-  ];
+    );
+  }
+  return out;
 }
 
 function closeReason(code: number): string | null {

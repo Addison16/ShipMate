@@ -42,9 +42,11 @@ export const ClaudeCliSettings = z.object({
   /**
    * `--permission-mode`. `dontAsk` (default) refuses every tool call not in allowedTools, since
    * nobody can answer the CLI's own prompts; `acceptEdits` also lets it edit files in its folder;
-   * `plan` keeps it read-only.
+   * `plan` keeps it read-only; `bypassPermissions` allows every tool without asking.
    */
-  permissionMode: z.enum(["dontAsk", "acceptEdits", "plan"]).default("dontAsk"),
+  permissionMode: z
+    .enum(["dontAsk", "acceptEdits", "plan", "bypassPermissions"])
+    .default("dontAsk"),
 });
 export type ClaudeCliSettings = z.infer<typeof ClaudeCliSettings>;
 

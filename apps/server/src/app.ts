@@ -67,7 +67,12 @@ const ClientEventSchema = z.discriminatedUnion("type", [
     attachments: z.array(z.string().uuid()).max(8).optional(),
   }),
   z.object({ type: z.literal("abort"), conversationId: z.string().uuid() }),
-  z.object({ type: z.literal("approve"), approvalId: z.string(), decision: DecisionSchema }),
+  z.object({
+    type: z.literal("approve"),
+    approvalId: z.string(),
+    decision: DecisionSchema,
+    answer: z.string().max(4000).optional(),
+  }),
 ]);
 
 export async function buildApp(
@@ -253,7 +258,7 @@ export async function buildApp(
         return;
       }
       if (event.type === "approve") {
-        services.approvals.decide(current.id, event.approvalId, event.decision);
+        services.approvals.decide(current.id, event.approvalId, event.decision, event.answer);
       } else if (event.type === "send") {
         await services.bridge.send(
           current,

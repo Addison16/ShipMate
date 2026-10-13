@@ -18,7 +18,13 @@ import {
   LinkedAccounts,
   outcomeText,
 } from "../chat/core.js";
-import { type ApprovalCard, ChatRelay, type ChatSink, type ChatTarget } from "../chat/relay.js";
+import {
+  type ApprovalButton,
+  type ApprovalCard,
+  ChatRelay,
+  type ChatSink,
+  type ChatTarget,
+} from "../chat/relay.js";
 import { splitMessage } from "../chat/split.js";
 import type { ApprovalService } from "../services/approvals.js";
 import type { CrewService } from "../services/crew.js";
@@ -380,16 +386,22 @@ export class TelegramService {
         await port.sendMessage(t.chatId, { html: `⚠️ ${escapeHtml(message)}` });
       },
       postApproval: async (t, card: ApprovalCard) => {
-        const [allow, always, deny] = card.buttons;
+        const button = (b: ApprovalButton) => ({ text: b.label, data: b.actionId });
+        const allow = card.buttons.find((b) => b.decision === "allow");
+        const always = card.buttons.find((b) => b.decision === "always");
+        const deny = card.buttons.find((b) => b.decision === "deny");
         const replyTo = quoteFor(t);
         const id = await port.sendMessage(t.chatId, {
-          html: `<b>${escapeHtml(card.summary)}</b>\n<pre>${escapeHtml(card.detail)}</pre>`,
-          buttons: [
-            [allow, deny]
-              .filter((b) => b !== undefined)
-              .map((b) => ({ text: b.label, data: b.actionId })),
-            always ? [{ text: always.label, data: always.actionId }] : [],
-          ].filter((row) => row.length > 0),
+          // A question's choices read as text, so no <pre> block around them.
+          html: card.question
+            ? `<b>${escapeHtml(card.summary)}</b>\n${escapeHtml(card.detail)}`
+            : `<b>${escapeHtml(card.summary)}</b>\n<pre>${escapeHtml(card.detail)}</pre>`,
+          buttons: card.question
+            ? card.buttons.map((b) => [button(b)])
+            : [
+                [allow, deny].filter((b) => b !== undefined).map(button),
+                always ? [button(always)] : [],
+              ].filter((row) => row.length > 0),
           ...(replyTo ? { replyTo } : {}),
         });
         return String(id);

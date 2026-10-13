@@ -1,5 +1,15 @@
-import type { ApprovalDecision, ServerEvent } from "@shipmate/core";
-import { answerTyped, type TypedAnswer } from "../chat/relay.js";
+import type { ApprovalDecision, ApprovalDto, ServerEvent } from "@shipmate/core";
+import {
+  answerTyped,
+  cardDetail,
+  cardTitle,
+  approvalButtons as chatButtons,
+  decideCard,
+  outcomeText,
+  parseAction,
+  type RelayApprovals,
+  type TypedAnswer,
+} from "../chat/relay.js";
 import type { BotButton, DiscordClientPort, DiscordEvent, DiscordWebhook } from "./port.js";
 import { DISCORD_LIMIT, splitMessage } from "./split.js";
 
@@ -25,9 +35,7 @@ export interface RelayLookup {
   userName(userId: string): Promise<string>;
 }
 
-export interface RelayApprovals {
-  decide(userId: string, approvalId: string, decision: ApprovalDecision): void;
-}
+export type { RelayApprovals };
 
 interface Card {
   conversationId: string;
@@ -37,6 +45,8 @@ interface Card {
   userName: string;
   summary: string;
   crewName: string;
+  /** A question's answers, in button order. */
+  options?: string[];
 }
 
 type ButtonEvent = Extract<DiscordEvent, { type: "button" }>;
@@ -108,16 +118,18 @@ export class DiscordRelay {
             channelId: t.channelId,
             userId,
             userName,
-            summary: oneLine(a.summary, 300),
+            summary: oneLine(cardTitle(a), 300),
             crewName: a.crew.name,
+            ...(a.question ? { options: a.question.options.map((o) => o.label) } : {}),
           };
-          const detail = a.detail.replaceAll("```", "ʼʼʼ");
+          const detail = cardDetail(a).replaceAll("```", "ʼʼʼ");
           const shown =
             detail.length > DETAIL_LIMIT ? `${detail.slice(0, DETAIL_LIMIT)}\n…` : detail;
+          const body = a.question ? shown : `\`\`\`json\n${shown}\n\`\`\``;
           const messageId = await this.port.sendBotMessage(t.channelId, {
-            content: `<@${t.discordUserId}> **${card.summary}**\n\`\`\`json\n${shown}\n\`\`\``,
+            content: `<@${t.discordUserId}> **${card.summary}**\n${body}`,
             mentionUserIds: [t.discordUserId],
-            buttons: approvalButtons(a.id, a.crew.name),
+            buttons: approvalButtons(a),
           });
           this.#cards.set(a.id, { ...card, messageId });
         });
@@ -132,7 +144,7 @@ export class DiscordRelay {
           const card = this.#cards.get(event.approvalId);
           if (!card) return;
           this.#cards.delete(event.approvalId);
-          await this.#showOutcome(card, event.decision);
+          await this.#showOutcome(card, event.decision, event.answer);
         });
         return;
       }
@@ -144,10 +156,9 @@ export class DiscordRelay {
   /** A click on an approval card. Only the person the request belongs to may answer it. */
   async button(event: ButtonEvent): Promise<void> {
     if (!event.customId.startsWith(BUTTON_PREFIX)) return;
-    const [approvalId, decision] = event.customId.slice(BUTTON_PREFIX.length).split(":");
-    if (!approvalId || (decision !== "allow" && decision !== "always" && decision !== "deny")) {
-      return;
-    }
+    const [approvalId, action] = event.customId.slice(BUTTON_PREFIX.length).split(":");
+    const parsed = approvalId && action ? parseAction(action) : null;
+    if (!approvalId || !parsed) return;
     const card = this.#cards.get(approvalId);
     if (!card) {
       await event.reply("This request is no longer waiting for an answer.");
@@ -159,7 +170,7 @@ export class DiscordRelay {
       return;
     }
     try {
-      this.approvals.decide(card.userId, approvalId, decision);
+      decideCard(this.approvals, card, approvalId, parsed);
     } catch {
       await event.reply("This request is no longer waiting for an answer.");
       return;
@@ -173,7 +184,7 @@ export class DiscordRelay {
       [...this.#cards.entries()].filter(([, c]) => c.channelId === channelId),
       userId,
       text,
-      (id, decision) => this.approvals.decide(userId, id, decision),
+      (id, decision, answer) => this.approvals.decide(userId, id, decision, answer),
     );
   }
 
@@ -206,13 +217,8 @@ export class DiscordRelay {
     }
   }
 
-  async #showOutcome(card: Card, decision: ApprovalDecision | "expired") {
-    const outcome = {
-      allow: `✅ ${card.userName} allowed it once.`,
-      always: `✅ ${card.userName} always allows this for ${card.crewName}.`,
-      deny: `⛔ ${card.userName} denied it.`,
-      expired: "⌛ Nobody answered in time, so it was denied.",
-    }[decision];
+  async #showOutcome(card: Card, decision: ApprovalDecision | "expired", answer?: string) {
+    const outcome = outcomeText(card, decision, answer);
     await this.port.editBotMessage(card.channelId, card.messageId, {
       content: `**${card.summary}**\n${outcome}`,
       mentionUserIds: [],
@@ -254,17 +260,24 @@ export class DiscordRelay {
   }
 }
 
-export function approvalButtons(approvalId: string, crewName: string): BotButton[] {
-  const id = (d: ApprovalDecision) => `${BUTTON_PREFIX}${approvalId}:${d}`;
-  return [
-    { customId: id("allow"), label: "Allow once", style: "success" },
-    {
-      customId: id("always"),
-      label: `Always allow for ${crewName}`.slice(0, 80),
-      style: "primary",
-    },
-    { customId: id("deny"), label: "Deny", style: "danger" },
-  ];
+/** The same buttons as the chat relays, as Discord components (custom ids under 100 chars). */
+export function approvalButtons(
+  a: Pick<ApprovalDto, "id" | "crew" | "question" | "everyTime">,
+): BotButton[] {
+  return chatButtons(a).map((b) => ({
+    // `ap:<id>:<action>` → `shipmate:approval:<id>:<action>`
+    customId: `${BUTTON_PREFIX}${b.actionId.slice(b.actionId.indexOf(":") + 1)}`,
+    label: b.label.slice(0, 80),
+    style: a.question
+      ? b.decision === "deny"
+        ? "secondary"
+        : "primary"
+      : b.decision === "allow"
+        ? "success"
+        : b.decision === "deny"
+          ? "danger"
+          : "primary",
+  }));
 }
 
 function oneLine(text: string, max: number): string {

@@ -90,7 +90,7 @@ function ClaudeCliStatusCard({
               <CopyField
                 label="Sign in"
                 value="docker exec -it shipmate claude"
-                hint="Use your container's name if it is not shipmate."
+                hint="Use your container's name if it is not shipmate. Type /login if it does not ask."
               />
             </div>
           )}

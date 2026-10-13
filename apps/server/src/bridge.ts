@@ -805,18 +805,30 @@ export class Bridge {
       const isCaptain = folder.manifest.captain && conv.kind === "bridge" && !options.consultFor;
       // A consult is a one-off answer without tools, like the pi Captain's consult session.
       const allowed = new Set(folder.manifest.allow);
+      // The crew member's installed MCP servers run inside the CLI, behind the same approvals.
+      const mcp = options.consultFor
+        ? { servers: {}, skipped: [] }
+        : await this.deps.mcp.serversFor(folder);
       const grant = options.consultFor
         ? undefined
-        : this.cliTools.open({
-            tools: this.#cliTools(user, folder, { captain: host, crew: crewHost }, isCaptain),
-            gate: (call) =>
-              gateToolCall({ approval: folder.manifest.approval, allowed }, approvals, call),
-          });
+        : this.cliTools.open(
+            {
+              tools: this.#cliTools(user, folder, { captain: host, crew: crewHost }, isCaptain),
+              gate: (call) =>
+                gateToolCall({ approval: folder.manifest.approval, allowed }, approvals, call),
+            },
+            mcp.servers,
+          );
       const context = options.consultFor
         ? [
             `## Answering the crew\n\nIn this session you only answer a question from ${options.consultFor.name}, who is mid-task. You cannot delegate or change the crew here; if the answer needs that, say so and ${user.displayName} or you can do it on the Bridge.`,
           ]
-        : await this.#crewContext(user, folder, isCaptain, grant !== undefined);
+        : [
+            ...(await this.#crewContext(user, folder, isCaptain, grant !== undefined)),
+            ...(mcp.skipped.length
+              ? [`MCP servers not started (missing setup): ${mcp.skipped.join(", ")}.`]
+              : []),
+          ];
       try {
         return await this.#cli.turn({
           user,
@@ -833,6 +845,7 @@ export class Bridge {
           emit: (event) => this.emit(user.id, event),
           record: (...args) => this.#recordUsage(run, ...args),
           ...(grant ? { mcpConfig: grant.mcpConfig } : {}),
+          ...(grant?.settingsJson ? { settingsJson: grant.settingsJson } : {}),
           context,
           oneOff: options.consultFor !== undefined,
         });

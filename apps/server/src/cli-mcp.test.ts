@@ -17,6 +17,72 @@ const tokenOf = (mcpConfig: string) =>
   String(JSON.parse(mcpConfig).mcpServers.shipmate.headers.Authorization).slice("Bearer ".length);
 
 describe("CliToolServer", () => {
+  it("runs installed MCP servers in the CLI behind the approval hook", async () => {
+    const s = new CliToolServer();
+    s.setBaseUrl("http://127.0.0.1:3000");
+    const asked: string[] = [];
+    const grant = s.open(
+      {
+        tools: [echo],
+        gate: async ({ toolName }) => {
+          asked.push(toolName);
+          return toolName.endsWith("send_gmail_message")
+            ? { block: true as const, reason: "The person declined this action." }
+            : undefined;
+        },
+      },
+      {
+        "google-workspace": {
+          command: "uvx",
+          args: ["workspace-mcp", "--single-user"],
+          env: { USER_GOOGLE_EMAIL: "me@example.com" },
+          exposure: "direct",
+        },
+        notion: { url: "https://mcp.notion.com/mcp", headers: { Authorization: "Bearer n" } },
+      } as never,
+    );
+    if (!grant) throw new Error("no grant");
+    const servers = JSON.parse(grant.mcpConfig).mcpServers;
+    expect(servers["google-workspace"]).toEqual({
+      type: "stdio",
+      command: "uvx",
+      args: ["workspace-mcp", "--single-user"],
+      env: { USER_GOOGLE_EMAIL: "me@example.com" },
+    });
+    expect(servers.notion).toEqual({
+      type: "http",
+      url: "https://mcp.notion.com/mcp",
+      headers: { Authorization: "Bearer n" },
+    });
+    const hook = JSON.parse(grant.settingsJson ?? "{}").hooks.PreToolUse[0];
+    expect(new RegExp(hook.matcher).test("mcp__google-workspace__list_calendars")).toBe(true);
+    expect(new RegExp(hook.matcher).test("mcp__shipmate__remember")).toBe(false);
+    expect(hook.hooks[0].command).toContain("http://127.0.0.1:3000/api/cli-mcp/gate");
+
+    const token = tokenOf(grant.mcpConfig);
+    const decision = (r: unknown) =>
+      (r as { hookSpecificOutput: { permissionDecision: string } }).hookSpecificOutput
+        .permissionDecision;
+    expect(
+      decision(await s.gate(token, { tool_name: "mcp__google-workspace__list_calendars" })),
+    ).toBe("allow");
+    expect(
+      decision(await s.gate(token, { tool_name: "mcp__google-workspace__send_gmail_message" })),
+    ).toBe("deny");
+    expect(asked).toEqual([
+      "mcp__google-workspace__list_calendars",
+      "mcp__google-workspace__send_gmail_message",
+    ]);
+    grant.revoke();
+    expect(decision(await s.gate(token, { tool_name: "mcp__google-workspace__x" }))).toBe("deny");
+  });
+
+  it("adds no hook when the crew member has no MCP servers", () => {
+    const s = new CliToolServer();
+    s.setBaseUrl("http://127.0.0.1:3000");
+    expect(s.open({ tools: [echo], gate: async () => undefined })?.settingsJson).toBeUndefined();
+  });
+
   it("serves nothing until the server listens", () => {
     const s = new CliToolServer();
     expect(s.open({ tools: [echo], gate: async () => undefined })).toBeUndefined();

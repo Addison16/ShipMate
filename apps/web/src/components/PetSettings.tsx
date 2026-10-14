@@ -9,22 +9,22 @@ import { href } from "../router.js";
 import { Button, Card, cx, ErrorText, focusRing, Muted, SelectField, TextField } from "./ui.js";
 
 const HINTS: Record<PetImageSource, string> = {
-  draw: "Simple, cute drawings. Works with any model.",
+  draw: "Simple pet drawings. Works with any model. No other pictures.",
   provider: "Uses a provider's key. Costs a few cents a picture with OpenAI.",
   custom: "Any server with an OpenAI-style images API, such as LocalAI.",
 };
 
-/** Settings → Photos and voice: where crew pet pictures come from. */
+/** Settings → Photos and voice: where pet pictures and `make_picture` pictures come from. */
 export function PetSettings() {
   const owner = useUser().role === "owner";
   const words = useThemeWords();
   if (!owner) {
     return (
       <Card>
-        <h2 className="mb-1 font-semibold">Pets</h2>
+        <h2 className="mb-1 font-semibold">Pictures and pets</h2>
         <Muted>
-          Each {words.crewMember} can have a pet that hangs out in chat. Ask {words.captain} to make
-          one; the owner picks where pictures come from here.
+          Ask {words.captain} for a pet, or ask anyone on the crew for a picture. The owner picks
+          where pictures come from here.
         </Muted>
       </Card>
     );
@@ -78,9 +78,9 @@ function PetSettingsForm({ captain }: { captain: string }) {
   const d = settings.data;
   return (
     <Card>
-      <h2 className="mb-1 font-semibold">Pets</h2>
+      <h2 className="mb-1 font-semibold">Pictures and pets</h2>
       <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-        Who makes the pictures when {captain} builds a pet. If a picture fails, {captain} draws it
+        Makes pets and any picture you ask the crew for. If a pet picture fails, {captain} draws it
         instead.
       </p>
       <ErrorText>{settings.error}</ErrorText>
@@ -181,7 +181,7 @@ function PetSettingsForm({ captain }: { captain: string }) {
                   onChange={(e) => setModel(e.target.value)}
                 />
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Pictures are asked for as an original sticker-style character on a plain
+                  Pet pictures are asked for as an original sticker-style character on a plain
                   background, which Shipmate clears. See{" "}
                   <a
                     className="text-accent-700 underline dark:text-accent-300"
@@ -189,8 +189,8 @@ function PetSettingsForm({ captain }: { captain: string }) {
                   >
                     Models and providers
                   </a>{" "}
-                  to add keys. A ChatGPT plan can't make pictures: OpenAI only allows its sign-in
-                  for chat.
+                  to add keys. A ChatGPT plan can't be used here, since OpenAI only allows its
+                  sign-in for chat. Crew on the Codex engine make pictures with the plan instead.
                 </p>
               </div>
             </details>

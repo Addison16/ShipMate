@@ -255,4 +255,39 @@ describe.skipIf(!db)("building a pet with the Captain", () => {
     // The white background was cleared.
     expect(decodePng(picture.rawPayload)?.data[3]).toBe(0);
   });
+
+  it("lets crew make a picture with the same image model, shown on the reply", async () => {
+    // With no image model, make_picture says how to set one up.
+    await api("PUT", "/api/pets/settings", { source: "draw" });
+    const results: string[] = [];
+    t.faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("make_picture", { description: "a lighthouse" })]),
+      (context) => {
+        results.push(JSON.stringify(context.messages.at(-1)));
+        return fauxAssistantMessage("I can't make pictures yet.");
+      },
+    ]);
+    await turn("draw a lighthouse", async () => {});
+    expect(results[0]).toContain("No image model is set up");
+
+    await api("PUT", "/api/pets/settings", { source: "custom", baseUrl: "http://images.local/v1" });
+    const before = painted;
+    t.faux.setResponses([
+      fauxAssistantMessage([
+        fauxToolCall("make_picture", { description: "a lighthouse at sunset, watercolor" }),
+      ]),
+      (context) => {
+        results.push(JSON.stringify(context.messages.at(-1)));
+        return fauxAssistantMessage("Here is your lighthouse.");
+      },
+    ]);
+    const { messages } = await turn("draw a lighthouse", async () => {});
+    expect(painted).toBe(before + 1);
+    expect(results[1]).toContain("The picture is shown on your reply");
+    const reply = messages.at(-1);
+    expect(reply.content).toBe("Here is your lighthouse.");
+    expect(reply.meta.attachments).toMatchObject([{ kind: "image" }]);
+    const file = await api("GET", `/api/attachments/${reply.meta.attachments[0].id}`);
+    expect(file.headers["content-type"]).toBe("image/png");
+  });
 });

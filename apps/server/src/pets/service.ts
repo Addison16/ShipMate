@@ -131,29 +131,42 @@ export class PetService {
 
   /** Make a picture of `look` with the configured image model. Throws a readable error. */
   async paint(look: string, signal?: AbortSignal): Promise<{ bytes: Uint8Array; ext: PetExt }> {
-    const c = await this.config();
-    const prompt = picturePrompt(look);
-    const timeout = AbortSignal.timeout(PAINT_TIMEOUT_MS);
-    const abort = signal ? AbortSignal.any([signal, timeout]) : timeout;
-    let bytes: Uint8Array;
-    if (c.source === "provider" || c.source === "custom") {
-      const { base, key } = await this.#endpoint(c);
-      bytes = await this.#paintWithImagesApi(base, key, c.model, prompt, abort);
-    } else {
-      throw new Error("no image model is set up");
-    }
+    const bytes = await this.#generate(picturePrompt(look), true, signal);
     if (isPng(bytes)) return { bytes: tidyPetPicture(bytes), ext: "png" };
     const ext = sniff(bytes);
     if (!ext) throw new Error("the image model sent something that is not a picture");
     return { bytes, ext };
   }
 
-  /** OpenAI-compatible POST /images/generations. */
+  /**
+   * Make any picture a crew member asks for (`make_picture`), with the same image model as
+   * pets. Throws a readable error.
+   */
+  async picture(prompt: string, signal?: AbortSignal): Promise<{ bytes: Uint8Array; ext: PetExt }> {
+    const bytes = await this.#generate(prompt, false, signal);
+    const ext = isPng(bytes) ? "png" : sniff(bytes);
+    if (!ext) throw new Error("the image model sent something that is not a picture");
+    return { bytes, ext };
+  }
+
+  async #generate(prompt: string, sticker: boolean, signal?: AbortSignal): Promise<Uint8Array> {
+    const c = await this.config();
+    if (c.source !== "provider" && c.source !== "custom") {
+      throw new Error("no image model is set up");
+    }
+    const timeout = AbortSignal.timeout(PAINT_TIMEOUT_MS);
+    const abort = signal ? AbortSignal.any([signal, timeout]) : timeout;
+    const { base, key } = await this.#endpoint(c);
+    return this.#paintWithImagesApi(base, key, c.model, prompt, sticker, abort);
+  }
+
+  /** OpenAI-compatible POST /images/generations. A sticker has a see-through background. */
   async #paintWithImagesApi(
     base: string,
     key: string | null,
     model: string,
     prompt: string,
+    sticker: boolean,
     signal: AbortSignal,
   ): Promise<Uint8Array> {
     const openai = base.startsWith(OPENAI_BASE);
@@ -163,11 +176,17 @@ export class PetService {
           prompt,
           n: 1,
           size: "1024x1024",
-          background: "transparent",
+          ...(sticker ? { background: "transparent" } : {}),
           output_format: "png",
           quality: "medium",
         }
-      : { ...(model ? { model } : {}), prompt, n: 1, size: "512x512", response_format: "b64_json" };
+      : {
+          ...(model ? { model } : {}),
+          prompt,
+          n: 1,
+          size: sticker ? "512x512" : "1024x1024",
+          response_format: "b64_json",
+        };
     const res = await this.#call(`${base}/images/generations`, key, signal, {
       method: "POST",
       headers: { "content-type": "application/json" },

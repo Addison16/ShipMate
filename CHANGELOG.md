@@ -6,6 +6,10 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Crew make pictures**: ask any crew member for a picture and it shows on the reply. It uses
+  the image model picked under Settings → Photos and voice → Pictures and pets (an OpenAI key or
+  a local image server such as LocalAI), the same one pets use. Crew on the Codex engine use
+  Codex's own image tool with your ChatGPT plan instead.
 - **Tidier Usage and cost page on phones**: Month and Show (Mine / Everyone) sit side by side
   and line up, money shows as cents ($0.00, not $0.0000), the subscription note is one line
   with "More details", and the chart buttons and table names no longer wrap.

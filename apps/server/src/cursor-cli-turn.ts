@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join } from "node:path";
+import { readFile, realpath } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { CURSOR_PROVIDER } from "@shipmate/core";
 import {
@@ -69,15 +69,30 @@ export async function cursorImageFile(
   index: number,
 ): Promise<{ name: string; data: Buffer } | null> {
   if (image.path) {
-    const path = isAbsolute(image.path) ? image.path : join(cwd, image.path);
-    const data = await readFile(path).catch(() => null);
-    if (data) return { name: basename(path), data };
+    // Shipmate reads it with its own rights, so only a file that really is inside the workspace.
+    const path = await insideFolder(
+      cwd,
+      isAbsolute(image.path) ? image.path : join(cwd, image.path),
+    );
+    const data = path ? await readFile(path).catch(() => null) : null;
+    if (path && data) return { name: basename(path), data };
   }
   if (image.data) {
     const data = Buffer.from(image.data, "base64");
     if (data.length) return { name: `cursor-image-${index + 1}.png`, data };
   }
   return null;
+}
+
+/** The real path of `path` when it (after links) sits inside `folder`, else null. */
+async function insideFolder(folder: string, path: string): Promise<string | null> {
+  const [root, real] = await Promise.all([
+    realpath(folder).catch(() => null),
+    realpath(path).catch(() => null),
+  ]);
+  if (!root || !real) return null;
+  const rel = relative(root, real);
+  return rel && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel) ? real : null;
 }
 
 /**

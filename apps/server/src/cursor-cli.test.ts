@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -224,7 +225,8 @@ describe("cursor-cli backend: manifest and runner", () => {
     expect(args).toContain("--approve-mcps");
     // Only "anything" runs every tool unasked.
     expect(args).not.toContain("--force");
-    expect(cursorCliArgs({ cwd: "/w", settings: { mode: "edit" } })).not.toContain("--force");
+    // Print mode writes nothing without --force; edit mode's deny rules still hold.
+    expect(cursorCliArgs({ cwd: "/w", settings: { mode: "edit" } })).toContain("--force");
     expect(cursorCliArgs({ cwd: "/w", settings: { mode: "anything" } })).toContain("--force");
     // Neither the token nor the prompt goes on the command line.
     expect(args.join(" ")).not.toContain("secret-token");
@@ -372,6 +374,13 @@ describe("cursor-cli backend: manifest and runner", () => {
     // Only the data, no file: still shown.
     const fromData = await cursorImageFile({ path: "gone.png", data: "aGk=" }, cwd, 1);
     expect(fromData).toEqual({ name: "cursor-image-2.png", data: Buffer.from("hi") });
+    // A file outside the workspace is never read, by path or through a link.
+    const outside = join(cwd, "..", "secret.png");
+    writeFileSync(outside, "secret");
+    symlinkSync(outside, join(cwd, "link.png"));
+    for (const path of [outside, "../secret.png", "link.png"]) {
+      expect(await cursorImageFile({ path, data: null }, cwd, 0)).toBeNull();
+    }
   });
 
   it("bills a plan login as subscription and an API key as API spend", () => {
@@ -506,7 +515,7 @@ describe.skipIf(!db)("cursor-cli backend through the Bridge", () => {
     const args = call?.args ?? [];
     expect(args[args.indexOf("--model") + 1]).toBe("gpt-5.5");
     expect(args).not.toContain("--resume");
-    expect(args).not.toContain("--force");
+    expect(args).toContain("--force"); // edit mode: needed to write files
     expect(call?.cli?.permissions.allow).toContain("Write(**)");
     expect(call?.cli?.permissions.deny).toContain("Shell(*)");
     // Other people's files are out of its reach.

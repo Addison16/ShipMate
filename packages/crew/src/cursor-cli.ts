@@ -131,7 +131,9 @@ export function cursorCliArgs(
   if (options.resume) args.push("--resume", options.resume);
   // The server is Shipmate's own, written by Shipmate; its approval gate decides on each call.
   if (options.mcp) args.push("--approve-mcps");
-  if ((options.settings?.mode ?? "read-only") === "anything") args.push("--force");
+  // Print mode writes no files without --force. Edit mode still denies the shell and .cursor/ by
+  // rule (deny beats --force), so only read-only leaves it off.
+  if ((options.settings?.mode ?? "read-only") !== "read-only") args.push("--force");
   return args;
 }
 
@@ -486,7 +488,8 @@ export class EventParser {
     if (phase !== "completed") return;
     if (kind === "generateImageToolCall") {
       const ok = obj(obj(obj(body).result).success);
-      const path = str(ok.filePath) || str(obj(obj(body).args).filePath);
+      // Only a picture the tool actually made: a failed call's requested path proves nothing.
+      const path = str(ok.filePath);
       const data = str(ok.imageData);
       if (path || data) this.images.push({ path: path || null, data: data || null });
     }

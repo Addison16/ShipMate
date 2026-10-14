@@ -15,6 +15,10 @@ SOCKET_DIR=/run/postgresql
 # The Codex CLI refuses to start when CODEX_HOME does not exist yet.
 if [ -n "$CODEX_HOME" ]; then mkdir -p "$CODEX_HOME"; fi
 
+# A Cursor CLI that install-cursor put in /data comes back on PATH after an image update.
+CURSOR_AGENT="${SHIPMATE_CURSOR_HOME:-/data/cursor}/cli/cursor-agent"
+if [ -x "$CURSOR_AGENT" ]; then ln -sf "$CURSOR_AGENT" /usr/local/bin/cursor-agent; fi
+
 if [ "$#" -eq 0 ] || [ "$*" = "node dist/main.js" ]; then
   set -- node dist/main.js
   server=1

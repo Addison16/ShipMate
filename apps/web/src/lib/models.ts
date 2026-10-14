@@ -27,6 +27,9 @@ export const CLAUDE_CODE_PROVIDER = "claude-code";
 /** The provider id Codex models use in crew.yaml (`codex/gpt-6.1-sol`). */
 export const CODEX_PROVIDER = "codex";
 
+/** The provider id Cursor models use in crew.yaml (`cursor/composer-2.5`). */
+export const CURSOR_PROVIDER = "cursor";
+
 const PROVIDER_LABELS: Record<string, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
@@ -38,6 +41,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   ollama: "Ollama (local)",
   [CLAUDE_CODE_PROVIDER]: "Claude subscription",
   [CODEX_PROVIDER]: "Codex (ChatGPT plan)",
+  [CURSOR_PROVIDER]: "Cursor (Cursor plan)",
 };
 
 /** A provider id as people read it. */
@@ -79,13 +83,16 @@ export function defaultModelStatus(
   models: ReadonlyArray<{ ref: string; name: string; available: boolean }>,
   claudeSignedIn: boolean,
   codexSignedIn = false,
+  cursorSignedIn = false,
 ): { usable: boolean; fallback: string | null } {
   const usable =
     providerOf(defaultModel) === CLAUDE_CODE_PROVIDER
       ? claudeSignedIn
       : providerOf(defaultModel) === CODEX_PROVIDER
         ? codexSignedIn
-        : models.some((m) => m.ref === defaultModel && m.available);
+        : providerOf(defaultModel) === CURSOR_PROVIDER
+          ? cursorSignedIn
+          : models.some((m) => m.ref === defaultModel && m.available);
   if (usable) return { usable, fallback: null };
   const provider = providerOf(defaultModel);
   const fallback =

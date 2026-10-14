@@ -208,6 +208,12 @@ export class CrewBundleService {
         `It runs on Codex${sandbox === "read-only" ? "" : ` and may ${sandbox === "workspace-write" ? "change files in its folder" : "run any command"}`}.`,
       );
     }
+    if (manifest.backend === "cursor-cli") {
+      const mode = manifest.cursor?.mode ?? "read-only";
+      warnings.push(
+        `It runs on Cursor${mode === "read-only" ? "" : ` and may ${mode === "edit" ? "change files in its folder" : "run any command"}`}.`,
+      );
+    }
     let flagged = redactSecrets(bundle.persona).count + redactSecrets(bundle.manifest).count;
     for (const s of bundle.skills) flagged += redactSecrets(s.content).count;
     if (flagged) {

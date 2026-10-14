@@ -7,7 +7,11 @@ import type {
   HealthStatus,
   ShipyardStatusDto,
 } from "@shipmate/core";
-import { CODEX_SIGN_IN_COMMAND } from "@shipmate/crew";
+import {
+  CODEX_SIGN_IN_COMMAND,
+  CURSOR_INSTALL_COMMAND,
+  CURSOR_SIGN_IN_COMMAND,
+} from "@shipmate/crew";
 import { buildMigrationLevel, type Db, databaseMigrationLevel } from "@shipmate/db";
 import { type ProviderRecord, probeModels, SELF_HOSTED_KINDS } from "@shipmate/providers";
 
@@ -33,6 +37,8 @@ export interface HealthDeps {
   claudeCli: () => Promise<{ used: boolean; installed: boolean; signedIn: boolean }>;
   /** The Codex CLI, checked only when a crew member runs on it. Optional for older callers. */
   codexCli?: () => Promise<{ used: boolean; installed: boolean; signedIn: boolean }>;
+  /** The Cursor CLI, checked only when a crew member runs on it. Optional for older callers. */
+  cursorCli?: () => Promise<{ used: boolean; installed: boolean; signedIn: boolean }>;
   bridges: Array<{
     id: string;
     name: string;
@@ -296,11 +302,13 @@ async function database(d: HealthDeps): Promise<Check[]> {
 
 async function providers(d: HealthDeps): Promise<Check[]> {
   const G = "Models";
-  const [records, chatgpt, cli, codex] = await Promise.all([
+  const unused = { used: false, installed: false, signedIn: false };
+  const [records, chatgpt, cli, codex, cursor] = await Promise.all([
     d.providers(),
     d.chatgpt(),
     d.claudeCli(),
-    d.codexCli?.() ?? { used: false, installed: false, signedIn: false },
+    d.codexCli?.() ?? unused,
+    d.cursorCli?.() ?? unused,
   ]);
   const out = await Promise.all(
     records.map(async (r): Promise<Check> => {
@@ -402,6 +410,24 @@ async function providers(d: HealthDeps): Promise<Check[]> {
             ? "Installed and signed in"
             : "Not signed in",
         `Crew use the Codex engine. Sign in with \`${CODEX_SIGN_IN_COMMAND}\`.`,
+      ),
+    );
+  }
+  if (cursor.used) {
+    out.push(
+      check(
+        "provider:cursor-cli",
+        G,
+        "Cursor CLI",
+        cursor.installed && cursor.signedIn ? "ok" : cursor.installed ? "warn" : "fail",
+        !cursor.installed
+          ? "Not installed"
+          : cursor.signedIn
+            ? "Installed and signed in"
+            : "Not signed in",
+        cursor.installed
+          ? `Crew use the Cursor engine. Sign in with \`${CURSOR_SIGN_IN_COMMAND}\`.`
+          : `Crew use the Cursor engine. Install it with \`${CURSOR_INSTALL_COMMAND}\`.`,
       ),
     );
   }

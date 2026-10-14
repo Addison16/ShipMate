@@ -5,12 +5,13 @@ export const claudeCliApi = {
   status: () => request<{ claudeCli: ClaudeCliStatusDto }>("GET", "/api/claude-cli"),
 };
 
-export type CrewBackendName = "pi" | "claude-code-cli" | "codex-cli";
+export type CrewBackendName = "pi" | "claude-code-cli" | "codex-cli" | "cursor-cli";
 
 export const BACKEND_LABEL: Record<CrewBackendName, string> = {
   pi: "Shipmate (pi) with the instance's providers",
   "claude-code-cli": "Claude subscription (Claude Code CLI)",
   "codex-cli": "ChatGPT plan (Codex CLI)",
+  "cursor-cli": "Cursor plan (Cursor CLI)",
 };
 
 const BACKEND_LINE = /^backend:[ \t]*["']?([A-Za-z0-9-]+)["']?[ \t]*(#.*)?$/m;
@@ -18,7 +19,7 @@ const BACKEND_LINE = /^backend:[ \t]*["']?([A-Za-z0-9-]+)["']?[ \t]*(#.*)?$/m;
 /** The `backend` of a crew.yaml (pi when absent). */
 export function readBackend(yaml: string): CrewBackendName {
   const b = BACKEND_LINE.exec(yaml)?.[1];
-  return b === "claude-code-cli" || b === "codex-cli" ? b : "pi";
+  return b === "claude-code-cli" || b === "codex-cli" || b === "cursor-cli" ? b : "pi";
 }
 
 /** crew.yaml with its top-level `backend` set, other lines untouched. */
@@ -60,14 +61,14 @@ export interface UsableModel {
 
 /**
  * Models usable with what is signed in or configured: the provider models the server reports as
- * available, plus the Claude Code models when the CLI is signed in and the Codex models when
- * Codex is. pi's full catalog (every
- * model of every provider it knows) is left out.
+ * available, plus the Claude Code models when the CLI is signed in and the Codex and Cursor
+ * models when those are. pi's full catalog (every model of every provider it knows) is left out.
  */
 export function usableModels(
   models: readonly { ref: string; name: string; provider: string; available: boolean }[],
   cliSignedIn: boolean,
   codex: readonly { ref: string; name: string }[] = [],
+  cursor: readonly { ref: string; name: string }[] = [],
 ): UsableModel[] {
   const out: UsableModel[] = models
     .filter((m) => m.available)
@@ -76,5 +77,6 @@ export function usableModels(
     out.push(...CLAUDE_CODE_MODELS.map((m) => ({ ...m, source: "claude-code" })));
   }
   out.push(...codex.map((m) => ({ ...m, source: "codex" })));
+  out.push(...cursor.map((m) => ({ ...m, source: "cursor" })));
   return out;
 }

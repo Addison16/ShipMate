@@ -34,8 +34,8 @@ Version 1.0. See [CHANGELOG.md](CHANGELOG.md) for what is in it and
 - **Users**: several logins on one instance (password or OIDC), with roles, usage tracked per
   person and monthly caps.
 - **Models**: API keys, self-hosted models (Ollama, vLLM, LM Studio, llama.cpp), your ChatGPT
-  plan via Sign in with ChatGPT or the official Codex CLI, and your Claude subscription via the
-  official Claude Code CLI.
+  plan via Sign in with ChatGPT or the official Codex CLI, your Claude subscription via the
+  official Claude Code CLI, and your Cursor plan via the official Cursor CLI.
   An optional bundled Ollama runs everything locally with no API key.
 - **Chat anywhere**: the web app (installable as a PWA on phone and desktop), Discord,
   Telegram and Slack.

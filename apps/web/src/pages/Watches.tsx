@@ -11,6 +11,7 @@ import type {
 } from "@shipmate/core";
 import { type FormEvent, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useThemeWords } from "../appearance.js";
 import { useApprovals } from "../approvals.js";
 import { isAdmin, useUser } from "../auth.js";
 import { ApprovalCard } from "../components/ApprovalCard.js";
@@ -239,6 +240,7 @@ function RunNow({ watch, onRun }: { watch: WatchDto; onRun?: (run: WatchRunDto) 
 }
 
 function WatchList() {
+  const words = useThemeWords();
   const projects = useGitHubProjects();
   const user = useUser();
   const watches = useWatches();
@@ -252,7 +254,7 @@ function WatchList() {
     <Page wide>
       <PageHeader
         icon="watches"
-        title="Watches"
+        title={words.watches}
         description="Jobs a crew member runs on a schedule, on a webhook, or after another watch finishes."
         actions={
           <Button variant="primary" onClick={() => navigate("/watches/new")}>

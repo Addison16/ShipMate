@@ -125,15 +125,34 @@ describe.skipIf(!db)("Shipmate server", () => {
 
   it("keeps appearance preferences per user", async () => {
     const before = (await api("GET", "/api/auth/me")).json().user;
-    expect(before.preferences).toEqual({ themeMode: "auto", colorTheme: "harbor" });
+    expect(before.preferences).toEqual({
+      themeMode: "auto",
+      colorTheme: "harbor",
+      style: "plain",
+      customTheme: null,
+    });
     expect(
       (await api("PATCH", "/api/auth/preferences", { themeMode: "dark" }, "")).statusCode,
     ).toBe(401);
     const res = await api("PATCH", "/api/auth/preferences", { themeMode: "dark" });
     expect(res.statusCode).toBe(200);
-    expect(res.json().user.preferences).toEqual({ themeMode: "dark", colorTheme: "harbor" });
-    const both = await api("PATCH", "/api/auth/preferences", { colorTheme: "coral-reef" });
-    expect(both.json().user.preferences).toEqual({ themeMode: "dark", colorTheme: "coral-reef" });
+    expect(res.json().user.preferences).toEqual({
+      themeMode: "dark",
+      colorTheme: "harbor",
+      style: "plain",
+      customTheme: null,
+    });
+    const both = await api("PATCH", "/api/auth/preferences", {
+      colorTheme: "coral-reef",
+      style: "plain",
+      customTheme: null,
+    });
+    expect(both.json().user.preferences).toEqual({
+      themeMode: "dark",
+      colorTheme: "coral-reef",
+      style: "plain",
+      customTheme: null,
+    });
     expect((await api("PATCH", "/api/auth/preferences", { colorTheme: "plaid" })).statusCode).toBe(
       400,
     );
@@ -145,7 +164,12 @@ describe.skipIf(!db)("Shipmate server", () => {
       "",
     );
     const kid = (await api("GET", "/api/auth/me", undefined, cookieOf(login))).json().user;
-    expect(kid.preferences).toEqual({ themeMode: "auto", colorTheme: "harbor" });
+    expect(kid.preferences).toEqual({
+      themeMode: "auto",
+      colorTheme: "harbor",
+      style: "plain",
+      customTheme: null,
+    });
   });
 
   it("stores provider keys encrypted and never returns them", async () => {
@@ -247,17 +271,28 @@ describe.skipIf(!db)("Shipmate server", () => {
     // Delegating to a crew member awaiting review fails inside the tool; approve and retry.
     expect((await api("POST", "/api/crew/galley/approve")).json().crew.status).toBe("active");
     events.length = 0;
+    let captainContext = "";
     t.faux.setResponses([
-      fauxAssistantMessage([
-        fauxText("Asking Galley."),
-        fauxToolCall("delegate", { crew: "galley", task: "Plan Tuesday dinner, vegetarian" }),
-      ]),
+      (context) => {
+        captainContext = JSON.stringify(context.messages);
+        return fauxAssistantMessage([
+          fauxText("Asking Galley."),
+          fauxToolCall("delegate", { crew: "galley", task: "Plan Tuesday dinner, vegetarian" }),
+        ]);
+      },
       fauxAssistantMessage("Tuesday: lentil curry."),
       fauxAssistantMessage("Galley suggests lentil curry."),
     ]);
     ws.send(JSON.stringify({ type: "send", conversationId: conv.id, text: "What's for Tuesday?" }));
     await waitIdle();
     ws.terminate();
+
+    // The Captain sees who is aboard, on which model at what price, and to delegate by default.
+    expect(captainContext).toMatch(
+      /galley: Galley, meal planning \(model faux\/m \(crew default\), /,
+    );
+    expect(captainContext).toContain("## Coordinating");
+    expect(captainContext).toContain("Then supervise");
 
     const handoff = events.find((e) => e.type === "handoff");
     expect(handoff).toMatchObject({ from: { slug: "captain" }, to: { slug: "galley" } });

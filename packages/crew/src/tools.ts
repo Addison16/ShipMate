@@ -1,4 +1,11 @@
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import {
+  THEME_BUILD_GUIDE,
+  THEME_CORNERS,
+  THEME_FONTS,
+  THEME_NEUTRALS,
+  THEME_WORDS,
+} from "@shipmate/core";
 import { Type } from "typebox";
 import type { MemoryStore } from "./memory.js";
 
@@ -14,6 +21,8 @@ export interface CrewSummary {
   name: string;
   role: string;
   model: string;
+  /** What the model costs in a few words (e.g. "$1 in / $5 out per million tokens"). */
+  price?: string | undefined;
   status: "active" | "pending_review" | "retired";
   captain: boolean;
 }
@@ -82,6 +91,8 @@ export interface HouseholdChanges {
  */
 export interface CaptainHost {
   listCrew(): Promise<CrewSummary[]>;
+  /** Models crew can run on right now, cheapest first, one per line with its price. */
+  listModels(): Promise<string>;
   recruit(spec: RecruitSpec): Promise<CrewSummary>;
   edit(slug: string, spec: EditSpec): Promise<CrewSummary>;
   /** A crew member's crew.yaml as text. */
@@ -259,7 +270,7 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
       .filter((c) => c.status !== "retired")
       .map(
         (c) =>
-          `- ${c.slug}: ${c.name}, ${c.role} (model ${c.model}${c.status === "pending_review" ? ", awaiting review" : ""}${c.captain ? ", you" : ""})`,
+          `- ${c.slug}: ${c.name}, ${c.role} (model ${c.model}${c.price ? `, ${c.price}` : ""}${c.status === "pending_review" ? ", awaiting review" : ""}${c.captain ? ", you" : ""})`,
       )
       .join("\n");
   const stringList = (description: string) =>
@@ -269,10 +280,21 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
     defineTool({
       name: "list_crew",
       label: "List crew",
-      description: "List the crew members aboard, with their roles and models.",
+      description: "List the crew members aboard, with their roles, models and what those cost.",
       parameters: Type.Object({}),
       async execute() {
         return text(roster(await host.listCrew()) || "No crew yet.");
+      },
+    }),
+    defineTool({
+      name: "list_models",
+      label: "List models",
+      description:
+        "List the models crew members can run on, cheapest first, with prices. Use it to pick the smallest model that does a crew member's job (for recruit_crew_member or edit_crew_member).",
+      promptSnippet: "list_models: the models crew can run on, cheapest first",
+      parameters: Type.Object({}),
+      async execute() {
+        return text((await host.listModels()) || "No models are set up yet.");
       },
     }),
     defineTool({
@@ -553,8 +575,9 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
       name: "delegate",
       label: "Delegate",
       description:
-        "Hand a task to a crew member and get their reply. The person sees the hand-off and the crew member's answer in the conversation, so do not repeat it at length; add only what they need next.",
-      promptSnippet: "delegate: hand a task to a crew member whose role fits",
+        "Hand a task to a crew member and get their reply. Prefer this to doing the work yourself whenever a crew member's role fits: they run on their own, usually cheaper, model and keep tool output out of your context. They remember earlier tasks in this conversation, so to correct their work, delegate to them again with specific notes. The person sees the hand-off and the crew member's answer, so do not repeat it at length; add only what they need next.",
+      promptSnippet:
+        "delegate: hand work to the crew member whose role fits (the default for anything beyond a quick answer)",
       parameters: Type.Object({
         crew: Type.String({ description: "the crew member's slug" }),
         task: Type.String({
@@ -565,7 +588,11 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
       executionMode: "sequential",
       async execute(_id, p, signal) {
         const reply = await host.delegate(p.crew, p.task, signal);
-        return text(reply || "(no reply)");
+        return text(
+          reply
+            ? `${reply}\n\n(Check this against what was asked. If it misses, delegate to ${p.crew} again with specific notes instead of redoing the work yourself.)`
+            : `(no reply) Ask ${p.crew} again with clearer instructions, or tell the person it did not work.`,
+        );
       },
     }),
   ];
@@ -681,6 +708,95 @@ export function crewTools(host: CrewHost, captainName: string): ToolDefinition[]
       async execute(_id, p, signal) {
         const answer = await host.askCaptain(p.question, signal);
         return text(answer || `(${captainName} gave no answer; use your best judgment and say so)`);
+      },
+    }),
+  ];
+}
+
+/** What the theme tools need: the instance's themes and the person's own pick. */
+export interface ThemeHost {
+  /** One line per saved theme, with ids. */
+  list(): Promise<string>;
+  /**
+   * Check and save a theme (replacing `id` when given), show its preview card in the
+   * conversation, and say what happened. Throws with every problem when the theme needs fixing.
+   */
+  save(theme: Record<string, unknown>, id: string | undefined): Promise<string>;
+  /** Switch the person to a theme, or back to the standard look with null. */
+  use(id: string | null): Promise<string>;
+}
+
+/**
+ * Building custom themes with the person (Settings > Appearance > Make a custom theme opens a
+ * chat for it). The Captain reads the build guide and follows it step by step.
+ */
+export function themeTools(host: ThemeHost): ToolDefinition[] {
+  return [
+    defineTool({
+      name: "theme_build_guide",
+      label: "Theme build guide",
+      description:
+        "Read this first whenever someone wants a custom theme (new look, logo, names or voice for the app). It gives the steps to follow, one by one.",
+      promptSnippet: "theme_build_guide: read this before building a custom theme with someone",
+      parameters: Type.Object({}),
+      async execute() {
+        return text(THEME_BUILD_GUIDE);
+      },
+    }),
+    defineTool({
+      name: "list_themes",
+      label: "List themes",
+      description: "List the custom themes saved on this Shipmate, with their ids.",
+      parameters: Type.Object({}),
+      async execute() {
+        return text(await host.list());
+      },
+    }),
+    defineTool({
+      name: "save_theme",
+      label: "Save theme",
+      description:
+        "Save a custom theme (step 8 of theme_build_guide) and show the person a preview card with a Try it button. It always saves: anything it cannot use is fixed or left out, and it tells you what. To change a saved theme, pass its id and the full theme again.",
+      parameters: Type.Object({
+        id: Type.Optional(Type.String({ description: "only when changing a saved theme" })),
+        name: Type.Optional(Type.String({ description: "the theme's name, 1 to 4 words" })),
+        description: Type.Optional(Type.String({ description: "one short line about it" })),
+        accent: Type.Optional(Type.String({ description: "the main color as hex, like #dc2626" })),
+        neutral: Type.Optional(
+          Type.String({ description: `one of: ${THEME_NEUTRALS.join(", ")}` }),
+        ),
+        font: Type.Optional(Type.String({ description: `one of: ${THEME_FONTS.join(", ")}` })),
+        corners: Type.Optional(Type.String({ description: `one of: ${THEME_CORNERS.join(", ")}` })),
+        logo: Type.Optional(
+          Type.String({
+            description: 'an SVG icon: <svg viewBox="0 0 64 64" fill="currentColor">...</svg>',
+          }),
+        ),
+        words: Type.Optional(
+          Type.Record(Type.String(), Type.String(), {
+            description: `names for: ${Object.keys(THEME_WORDS).join(", ")}`,
+          }),
+        ),
+        voice: Type.Optional(
+          Type.String({ description: "2 to 4 sentences on how the AI helpers talk in this theme" }),
+        ),
+      }),
+      executionMode: "sequential",
+      async execute(_id, { id, ...theme }) {
+        return text(await host.save(theme, id?.trim() || undefined));
+      },
+    }),
+    defineTool({
+      name: "use_theme",
+      label: "Use theme",
+      description:
+        'Switch the person you are talking with to a saved custom theme, or back to the standard Shipmate look with "default". Only for their own appearance.',
+      parameters: Type.Object({
+        id: Type.String({ description: 'a theme id from list_themes, or "default"' }),
+      }),
+      async execute(_id, p) {
+        const id = p.id.trim();
+        return text(await host.use(id === "default" || !id ? null : id));
       },
     }),
   ];

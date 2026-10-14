@@ -18,6 +18,7 @@ import type {
   CrewDto,
   CrewImportPreviewDto,
   CrewImportRequest,
+  CustomThemeDto,
   DiscordLinkCode,
   DiscordStatusDto,
   HealthDto,
@@ -392,6 +393,13 @@ export const api = {
     ),
   startFlow: (id: string, body: StartFlowRequest) =>
     request<{ conversationId: string }>("POST", `/api/shipyard/projects/${enc(id)}/flows`, body),
+  listThemes: () => request<{ themes: CustomThemeDto[] }>("GET", "/api/themes"),
+  getTheme: (id: string) => request<{ theme: CustomThemeDto }>("GET", `/api/themes/${enc(id)}`),
+  /** Import a theme file; the server checks it and says what to fix. */
+  importTheme: (file: unknown) => request<{ theme: CustomThemeDto }>("POST", "/api/themes", file),
+  deleteTheme: (id: string) => request<Ok>("DELETE", `/api/themes/${enc(id)}`),
+  themeFileUrl: (id: string) => `/api/themes/${enc(id)}/file`,
+
   createProjectConversation: (id: string) =>
     request<{ conversation: ConversationDto }>(
       "POST",

@@ -116,17 +116,18 @@
   --color-accent-950: oklch(25.7% 0.09 281.288);
 }
 
+/* The page follows the slate scale, which a custom theme can tint (see themePaint). */
 :root {
   color-scheme: light;
-  background-color: #f8fafc;
-  color: #0f172a;
+  background-color: var(--color-slate-50, #f8fafc);
+  color: var(--color-slate-900, #0f172a);
 }
 
 :root.dark {
   --color-control: oklch(57% 0.04 257);
   color-scheme: dark;
-  background-color: #020617;
-  color: #f1f5f9;
+  background-color: var(--color-slate-950, #020617);
+  color: var(--color-slate-100, #f1f5f9);
 }
 
 /*

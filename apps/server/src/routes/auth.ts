@@ -78,11 +78,16 @@ export async function authRoutes(app: FastifyInstance, s: Services) {
       .object({
         themeMode: ThemeMode.optional(),
         colorTheme: ColorTheme.optional(),
+        customTheme: z.string().uuid().nullable().optional(),
+        style: z.enum(["plain", "nautical"]).optional(),
         welcome: z.literal("done").optional(),
       })
       .strict()
       .parse(req.body);
     const { welcome, ...appearance } = body;
+    if (appearance.customTheme && !(await s.themes.exists(appearance.customTheme))) {
+      throw new HttpError(404, "that theme was deleted");
+    }
     // Keep keys beside the appearance ones (the pending welcome) unless this request closes them.
     const stored = req.user.preferences;
     const raw = stored && typeof stored === "object" ? (stored as Record<string, unknown>) : {};

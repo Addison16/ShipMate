@@ -1,8 +1,15 @@
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import { useUpdateAppearance } from "../appearance.js";
+import { useThemeWords, useUpdateAppearance } from "../appearance.js";
 import { ApprovalsProvider } from "../approvals.js";
 import { isAdmin, useAuth, useUser } from "../auth.js";
-import { activeNavId, canSee, MAIN_NAV, SETTINGS_HOME, settingsSectionFor } from "../lib/nav.js";
+import {
+  activeNavId,
+  canSee,
+  MAIN_NAV,
+  SETTINGS_HOME,
+  settingsSectionFor,
+  withWords,
+} from "../lib/nav.js";
 import { THEME_MODES } from "../lib/theme.js";
 import { AuditPage } from "../pages/Audit.js";
 import { BridgePage } from "../pages/Bridge.js";
@@ -23,7 +30,7 @@ import { href, navigate, useRoute } from "../router.js";
 import { socket, useSocketState } from "../ws.js";
 import { ApprovalTray } from "./ApprovalTray.js";
 import { NavIcon } from "./icons.js";
-import { Logo } from "./Logo.js";
+import { BrandLogo } from "./Logo.js";
 import { QuickJump, QuickJumpButton, useQuickJumpShortcut } from "./QuickJump.js";
 import { SettingsLayout } from "./SettingsLayout.js";
 import { Toasts } from "./Toasts.js";
@@ -53,7 +60,11 @@ function SocketDot() {
 
 function NavLinks({ current, onNavigate }: { current: string; onNavigate?: () => void }) {
   const user = useUser();
-  const items = [...MAIN_NAV.filter((n) => canSee(user, n.access)), SETTINGS_HOME];
+  const words = useThemeWords();
+  const items = [
+    ...MAIN_NAV.filter((n) => canSee(user, n.access)).map((n) => withWords(n, words)),
+    SETTINGS_HOME,
+  ];
   return (
     <ul className="space-y-0.5">
       {items.map((n) => {
@@ -170,6 +181,7 @@ function UserBox() {
 }
 
 function Brand() {
+  const words = useThemeWords();
   return (
     <a
       href={href("/bridge")}
@@ -179,9 +191,9 @@ function Brand() {
       )}
     >
       <span className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-accent-500 to-accent-700 text-white shadow-sm shadow-accent-900/20 transition-transform duration-300 ease-out hover:rotate-12">
-        <Logo size={20} />
+        <BrandLogo size={20} />
       </span>
-      <span className="text-[17px] font-semibold tracking-tight">Shipmate</span>
+      <span className="truncate text-[17px] font-semibold tracking-tight">{words.appName}</span>
     </a>
   );
 }
@@ -382,16 +394,18 @@ export function Shell() {
 /** Bottom tabs on narrow screens for the everyday places; Settings stays in the menu. */
 function TabBar({ current }: { current: string }) {
   const user = useUser();
+  const words = useThemeWords();
   return (
     <nav
       aria-label="Quick"
       className="shrink-0 border-t border-slate-200 bg-white pb-[max(var(--safe-bottom),0.25rem)] md:hidden dark:border-slate-800 dark:bg-slate-900"
     >
       <ul className="flex">
-        {MAIN_NAV.filter((n) => canSee(user, n.access)).map((n) => {
+        {MAIN_NAV.filter((n) => canSee(user, n.access)).map((stock) => {
+          const n = withWords(stock, words);
           const active = current === n.id;
           return (
-            <li key={n.id} className="flex-1">
+            <li key={n.id} className="min-w-0 flex-1">
               <a
                 href={href(n.path)}
                 aria-current={active ? "page" : undefined}
@@ -411,7 +425,7 @@ function TabBar({ current }: { current: string }) {
                 >
                   <NavIcon name={n.icon} size={20} />
                 </span>
-                {n.label}
+                <span className="max-w-full truncate px-1">{n.label}</span>
               </a>
             </li>
           );
@@ -422,11 +436,12 @@ function TabBar({ current }: { current: string }) {
 }
 
 function NotFound() {
+  const words = useThemeWords();
   return (
     <div className="p-8 text-sm text-slate-500">
       Nothing here.{" "}
       <a className="text-accent-700 underline dark:text-accent-300" href={href("/bridge")}>
-        Back to the Bridge
+        Back to the {words.bridge}
       </a>
     </div>
   );

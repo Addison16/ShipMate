@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import { api } from "../api.js";
+import { useThemeWords } from "../appearance.js";
 import { useUser } from "../auth.js";
 import {
   canSee,
@@ -14,6 +15,7 @@ import {
   SETTINGS_HOME,
   searchDestinations,
   visibleSections,
+  withWords,
 } from "../lib/nav.js";
 import { navigate } from "../router.js";
 import { NavIcon } from "./icons.js";
@@ -76,6 +78,7 @@ export function QuickJumpButton({ onOpen }: { onOpen: () => void }) {
 /** Jump to any page, settings screen or crew member by typing a few letters. */
 export function QuickJump({ onClose }: { onClose: () => void }) {
   const user = useUser();
+  const words = useThemeWords();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [crew, setCrew] = useState<Result[]>([]);
@@ -110,12 +113,15 @@ export function QuickJump({ onClose }: { onClose: () => void }) {
 
   const all = useMemo<Result[]>(
     () => [
-      ...MAIN_NAV.filter((d) => canSee(user, d.access)).map((d) => ({ ...d, where: "Page" })),
+      ...MAIN_NAV.filter((d) => canSee(user, d.access)).map((d) => ({
+        ...withWords(d, words),
+        where: "Page",
+      })),
       { ...SETTINGS_HOME, where: "Page" },
       ...visibleSections(user).map((s) => ({ ...s, where: `Settings · ${s.group}` })),
       ...crew,
     ],
-    [user, crew],
+    [user, crew, words],
   );
   const results = useMemo(() => searchDestinations(all, query).slice(0, 12), [all, query]);
 

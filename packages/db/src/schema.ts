@@ -513,3 +513,19 @@ export const attachments = pgTable(
   },
   (t) => [index("attachments_conversation_idx").on(t.conversationId)],
 );
+
+// ---------- custom themes ----------
+
+/**
+ * Custom themes (colors, logo, words, crew voice) built with the Captain or imported from a
+ * file. Everyone on the instance can use any of them; people pick one in their preferences.
+ */
+export const themes = pgTable("themes", {
+  id: id(),
+  name: text("name").notNull(),
+  /** CustomThemeSpec from @shipmate/core, checked before it is stored. */
+  spec: jsonb("spec").notNull(),
+  createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

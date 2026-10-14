@@ -6,6 +6,7 @@ import {
   CLAUDE_CODE_PROVIDER,
   CODEX_PROVIDER,
   CREW_DEFAULT,
+  CURSOR_PROVIDER,
   groupByProvider,
   type ModelChoice,
   providerLabel,
@@ -30,6 +31,7 @@ export function ModelSelect({
   crewDefault,
   claudeCode,
   codexModels,
+  cursorModels,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -43,6 +45,8 @@ export function ModelSelect({
   claudeCode?: boolean;
   /** Codex models to offer (`codex/<id>`), when Codex is signed in. */
   codexModels?: ReadonlyArray<ModelChoice>;
+  /** Cursor models to offer (`cursor/<slug>`), when Cursor is signed in. */
+  cursorModels?: ReadonlyArray<ModelChoice>;
 }) {
   const groups = groupByProvider(
     (models ?? [])
@@ -51,6 +55,7 @@ export function ModelSelect({
   );
   if (claudeCode) groups.set(CLAUDE_CODE_PROVIDER, [...CLAUDE_CODE_MODELS]);
   if (codexModels?.length) groups.set(CODEX_PROVIDER, [...codexModels]);
+  if (cursorModels?.length) groups.set(CURSOR_PROVIDER, [...cursorModels]);
   const offerDefault = crewDefault !== undefined;
   const valueProvider = value === CREW_DEFAULT ? CREW_DEFAULT : providerOf(value);
   // A saved model nothing can run any more still shows, marked.

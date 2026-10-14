@@ -19,6 +19,7 @@ import { claudeCliRoutes } from "./routes/claude-cli.js";
 import { codexCliRoutes } from "./routes/codex-cli.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { crewRoutes } from "./routes/crew.js";
+import { cursorCliRoutes } from "./routes/cursor-cli.js";
 import { discordRoutes } from "./routes/discord.js";
 import { fileRoutes } from "./routes/files.js";
 import { healthRoutes } from "./routes/health.js";
@@ -210,6 +211,7 @@ export async function buildApp(
   await backupRoutes(app, services);
   await claudeCliRoutes(app, services);
   await codexCliRoutes(app, services);
+  await cursorCliRoutes(app, services);
   await cliMcpRoutes(app, services.bridge.cliTools);
   await pushRoutes(app, services);
   await fileRoutes(app, services);

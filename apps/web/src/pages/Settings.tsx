@@ -26,6 +26,7 @@ import {
 import { VoiceSettings } from "../components/VoiceSettings.js";
 import { claudeCliApi } from "../lib/claude-cli.js";
 import { codexChoices, codexCliApi } from "../lib/codex-cli.js";
+import { cursorChoices, cursorCliApi } from "../lib/cursor-cli.js";
 import {
   CLAUDE_CODE_PROVIDER,
   CREW_DEFAULT,
@@ -215,6 +216,8 @@ function InstanceSettings() {
   const claudeSignedIn = !!cli.data?.signedIn;
   const codex = useResource(() => codexCliApi.status().then((r) => r.codexCli));
   const codexModels = codexChoices(codex.data);
+  const cursor = useResource(() => cursorCliApi.status().then((r) => r.cursorCli));
+  const cursorModels = cursorChoices(cursor.data);
   const crew = useResource(() => api.listCrew().then((r) => r.crew));
   const ownModel = (crew.data ?? []).filter((c) => c.backend === "pi" && c.model !== CREW_DEFAULT);
   const [moving, setMoving] = useState(false);
@@ -276,14 +279,16 @@ function InstanceSettings() {
             disabled={!owner}
             claudeCode={claudeSignedIn || providerOf(defaultModel) === CLAUDE_CODE_PROVIDER}
             codexModels={codexModels}
+            cursorModels={cursorModels}
           />
-          {models.data && !cli.loading && !codex.loading && (
+          {models.data && !cli.loading && !codex.loading && !cursor.loading && (
             <DefaultModelNotice
               status={defaultModelStatus(
                 defaultModel,
                 models.data,
                 claudeSignedIn,
                 codexModels.length > 0,
+                cursorModels.length > 0,
               )}
               claudeSignedIn={claudeSignedIn}
               saved={defaultModel === settings.data.defaultModel}

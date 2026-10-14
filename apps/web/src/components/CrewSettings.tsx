@@ -17,6 +17,8 @@ import {
   CLI_TOOL_GROUPS,
   CODEX_SANDBOXES,
   type CodexSandbox,
+  CURSOR_MODES,
+  type CursorMode,
   cleanList,
   type Engine,
   engineFor,
@@ -29,7 +31,12 @@ import {
   setToolGroup,
   switchEngine,
 } from "../lib/crew-manifest.js";
-import { CLAUDE_CODE_PROVIDER, CODEX_PROVIDER, providerOf } from "../lib/models.js";
+import {
+  CLAUDE_CODE_PROVIDER,
+  CODEX_PROVIDER,
+  CURSOR_PROVIDER,
+  providerOf,
+} from "../lib/models.js";
 import { useResource } from "../lib/useResource.js";
 import { ModelSelect } from "./ModelSelect.js";
 import {
@@ -58,6 +65,7 @@ export function CrewSettings({
   crewDefault,
   claudeCode,
   codexModels = [],
+  cursorModels = [],
   readOnly,
   onSaved,
 }: {
@@ -69,6 +77,8 @@ export function CrewSettings({
   claudeCode: boolean;
   /** Codex models to offer; empty while Codex is not signed in. */
   codexModels?: ReadonlyArray<{ ref: string; name: string }>;
+  /** Cursor models to offer; empty while Cursor is not signed in. */
+  cursorModels?: ReadonlyArray<{ ref: string; name: string }>;
   readOnly: boolean;
   onSaved: (crew: CrewDetailDto) => void;
 }) {
@@ -192,6 +202,7 @@ export function CrewSettings({
           crewDefault={crewDefault}
           claudeCode={claudeCode}
           codexModels={codexModels}
+          cursorModels={cursorModels}
           readOnly={readOnly}
           patch={patch}
         />
@@ -258,6 +269,7 @@ function ManifestFields({
   crewDefault,
   claudeCode,
   codexModels,
+  cursorModels,
   readOnly,
   patch,
 }: {
@@ -267,6 +279,7 @@ function ManifestFields({
   crewDefault: string;
   claudeCode: boolean;
   codexModels: ReadonlyArray<{ ref: string; name: string }>;
+  cursorModels: ReadonlyArray<{ ref: string; name: string }>;
   readOnly: boolean;
   patch: (p: Partial<ManifestForm>) => void;
 }) {
@@ -275,9 +288,17 @@ function ManifestFields({
   const cli = form.backend === "claude-code-cli";
   const codex = form.backend === "codex-cli";
   const codexReady = codexModels.length > 0;
+  const cursor = form.backend === "cursor-cli";
+  const cursorReady = cursorModels.length > 0;
   // On a CLI engine, a model from elsewhere means "the CLI's own default": show its provider
   // with no model picked yet.
-  const engineProvider = cli ? CLAUDE_CODE_PROVIDER : codex ? CODEX_PROVIDER : null;
+  const engineProvider = cli
+    ? CLAUDE_CODE_PROVIDER
+    : codex
+      ? CODEX_PROVIDER
+      : cursor
+        ? CURSOR_PROVIDER
+        : null;
 
   const builtin = new Set(BUILTIN_TOOLS.map((t) => t.id));
   const otherTools = form.tools.filter((t) => !builtin.has(t));
@@ -344,8 +365,8 @@ function ManifestFields({
           value={form.backend}
           onChange={(e) => patch(switchEngine(form, e.target.value as Engine))}
           hint={
-            (!claudeCode && !cli) || (!codexReady && !codex)
-              ? "To use Claude Code or Codex, sign in to it on the Providers page first."
+            (!claudeCode && !cli) || (!codexReady && !codex) || (!cursorReady && !cursor)
+              ? "To use Claude Code, Codex or Cursor, sign in to it on the Providers page first."
               : undefined
           }
         >
@@ -355,6 +376,9 @@ function ManifestFields({
           </option>
           <option value="codex-cli" disabled={!codexReady && !codex}>
             Codex (your ChatGPT plan)
+          </option>
+          <option value="cursor-cli" disabled={!cursorReady && !cursor}>
+            Cursor (your Cursor plan)
           </option>
         </SelectField>
         <ModelSelect
@@ -373,13 +397,16 @@ function ManifestFields({
           crewDefault={crewDefault}
           claudeCode={claudeCode || cli}
           codexModels={codexModels}
+          cursorModels={cursorModels}
           disabled={readOnly}
           hint={
             cli
               ? "Runs on your Claude subscription through Claude Code. Shipmate's approval rules below do not apply; the Claude Code settings decide which tools it may use. Not available in Shipyard projects."
               : codex
                 ? "Runs on your ChatGPT plan through Codex. Not available in Shipyard projects."
-                : "Crew default follows the model picked in Settings. Pick a provider and model to give this crew member its own."
+                : cursor
+                  ? "Runs on your Cursor plan through Cursor. Not available in Shipyard projects."
+                  : "Crew default follows the model picked in Settings. Pick a provider and model to give this crew member its own."
           }
         />
         {codex && (
@@ -400,6 +427,30 @@ function ManifestFields({
             }
           >
             {CODEX_SANDBOXES.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </SelectField>
+        )}
+        {cursor && (
+          <SelectField
+            label="What Cursor may do"
+            disabled={readOnly}
+            value={form.cursorMode}
+            onChange={(e) => patch({ cursorMode: e.target.value as CursorMode })}
+            hint={
+              <span
+                className={cx(
+                  form.cursorMode === "anything" &&
+                    "font-medium text-amber-800 dark:text-amber-200",
+                )}
+              >
+                {CURSOR_MODES.find((m) => m.id === form.cursorMode)?.hint}
+              </span>
+            }
+          >
+            {CURSOR_MODES.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.label}
               </option>
@@ -484,7 +535,7 @@ function ManifestFields({
       <Section
         title="Tools"
         description={
-          cli || codex
+          cli || codex || cursor
             ? "Used when this crew member runs on Shipmate (pi)."
             : "Shipmate's own tools and its MCP servers are always added."
         }

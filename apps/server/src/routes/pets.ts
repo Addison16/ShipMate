@@ -15,7 +15,7 @@ export async function petRoutes(app: FastifyInstance, s: Services) {
     requireRole(req.user, "owner");
     const body = z
       .object({
-        source: z.enum(["draw", "chatgpt", "provider", "custom"]).optional(),
+        source: z.enum(["draw", "provider", "custom"]).optional(),
         providerId: z.string().uuid().nullable().optional(),
         baseUrl: z.string().max(500).nullable().optional(),
         model: z.string().trim().max(200).optional(),

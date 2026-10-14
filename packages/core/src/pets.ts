@@ -24,25 +24,23 @@ export interface PetPreviewMeta {
 /**
  * Where pet pictures come from:
  * - draw: the Captain draws an SVG itself (always works, no image model needed);
- * - chatgpt: the signed-in ChatGPT plan, through OpenAI's public Responses API (only works when
- *   OpenAI allows pictures for that sign-in; otherwise the Captain draws instead);
  * - provider: a configured OpenAI or OpenAI-compatible provider's /images endpoint and key;
  * - custom: any OpenAI-compatible image server (e.g. a local one) at baseUrl.
+ * There is no ChatGPT-plan option: OpenAI documents Sign in with ChatGPT for chat only, and
+ * Shipmate only uses subscriptions in documented ways.
  */
-export type PetImageSource = "draw" | "chatgpt" | "provider" | "custom";
+export type PetImageSource = "draw" | "provider" | "custom";
 
 /** GET /api/pets/settings (owner) → PetSettingsDto. Keys are never returned. */
 export interface PetSettingsDto {
   source: PetImageSource;
   providerId: string | null;
   baseUrl: string | null;
-  /** Image (or, for chatgpt, chat) model; "" picks a sensible one. */
+  /** Image model; "" picks a sensible one. */
   model: string;
   hasKey: boolean;
   /** Providers whose key can be reused for pictures. */
   providers: Array<{ id: string; label: string; kind: string }>;
-  /** Whether someone is signed in with ChatGPT on the Providers page. */
-  chatgptSignedIn: boolean;
 }
 
 /**

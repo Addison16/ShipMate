@@ -32,11 +32,14 @@ Owners pick this under **Settings → Photos and voice → Crew pets**:
 | Choice | What happens |
 | --- | --- |
 | The Captain draws them (default) | The chat model draws the pet as a simple SVG. No setup, works with any model. |
-| ChatGPT plan | Asks OpenAI's public Responses API for a picture with your Sign in with ChatGPT login. OpenAI documents that sign-in for chat, not pictures, so this only works if OpenAI allows it for your plan. If it refuses, the Captain draws the pet instead. Shipmate never calls ChatGPT's private endpoints. |
 | A provider | Uses an OpenAI or OpenAI-compatible provider's `/images/generations` and key. With OpenAI the default model is `gpt-image-1` (a few cents a picture). |
 | An image server | Any OpenAI-style `/images/generations` server, such as [LocalAI](https://localai.io) running Stable Diffusion on your own hardware. Optional API key. |
 
 If a picture fails for any reason, the Captain is told why and draws the pet itself.
+
+A ChatGPT plan can't make pet pictures. OpenAI documents Sign in with ChatGPT for chat only, and
+Shipmate only uses subscriptions the way their terms allow. Use an OpenAI API key or a local image
+server instead.
 
 Image models are asked for a sticker-style character on a plain background. Shipmate clears a
 plain background so the pet stands on its own, and stores it small (384 pixels) so it loads fast

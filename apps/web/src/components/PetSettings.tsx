@@ -9,7 +9,6 @@ import { Button, Card, cx, ErrorText, focusRing, Muted, SelectField, TextField }
 
 const HINTS: Record<PetImageSource, string> = {
   draw: "Simple, cute drawings. Works with any model.",
-  chatgpt: "Uses your ChatGPT sign-in, if OpenAI allows pictures for it.",
   provider: "Uses a provider's key. Costs a few cents a picture with OpenAI.",
   custom: "Any server with an OpenAI-style images API, such as LocalAI.",
 };
@@ -88,9 +87,7 @@ function PetSettingsForm() {
           <fieldset className="grid gap-2 sm:grid-cols-2">
             <legend className="sr-only">Pictures come from</legend>
             {PET_SOURCES.map((s) => {
-              const off =
-                (s.id === "chatgpt" && !d.chatgptSignedIn) ||
-                (s.id === "provider" && d.providers.length === 0);
+              const off = s.id === "provider" && d.providers.length === 0;
               return (
                 <label
                   key={s.id}
@@ -118,11 +115,7 @@ function PetSettingsForm() {
                   <span className="min-w-0">
                     <span className="block text-sm font-medium">{s.label}</span>
                     <span className="block text-xs text-slate-500 dark:text-slate-400">
-                      {off
-                        ? s.id === "chatgpt"
-                          ? "Sign in with ChatGPT on the Providers page first."
-                          : "Add an OpenAI or OpenAI-compatible provider first."
-                        : HINTS[s.id]}
+                      {off ? "Add an OpenAI or OpenAI-compatible provider first." : HINTS[s.id]}
                     </span>
                   </span>
                 </label>
@@ -163,13 +156,6 @@ function PetSettingsForm() {
               />
             </div>
           )}
-          {source === "chatgpt" && (
-            <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/50 dark:text-amber-100">
-              OpenAI documents Sign in with ChatGPT for chat, not pictures. Shipmate asks through
-              OpenAI's official API; if your plan's sign-in can't make pictures, the Captain draws
-              the pet instead.
-            </p>
-          )}
 
           {source !== "draw" && (
             <details className="text-sm">
@@ -183,13 +169,9 @@ function PetSettingsForm() {
               </summary>
               <div className="mt-3 space-y-2">
                 <TextField
-                  label={source === "chatgpt" ? "Chat model (optional)" : "Image model (optional)"}
+                  label="Image model (optional)"
                   placeholder={
-                    source === "chatgpt"
-                      ? "Picked for you"
-                      : source === "provider"
-                        ? "gpt-image-1 for OpenAI"
-                        : "The server's default"
+                    source === "provider" ? "gpt-image-1 for OpenAI" : "The server's default"
                   }
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
@@ -203,7 +185,8 @@ function PetSettingsForm() {
                   >
                     Models and providers
                   </a>{" "}
-                  to add keys or sign in.
+                  to add keys. A ChatGPT plan can't make pictures: OpenAI only allows its sign-in
+                  for chat.
                 </p>
               </div>
             </details>

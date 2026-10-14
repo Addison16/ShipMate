@@ -12,7 +12,7 @@ import {
   shrink,
   tidyPetPicture,
 } from "./pets/png.js";
-import { imageFromResponsesStream, picturePrompt } from "./pets/service.js";
+import { picturePrompt } from "./pets/service.js";
 import { checkPetSvg } from "./pets/svg.js";
 import { TEST_DATABASE_URL, testApp } from "./testing.js";
 
@@ -76,24 +76,6 @@ describe("pet pictures", () => {
     expect(ok).toEqual({
       svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><circle fill="url(#g)" r="1"/></svg>',
     });
-  });
-
-  it("reads the picture out of a streamed Responses answer, or says why there is none", () => {
-    const b64 = Buffer.from("png bytes").toString("base64");
-    const stream = [
-      'data: {"type":"response.created"}',
-      `data: {"type":"response.output_item.done","item":{"type":"image_generation_call","result":"${b64}"}}`,
-      "data: [DONE]",
-    ].join("\n\n");
-    expect(Buffer.from(imageFromResponsesStream(stream)).toString()).toBe("png bytes");
-    expect(() =>
-      imageFromResponsesStream(
-        'data: {"type":"error","error":{"message":"Tool not supported"}}\n\n',
-      ),
-    ).toThrow(/Tool not supported/);
-    expect(() => imageFromResponsesStream('data: {"type":"response.completed"}')).toThrow(
-      /without a picture/,
-    );
   });
 
   it("asks image models for an original sticker-style creature", () => {

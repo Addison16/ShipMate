@@ -153,7 +153,7 @@ export async function createServices(
   });
   const watches = new WatchService(db, db.$client, crew, bridge, audit, emit, config.SHIPMATE_URL);
   bridge.attachWatches(watches);
-  const pets = new PetService(db, vault, settings, providers.chatgpt, options.petFetch);
+  const pets = new PetService(db, vault, settings, options.petFetch);
   bridge.attachPets(pets);
   const profiles = new ProfileService(db, settings);
   bridge.attachEveryday(

@@ -3,7 +3,6 @@ import { type Db, providers, secrets } from "@shipmate/db";
 import type { SecretVault } from "@shipmate/providers";
 import { eq } from "drizzle-orm";
 import { HttpError } from "../auth.js";
-import type { ChatGptService } from "../services/chatgpt.js";
 import type { SettingsService } from "../services/settings.js";
 import type { PetExt } from "./files.js";
 import { isPng, tidyPetPicture } from "./png.js";
@@ -50,7 +49,6 @@ export class PetService {
     private readonly db: Db,
     private readonly vault: SecretVault,
     private readonly settings: SettingsService,
-    private readonly chatgpt: Pick<ChatGptService, "status" | "accessToken">,
     private readonly fetchImpl: PetFetch = fetch,
   ) {}
 
@@ -63,7 +61,6 @@ export class PetService {
       providers: rows
         .filter((r) => IMAGE_KINDS.includes(r.kind))
         .map((r) => ({ id: r.id, label: r.label, kind: r.kind })),
-      chatgptSignedIn: (await this.chatgpt.status()).signedIn,
     };
   }
 
@@ -113,10 +110,6 @@ export class PetService {
     const c = await this.config();
     const draw = "none set up, so you draw the pet yourself as an SVG (step 6).";
     switch (c.source) {
-      case "chatgpt":
-        return c.chatgptSignedIn
-          ? { paints: true, painter: "made with the ChatGPT plan." }
-          : { paints: false, painter: `ChatGPT is not signed in; ${draw}` };
       case "provider": {
         const p = c.providers.find((x) => x.id === c.providerId);
         return p
@@ -139,9 +132,7 @@ export class PetService {
     const timeout = AbortSignal.timeout(PAINT_TIMEOUT_MS);
     const abort = signal ? AbortSignal.any([signal, timeout]) : timeout;
     let bytes: Uint8Array;
-    if (c.source === "chatgpt") {
-      bytes = await this.#paintWithChatGpt(prompt, c.model, abort);
-    } else if (c.source === "provider" || c.source === "custom") {
+    if (c.source === "provider" || c.source === "custom") {
       const { base, key } = await this.#endpoint(c);
       bytes = await this.#paintWithImagesApi(base, key, c.model, prompt, abort);
     } else {
@@ -188,49 +179,6 @@ export class PetService {
       return readCapped(pic);
     }
     throw new Error("the image model answered without a picture");
-  }
-
-  /**
-   * The ChatGPT plan through OpenAI's public Responses API (the documented Sign in with ChatGPT
-   * endpoint), asking for its image generation tool. OpenAI decides whether a plan's sign-in may
-   * make pictures; when it refuses, the error says so and the Captain draws instead.
-   */
-  async #paintWithChatGpt(prompt: string, model: string, signal: AbortSignal) {
-    const status = await this.chatgpt.status();
-    if (!status.signedIn) throw new Error("ChatGPT is not signed in");
-    const chosen =
-      model ||
-      status.models
-        .map((ref) => ref.slice(ref.indexOf("/") + 1))
-        .find((id) => /^gpt-/.test(id) && !/nano|mini/.test(id)) ||
-      status.models[0]?.slice(status.models[0].indexOf("/") + 1);
-    if (!chosen) throw new Error("the ChatGPT sign-in lists no models");
-    const res = await this.#call(
-      `${OPENAI_BASE}/responses`,
-      await this.chatgpt.accessToken(),
-      signal,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json", accept: "text/event-stream" },
-        body: JSON.stringify({
-          model: chosen,
-          input: `Draw this picture with the image generation tool: ${prompt}`,
-          tools: [
-            {
-              type: "image_generation",
-              size: "1024x1024",
-              background: "transparent",
-              output_format: "png",
-              quality: "medium",
-            },
-          ],
-          tool_choice: { type: "image_generation" },
-          store: false,
-          stream: true,
-        }),
-      },
-    );
-    return imageFromResponsesStream(await res.text());
   }
 
   async #call(
@@ -296,45 +244,6 @@ export class PetService {
       return null;
     }
   }
-}
-
-/** The picture in a streamed Responses API answer (server-sent events), or a readable error. */
-export function imageFromResponsesStream(text: string): Uint8Array {
-  let failure: string | null = null;
-  for (const line of text.split("\n")) {
-    if (!line.startsWith("data:")) continue;
-    const json = line.slice(5).trim();
-    if (!json || json === "[DONE]") continue;
-    let event: Record<string, unknown>;
-    try {
-      event = JSON.parse(json) as Record<string, unknown>;
-    } catch {
-      continue;
-    }
-    const items: unknown[] = [];
-    if (event.type === "response.output_item.done") items.push(event.item);
-    if (event.type === "response.completed") {
-      const output = (event.response as { output?: unknown[] } | undefined)?.output;
-      if (Array.isArray(output)) items.push(...output);
-    }
-    for (const item of items) {
-      const o = item as { type?: unknown; result?: unknown } | null;
-      if (o?.type === "image_generation_call" && typeof o.result === "string" && o.result) {
-        return Buffer.from(o.result, "base64");
-      }
-    }
-    if (event.type === "error" || event.type === "response.failed") {
-      const e =
-        (event.error as { message?: unknown } | undefined) ??
-        (event.response as { error?: { message?: unknown } } | undefined)?.error;
-      failure = typeof e?.message === "string" ? e.message : "the request failed";
-    }
-  }
-  throw new Error(
-    failure
-      ? `ChatGPT did not make the picture: ${failure}`
-      : "ChatGPT answered without a picture (OpenAI may not allow pictures for this sign-in)",
-  );
 }
 
 async function readCapped(res: Response): Promise<Uint8Array> {

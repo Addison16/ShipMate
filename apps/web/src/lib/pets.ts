@@ -37,7 +37,6 @@ export function petBuildPrompt(crewName: string, again: boolean): string {
 /** Where pictures come from, in plain words, for the settings picker. */
 export const PET_SOURCES: Array<{ id: PetImageSource; label: string }> = [
   { id: "draw", label: "The Captain draws them (no setup)" },
-  { id: "chatgpt", label: "ChatGPT plan (try it)" },
   { id: "provider", label: "A provider (OpenAI or OpenAI-compatible)" },
   { id: "custom", label: "An image server (local or hosted)" },
 ];

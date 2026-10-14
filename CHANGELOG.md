@@ -6,6 +6,9 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Tidier Usage and cost page on phones**: Month and Show (Mine / Everyone) sit side by side
+  and line up, money shows as cents ($0.00, not $0.0000), the subscription note is one line
+  with "More details", and the chart buttons and table names no longer wrap.
 - **Crew pets (optional)**: any crew member can have a little creature that hangs out on the
   message box, dances while that crew member works and hops when the reply lands. Off until you
   make one: tap "Make a pet" on a crew member's Settings tab (or just ask the Captain), answer a

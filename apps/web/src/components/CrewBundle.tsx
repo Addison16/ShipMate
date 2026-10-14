@@ -194,6 +194,7 @@ export function ImportCrewPage() {
                   {preview.backend === "claude-code-cli" && " · Claude Code CLI"}
                   {preview.backend === "codex-cli" && " · Codex CLI"}
                   {preview.backend === "cursor-cli" && " · Cursor CLI"}
+                  {preview.backend === "gemini-cli" && " · Gemini CLI"}
                 </p>
                 {preview.modelReplaced && (
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">

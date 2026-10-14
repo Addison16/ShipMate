@@ -26,6 +26,7 @@ export function modelPrice(ref: string, available: Model<Api>[]): string {
   }
   if (r.provider === "codex") return "ChatGPT plan through Codex";
   if (r.provider === "cursor") return "Cursor plan";
+  if (r.provider === "gemini-cli") return "Gemini CLI (API key or work login)";
   const m = available.find((x) => x.provider === r.provider && x.id === r.id);
   if (!m) return "not set up";
   const { input, output } = m.cost;
@@ -38,8 +39,8 @@ const MAX_LISTED = 40;
 
 /**
  * list_models: usable models cheapest first, then the Claude subscription's models when it is in
- * use (`withClaudeCode`) and the Codex and Cursor models given, one `- ref: name, price` line
- * each.
+ * use (`withClaudeCode`) and the Codex, Cursor and Gemini CLI models given, one
+ * `- ref: name, price` line each.
  */
 export function modelList(
   available: Model<Api>[],

@@ -1,6 +1,7 @@
 import type { Api, Model, Usage } from "@earendil-works/pi-ai";
 import { calculateCost } from "@earendil-works/pi-ai";
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
+import { googleProvider } from "@earendil-works/pi-ai/providers/google";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import type { UsageResponse, UsageTotals } from "@shipmate/core";
 import { crewMembers, type Db, usageEvents, users, watches } from "@shipmate/db";
@@ -46,15 +47,25 @@ export const defaultBilling = (model: Pick<Model<Api>, "provider">): Billing =>
 
 let openaiPrices: Map<string, Model<Api>> | undefined;
 let anthropicPrices: Map<string, Model<Api>> | undefined;
+let googlePrices: Map<string, Model<Api>> | undefined;
 
 /**
  * The same model with its API prices, for pricing a subscription call: ChatGPT-plan models are
  * registered at zero cost, so look the id up in pi's OpenAI catalog. Cursor's slugs name OpenAI
  * and Anthropic models (`gpt-5.5`, `claude-opus-4-8`, at times with `-thinking` or an effort
  * after them), so look in both; its own (`auto`, `composer-…`) have no API price and stay at
- * zero. Others keep their own table.
+ * zero. Gemini CLI turns are recorded under the model that answered (`gemini-2.5-flash`), priced
+ * from pi's Google table; an alias (`auto`) has no price. Others keep their own table.
  */
 function apiPriced(model: Model<Api>): Model<Api> {
+  if (model.provider === "gemini-cli") {
+    googlePrices ??= new Map(
+      googleProvider()
+        .getModels()
+        .map((m) => [m.id, m as Model<Api>]),
+    );
+    return googlePrices.get(model.id) ?? model;
+  }
   if (!["chatgpt", "codex", "cursor"].includes(model.provider)) return model;
   openaiPrices ??= new Map(
     openaiProvider()
@@ -86,7 +97,7 @@ export function callCost(
   billing: Billing = defaultBilling(model),
 ): { billing: Billing; costMicroUsd: number; apiEquivalentMicroUsd: number } {
   if (billing === "api") {
-    // Codex or Cursor on an API key: their models carry no prices of their own.
+    // Codex, Cursor or Gemini CLI on an API key: their models carry no prices of their own.
     return {
       billing,
       costMicroUsd: costMicroUsd(apiPriced(model), usage),

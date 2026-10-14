@@ -30,6 +30,9 @@ export const CODEX_PROVIDER = "codex";
 /** The provider id Cursor models use in crew.yaml (`cursor/composer-2.5`). */
 export const CURSOR_PROVIDER = "cursor";
 
+/** The provider id Gemini CLI models use in crew.yaml (`gemini-cli/flash`); not pi's `google`. */
+export const GEMINI_PROVIDER = "gemini-cli";
+
 const PROVIDER_LABELS: Record<string, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
@@ -42,6 +45,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   [CLAUDE_CODE_PROVIDER]: "Claude subscription",
   [CODEX_PROVIDER]: "Codex (ChatGPT plan)",
   [CURSOR_PROVIDER]: "Cursor (Cursor plan)",
+  [GEMINI_PROVIDER]: "Gemini CLI",
 };
 
 /** A provider id as people read it. */
@@ -84,6 +88,7 @@ export function defaultModelStatus(
   claudeSignedIn: boolean,
   codexSignedIn = false,
   cursorSignedIn = false,
+  geminiSignedIn = false,
 ): { usable: boolean; fallback: string | null } {
   const usable =
     providerOf(defaultModel) === CLAUDE_CODE_PROVIDER
@@ -92,7 +97,9 @@ export function defaultModelStatus(
         ? codexSignedIn
         : providerOf(defaultModel) === CURSOR_PROVIDER
           ? cursorSignedIn
-          : models.some((m) => m.ref === defaultModel && m.available);
+          : providerOf(defaultModel) === GEMINI_PROVIDER
+            ? geminiSignedIn
+            : models.some((m) => m.ref === defaultModel && m.available);
   if (usable) return { usable, fallback: null };
   const provider = providerOf(defaultModel);
   const fallback =

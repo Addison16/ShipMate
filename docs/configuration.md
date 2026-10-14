@@ -91,6 +91,9 @@ can also pick a sandbox host in **Settings → Shipyard sandbox**, which overrid
 | `SHIPMATE_CURSOR_BIN` | `cursor-agent` | Path of the Cursor CLI, for the Cursor engine. Unset, Shipmate uses the copy `install-cursor` downloaded (`/data/cursor/cli/cursor-agent`). |
 | `SHIPMATE_CURSOR_HOME` | `/data/cursor` | The Cursor CLI's home: its sign-in, chats and the downloaded CLI. |
 | `CURSOR_API_KEY` | unset | A Cursor API key for the Cursor engine instead of a sign-in. Its use then counts as API spend. |
+| `SHIPMATE_GEMINI_BIN` | `gemini` | Path of the Gemini CLI, for the Gemini CLI engine. The image ships it. |
+| `SHIPMATE_GEMINI_HOME` | `/data/gemini` | The Gemini CLI's home (passed to it as `GEMINI_CLI_HOME`): its sign-in and chats. The image also sets `GEMINI_CLI_HOME` to it, so `docker exec ... gemini` uses the same sign-in. |
+| `GEMINI_API_KEY` | unset | A Gemini API key for the Gemini CLI engine. Owners can also save one on the Providers page (kept encrypted), which is used first. Its use counts as API spend. |
 
 ## Updates, backups and offline installs
 
@@ -127,6 +130,7 @@ Shipmate needs one writable folder, `/data`. Map it to a host folder you back up
 | `/data/claude/` | The Claude Code CLI's sign-in. |
 | `/data/codex/` | The Codex CLI's sign-in and threads. |
 | `/data/cursor/` | The Cursor CLI (downloaded by `docker exec -it shipmate install-cursor`), its sign-in and chats. |
+| `/data/gemini/` | The Gemini CLI's sign-in and chats (in `.gemini/`). |
 | `/data/mcp/` | Sign-ins MCP servers read, such as Google Workspace's credentials file. |
 | `/data/backups/` | Backups (unless `SHIPMATE_BACKUP_DIR` points elsewhere). |
 | `/data/postgres/` | The built-in database's files (accounts, conversations, settings, encrypted keys), when `DATABASE_URL` is not set. Owned by the container's `postgres` user. Back it up with Shipmate's backups rather than by copying it while Shipmate runs. |

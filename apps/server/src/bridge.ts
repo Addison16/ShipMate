@@ -37,6 +37,8 @@ import {
   questionTools,
   skillTools,
   splitModelRef,
+  type ThemeHost,
+  themeTools,
 } from "@shipmate/crew";
 import { conversations, crewMembers, type Db, messages, users, watches } from "@shipmate/db";
 import { and, asc, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
@@ -54,6 +56,7 @@ import type { McpService } from "./services/mcp.js";
 import type { ProviderService } from "./services/providers.js";
 import type { SettingsService } from "./services/settings.js";
 import type { SkillService } from "./services/skills.js";
+import { ThemeProblems, type ThemeService } from "./services/themes.js";
 import type { UsageService } from "./services/usage.js";
 import type { WatchService } from "./services/watches.js";
 import { summarize } from "./summarize.js";
@@ -77,6 +80,8 @@ export interface BridgeDeps {
   skills: SkillService;
   /** Files attached in chat. */
   files: AttachmentService;
+  /** Custom themes: the Captain builds them, and the crew talks in the person's theme. */
+  themes: ThemeService;
   agentDir: string;
 }
 
@@ -100,7 +105,7 @@ export interface WorkspaceProvider {
 }
 
 /** Tools that show as their own line or card in the conversation, not as a tool chip. */
-const HIDDEN_TOOL_CHIPS = new Set(["delegate", "ask_captain", "ask_person"]);
+const HIDDEN_TOOL_CHIPS = new Set(["delegate", "ask_captain", "ask_person", "save_theme"]);
 
 /** Everything a cached session's tools need from the turn in progress. */
 interface TurnContext {
@@ -109,6 +114,7 @@ interface TurnContext {
   approvals: ApprovalHost;
   question: QuestionHost;
   helper: HelperHost;
+  theme: ThemeHost;
 }
 
 /** Helper agents one crew member may start while answering one message. */
@@ -173,6 +179,7 @@ export class Bridge {
     this.#cli = new ClaudeCliTurns(deps.db);
     deps.crew.onChange(() => this.broadcast({ type: "crew_changed" }));
     deps.skills.onChange(() => this.broadcast({ type: "skills_changed" }));
+    deps.themes.onChange(() => this.broadcast({ type: "themes_changed" }));
   }
 
   /** Watches depend on the Bridge to run, so they are attached after both exist. */
@@ -871,7 +878,71 @@ export class Bridge {
         });
       },
     };
-    const context: TurnContext = { captain: host, crew: crewHost, approvals, question, helper };
+    const theme: ThemeHost = {
+      list: async () => {
+        const all = await this.deps.themes.list(user);
+        const active = (await this.deps.themes.activeFor(user))?.name;
+        if (!all.length) return "No custom themes yet.";
+        return all
+          .map(
+            (t) =>
+              `- ${t.id}: ${t.name}${t.description ? ` (${t.description})` : ""}, by ${t.createdBy?.name ?? "someone"}${t.canEdit ? "" : ", read-only for you"}${t.name === active ? `, ${user.displayName} uses it` : ""}`,
+          )
+          .join("\n");
+      },
+      save: async (input, rawId) => {
+        // A small model may send an id it made up; then it saves as a new theme.
+        const id = rawId && (await this.deps.themes.exists(rawId)) ? rawId : undefined;
+        let saved: Awaited<ReturnType<ThemeService["save"]>>;
+        try {
+          saved = await this.deps.themes.save(user, input, id);
+        } catch (err) {
+          if (err instanceof ThemeProblems) {
+            throw new Error(
+              `the theme was not saved. Fix these and call save_theme again:\n- ${err.problems.join("\n- ")}`,
+            );
+          }
+          throw err;
+        }
+        const { theme: t, notes } = saved;
+        // The preview card sits after what the Captain said so far, like a question card.
+        await this.#closeStream(conv, crewRow.id, stream);
+        const message = await this.#store(conv, {
+          role: "system",
+          content: `${crew.name} ${id ? "updated" : "made"} the theme "${t.name}".`,
+          authorName: "Shipmate",
+          meta: { theme: { id: t.id, name: t.name } },
+        });
+        this.emit(user.id, { type: "message", conversationId: conv.id, message });
+        stream = this.#openStream(user.id, conv.id, crew);
+        return [
+          `Saved the theme "${t.name}". Its id is ${t.id}.`,
+          ...(rawId && !id ? [`There was no theme with id ${rawId}, so this is a new theme.`] : []),
+          ...(notes.length
+            ? [
+                `Shipmate fixed some things. Tell ${user.displayName} in one short sentence:`,
+                ...notes.map((n) => `- ${n}`),
+              ]
+            : []),
+          `Now tell ${user.displayName}: "Tap Try it on the card to use it." Then ask if they want changes. For a change, call save_theme again with id ${t.id} and the full theme.`,
+        ].join("\n");
+      },
+      use: async (id) => {
+        const preferences = await this.deps.themes.use(user, id);
+        this.emit(user.id, { type: "preferences_changed", preferences });
+        return id
+          ? `Switched ${user.displayName} to the theme. It shows right away; new chats use its words and voice.`
+          : `Switched ${user.displayName} back to the standard Shipmate look.`;
+      },
+    };
+    const context: TurnContext = {
+      captain: host,
+      crew: crewHost,
+      approvals,
+      question,
+      helper,
+      theme,
+    };
 
     if (folder.manifest.backend === "claude-code-cli") {
       if (options.images?.length) {
@@ -895,7 +966,7 @@ export class Bridge {
               tools: this.#cliTools(
                 user,
                 folder,
-                { captain: host, crew: crewHost, question },
+                { captain: host, crew: crewHost, question, theme },
                 isCaptain,
               ),
               gate: (call) =>
@@ -909,6 +980,7 @@ export class Bridge {
           ]
         : [
             ...(await this.#crewContext(user, folder, isCaptain, grant !== undefined)),
+            ...(await this.#themeContext(user)),
             ...(mcp.skipped.length
               ? [`MCP servers not started (missing setup): ${mcp.skipped.join(", ")}.`]
               : []),
@@ -1218,6 +1290,11 @@ export class Bridge {
       updatePerson: (person, changes) => current().captain.updatePerson(person, changes),
       updateHousehold: (changes) => current().captain.updateHousehold(changes),
     };
+    const themeProxy: ThemeHost = {
+      list: () => current().theme.list(),
+      save: (t, id) => current().theme.save(t, id),
+      use: (id) => current().theme.use(id),
+    };
     const skills = this.deps.skills;
     const { servers, skipped } = await this.deps.mcp.serversFor(folder);
     const model = await this.#model(folder);
@@ -1249,7 +1326,7 @@ export class Bridge {
                   this.deps.crew.folder(folder.slug).manifest.autoApproveSkills,
                 ),
             }),
-            ...(isCaptain ? captainTools(proxy, acting) : []),
+            ...(isCaptain ? [...captainTools(proxy, acting), ...themeTools(themeProxy)] : []),
             ...(folder.manifest.captain
               ? []
               : crewTools(
@@ -1409,10 +1486,17 @@ export class Bridge {
       memory.contextFor(user.id),
     ];
     parts.push(...(await this.#crewContext(user, folder, isCaptain, true)).flatMap((p) => ["", p]));
+    parts.push(...(await this.#themeContext(user)).flatMap((p) => ["", p]));
     if (skippedMcp.length) {
       parts.push("", `MCP servers not started (missing setup): ${skippedMcp.join(", ")}.`);
     }
     return parts.join("\n");
+  }
+
+  /** The words and voice of the person's custom theme, when they use one. */
+  async #themeContext(user: UserRow): Promise<string[]> {
+    const prompt = await this.deps.themes.promptFor(user).catch(() => "");
+    return prompt ? [prompt] : [];
   }
 
   /** The Captain's crew roster, or a crew member's note on asking the Captain. */
@@ -1450,7 +1534,7 @@ export class Bridge {
   #cliTools(
     user: UserRow,
     folder: CrewFolder,
-    hosts: { captain: CaptainHost; crew: CrewHost; question: QuestionHost },
+    hosts: { captain: CaptainHost; crew: CrewHost; question: QuestionHost; theme: ThemeHost },
     isCaptain: boolean,
   ): ToolDefinition[] {
     const acting: ActingUser = { id: user.id, displayName: user.displayName, role: user.role };
@@ -1467,7 +1551,7 @@ export class Bridge {
             this.deps.crew.folder(folder.slug).manifest.autoApproveSkills,
           ),
       }),
-      ...(isCaptain ? captainTools(hosts.captain, acting) : []),
+      ...(isCaptain ? [...captainTools(hosts.captain, acting), ...themeTools(hosts.theme)] : []),
       ...(folder.manifest.captain
         ? []
         : crewTools(hosts.crew, this.deps.crew.captain().manifest.name)),

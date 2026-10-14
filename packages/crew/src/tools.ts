@@ -1,4 +1,11 @@
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import {
+  THEME_BUILD_GUIDE,
+  THEME_CORNERS,
+  THEME_FONTS,
+  THEME_NEUTRALS,
+  THEME_WORDS,
+} from "@shipmate/core";
 import { Type } from "typebox";
 import type { MemoryStore } from "./memory.js";
 
@@ -681,6 +688,95 @@ export function crewTools(host: CrewHost, captainName: string): ToolDefinition[]
       async execute(_id, p, signal) {
         const answer = await host.askCaptain(p.question, signal);
         return text(answer || `(${captainName} gave no answer; use your best judgment and say so)`);
+      },
+    }),
+  ];
+}
+
+/** What the theme tools need: the instance's themes and the person's own pick. */
+export interface ThemeHost {
+  /** One line per saved theme, with ids. */
+  list(): Promise<string>;
+  /**
+   * Check and save a theme (replacing `id` when given), show its preview card in the
+   * conversation, and say what happened. Throws with every problem when the theme needs fixing.
+   */
+  save(theme: Record<string, unknown>, id: string | undefined): Promise<string>;
+  /** Switch the person to a theme, or back to the standard look with null. */
+  use(id: string | null): Promise<string>;
+}
+
+/**
+ * Building custom themes with the person (Settings > Appearance > Make a custom theme opens a
+ * chat for it). The Captain reads the build guide and follows it step by step.
+ */
+export function themeTools(host: ThemeHost): ToolDefinition[] {
+  return [
+    defineTool({
+      name: "theme_build_guide",
+      label: "Theme build guide",
+      description:
+        "Read this first whenever someone wants a custom theme (new look, logo, names or voice for the app). It gives the steps to follow, one by one.",
+      promptSnippet: "theme_build_guide: read this before building a custom theme with someone",
+      parameters: Type.Object({}),
+      async execute() {
+        return text(THEME_BUILD_GUIDE);
+      },
+    }),
+    defineTool({
+      name: "list_themes",
+      label: "List themes",
+      description: "List the custom themes saved on this Shipmate, with their ids.",
+      parameters: Type.Object({}),
+      async execute() {
+        return text(await host.list());
+      },
+    }),
+    defineTool({
+      name: "save_theme",
+      label: "Save theme",
+      description:
+        "Save a custom theme (step 8 of theme_build_guide) and show the person a preview card with a Try it button. It always saves: anything it cannot use is fixed or left out, and it tells you what. To change a saved theme, pass its id and the full theme again.",
+      parameters: Type.Object({
+        id: Type.Optional(Type.String({ description: "only when changing a saved theme" })),
+        name: Type.Optional(Type.String({ description: "the theme's name, 1 to 4 words" })),
+        description: Type.Optional(Type.String({ description: "one short line about it" })),
+        accent: Type.Optional(Type.String({ description: "the main color as hex, like #dc2626" })),
+        neutral: Type.Optional(
+          Type.String({ description: `one of: ${THEME_NEUTRALS.join(", ")}` }),
+        ),
+        font: Type.Optional(Type.String({ description: `one of: ${THEME_FONTS.join(", ")}` })),
+        corners: Type.Optional(Type.String({ description: `one of: ${THEME_CORNERS.join(", ")}` })),
+        logo: Type.Optional(
+          Type.String({
+            description: 'an SVG icon: <svg viewBox="0 0 64 64" fill="currentColor">...</svg>',
+          }),
+        ),
+        words: Type.Optional(
+          Type.Record(Type.String(), Type.String(), {
+            description: `names for: ${Object.keys(THEME_WORDS).join(", ")}`,
+          }),
+        ),
+        voice: Type.Optional(
+          Type.String({ description: "2 to 4 sentences on how the AI helpers talk in this theme" }),
+        ),
+      }),
+      executionMode: "sequential",
+      async execute(_id, { id, ...theme }) {
+        return text(await host.save(theme, id?.trim() || undefined));
+      },
+    }),
+    defineTool({
+      name: "use_theme",
+      label: "Use theme",
+      description:
+        'Switch the person you are talking with to a saved custom theme, or back to the standard Shipmate look with "default". Only for their own appearance.',
+      parameters: Type.Object({
+        id: Type.String({ description: 'a theme id from list_themes, or "default"' }),
+      }),
+      async execute(_id, p) {
+        const id = p.id.trim();
+        return text(await host.use(id === "default" || !id ? null : id));
       },
     }),
   ];

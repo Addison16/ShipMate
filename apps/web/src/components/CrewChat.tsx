@@ -1,6 +1,7 @@
 import type { ConversationDto, CrewDto } from "@shipmate/core";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useCrewName, useThemeWords } from "../appearance.js";
 import { href, navigate } from "../router.js";
 import { Avatar } from "./Avatar.js";
 import { Button, cx, ErrorText, focusRing } from "./ui.js";
@@ -52,6 +53,7 @@ function MemberButton({
   onClick: () => void;
   card?: boolean;
 }) {
+  const name = useCrewName()(member.name);
   return (
     <button
       type="button"
@@ -69,9 +71,9 @@ function MemberButton({
         focusRing,
       )}
     >
-      <Avatar name={member.name} />
+      <Avatar name={name} />
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-medium">{member.name}</span>
+        <span className="truncate text-sm font-medium">{name}</span>
         <span className="truncate text-xs text-slate-500 dark:text-slate-400">
           {busy ? "Opening chat…" : (subtitle ?? member.role)}
         </span>
@@ -107,6 +109,8 @@ export function ChatLanding({
 }) {
   const [opening, setOpening] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const words = useThemeWords();
+  const crewName = useCrewName();
   const captain = crew.find((m) => m.captain);
   const members = directCandidates(crew);
   const talked = chattedWith(conversations);
@@ -128,15 +132,16 @@ export function ChatLanding({
       <div className="space-y-2">
         <h1 className="text-xl font-semibold tracking-tight">Who would you like to talk to?</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Ask {captain?.name ?? "the Captain"} and the right crew member is pulled in, or talk to
-          one of them yourself. Your chat with each crew member picks up where you left off.
+          Ask {captain ? crewName(captain.name) : `your ${words.captain}`} and the right{" "}
+          {words.crewMember} is pulled in, or talk to one yourself. Each chat picks up where you
+          left off.
         </p>
       </div>
       {captain && (
         <MemberButton
           card
           member={captain}
-          subtitle="New bridge chat · hands each job to the right crew member"
+          subtitle={`New chat · hands each job to the right ${words.crewMember}`}
           busy={creating}
           disabled={creating || opening !== null}
           onClick={onNewBridge}
@@ -193,6 +198,7 @@ export function CrewStrip({
 }) {
   const [opening, setOpening] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const crewName = useCrewName();
   const captain = crew.find((m) => m.captain);
   const people = [...(captain ? [captain] : []), ...directCandidates(crew)];
   if (people.length < 2) return null;
@@ -222,7 +228,7 @@ export function CrewStrip({
               type="button"
               disabled={creating || opening !== null}
               onClick={() => void open(m)}
-              title={m.captain ? `New bridge chat with ${m.name}` : `Chat with ${m.name}`}
+              title={m.captain ? `New chat with ${crewName(m.name)}` : `Chat with ${m.name}`}
               className={cx(
                 "flex w-16 flex-col items-center gap-1 rounded-lg py-1.5 transition active:scale-95 disabled:opacity-60",
                 focusRing,
@@ -235,10 +241,10 @@ export function CrewStrip({
                   opening === m.slug && "animate-pulse",
                 )}
               >
-                <Avatar name={m.name} size="lg" />
+                <Avatar name={crewName(m.name)} size="lg" />
               </span>
               <span className="w-full truncate text-center text-[11px] text-slate-600 dark:text-slate-300">
-                {m.name}
+                {crewName(m.name)}
               </span>
             </button>
           </li>
@@ -398,6 +404,15 @@ function readDrafts(): Record<string, string> {
     return raw ? (JSON.parse(raw) as Record<string, string>) : {};
   } catch {
     return {};
+  }
+}
+
+/** Put text in a conversation's composer before opening it (the person reads it and sends). */
+export function setDraft(conversationId: string, text: string) {
+  try {
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ ...readDrafts(), [conversationId]: text }));
+  } catch {
+    // Storage unavailable: the chat opens with an empty composer.
   }
 }
 

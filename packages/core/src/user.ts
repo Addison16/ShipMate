@@ -26,6 +26,10 @@ export type ColorTheme = z.infer<typeof ColorTheme>;
 export const UserPreferences = z.object({
   themeMode: ThemeMode.catch("auto"),
   colorTheme: ColorTheme.catch("harbor"),
+  /** The app's words when no custom theme is picked: plain AI words, or nautical. */
+  style: z.enum(["plain", "nautical"]).catch("plain"),
+  /** A custom theme (see theme.ts) painted over the color theme; null for none. */
+  customTheme: z.string().uuid().nullable().catch(null),
 });
 export type UserPreferences = z.infer<typeof UserPreferences>;
 

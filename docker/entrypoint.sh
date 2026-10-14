@@ -33,12 +33,6 @@ as_postgres() { runuser -u postgres -- "$@"; }
 mkdir -p "$PGDATA" "$SOCKET_DIR"
 chown postgres:postgres "$PGDATA" "$SOCKET_DIR"
 chmod 700 "$PGDATA"
-# An image whose postgres account had other IDs (0.3.0 used 100:102) leaves files Postgres can't
-# open. Nothing is running on them yet, so hand the whole folder over once.
-if [ -n "$(find "$PGDATA" \( ! -user postgres -o ! -group postgres \) -print -quit)" ]; then
-  echo "shipmate: giving the bundled database files in $PGDATA to this image's postgres user"
-  chown -R postgres:postgres "$PGDATA"
-fi
 
 if [ ! -s "$PGDATA/PG_VERSION" ]; then
   echo "shipmate: setting up the bundled database in $PGDATA"
@@ -57,6 +51,14 @@ if [ -z "$server" ] && [ -e "$PGDATA/postmaster.pid" ]; then
   echo "shipmate: the database in $PGDATA looks in use. Stop the Shipmate container first," >&2
   echo "shipmate: or run this inside it: docker exec -it <container> $*" >&2
   exit 1
+fi
+
+# An image whose postgres account had other IDs (0.3.0 used 100:102) leaves files Postgres can't
+# open. Hand the whole folder over once, after the in-use check so a one-off command never
+# touches a live database.
+if [ -n "$(find "$PGDATA" \( ! -user postgres -o ! -group postgres \) -print -quit)" ]; then
+  echo "shipmate: giving the bundled database files in $PGDATA to this image's postgres user"
+  chown -R postgres:postgres "$PGDATA"
 fi
 
 # Started fresh each time, so the log only holds this run (warnings and errors).

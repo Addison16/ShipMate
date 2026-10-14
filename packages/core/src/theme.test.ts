@@ -283,6 +283,13 @@ describe("theme words", () => {
     expect(themeText("A crew member asks the Captain on the Bridge.", guild)).toBe(
       "An adventurer asks the Guildmaster on the Tavern.",
     );
+    const allies = themeWords({
+      words: { captain: "Crew Chief", crew: "Team", crewMember: "ally" },
+    });
+    expect(themeText("Captain asked the Crew. Crew members help.", allies)).toBe(
+      "Crew Chief asked the Team. Allies help.",
+    );
+    expect(themeText("crew members", themeWords({ words: { crewMember: "boss" } }))).toBe("bosses");
     const nautical = themeWords(null, "nautical");
     const text = "Open it in the Shipyard. A crew member asks the Captain with ask_captain.";
     expect(themeText(text, nautical)).toBe(text);

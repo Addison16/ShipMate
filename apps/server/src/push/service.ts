@@ -190,9 +190,10 @@ export class PushService {
       const run = event.run;
       if (run.status !== "succeeded" && run.status !== "failed") return;
       const failed = run.status === "failed";
+      const one = failed ? await this.#watchWord(userId) : "";
       await this.#deliver(userId, "watches", {
         kind: "watch",
-        title: failed ? `Watch failed: ${event.watchName}` : event.watchName,
+        title: failed ? `${one} failed: ${event.watchName}` : event.watchName,
         body: preview(failed ? (run.error ?? "The run failed.") : (run.output ?? "Done.")),
         // The run's chat holds the full reply, and the person can answer there.
         url: run.conversationId && !failed ? `/#/bridge/${run.conversationId}` : "/#/watches",
@@ -223,6 +224,12 @@ export class PushService {
     if (name !== STOCK_CAPTAIN_NAME || !this.options.wordsFor) return name;
     const words = await this.options.wordsFor(userId).catch(() => null);
     return words?.captain ?? name;
+  }
+
+  /** One scheduled job, in `userId`'s words ("Watch", "Routine", "Quest"). */
+  async #watchWord(userId: string): Promise<string> {
+    const words = await this.options.wordsFor?.(userId).catch(() => null);
+    return (words?.watches ?? "Watches").replace(/s$/i, "");
   }
 
   /** The notification for an approval request, with a token for its Approve and Deny buttons. */

@@ -16,7 +16,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { api, errorMessage } from "./api.js";
+import { ApiError, api, errorMessage } from "./api.js";
 import { useAuth } from "./auth.js";
 import {
   applyAppearance,
@@ -65,7 +65,7 @@ export function useCrewName(): (name: string) => string {
  * matches. Auto follows the device as it switches.
  */
 export function AppearanceProvider({ children }: { children: ReactNode }) {
-  const { user, setUser } = useAuth();
+  const { user, setUser, refresh } = useAuth();
   const [fallback] = useState(() => cached(readCachedAppearance));
   const prefs = user?.preferences ?? fallback;
   const { themeMode, colorTheme, customTheme, style } = prefs;
@@ -93,9 +93,16 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       .then(({ theme }) => {
         if (live) setPainted(paintTheme(theme.id, theme));
       })
-      .catch(() => {
-        // Deleted, or the server is unreachable: the cached paint stays until we know more.
-        if (live) setPainted((p) => (p?.id === customTheme ? p : null));
+      .catch((err) => {
+        if (!live) return;
+        if (err instanceof ApiError && err.status === 404) {
+          // Deleted (the server already cleared it from this person's preferences).
+          setPainted(null);
+          void refresh();
+          return;
+        }
+        // The server is unreachable: the cached paint stays until we know more.
+        setPainted((p) => (p?.id === customTheme ? p : null));
       });
     return () => {
       live = false;

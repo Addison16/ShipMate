@@ -111,6 +111,8 @@ export interface CaptainHost {
   createWatch(spec: WatchSpec): Promise<{ id: string; name: string }>;
   /** Install a server from the MCP catalog and give it to crew members. */
   installMcp(id: string, crews: string[]): Promise<string>;
+  /** Every MCP server in the catalog (and custom ones), one line each with id and status. */
+  listMcpCatalog(): Promise<string>;
   /**
    * Add access to a crew member (the person approved it on a card first): MCP servers (installed
    * from the catalog when needed), built-in tools, skills and Claude Code tools. Returns a summary.
@@ -313,7 +315,8 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
         }),
         model: Type.Optional(
           Type.String({
-            description: "provider/model; omit to follow the crew default set in Settings",
+            description:
+              "provider/model-id from list_models; omit to follow the crew default set in Settings",
           }),
         ),
         tools: stringList("built-in tools, smallest set that works: read, write, edit, bash, ..."),
@@ -347,7 +350,12 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
         slug: Type.String(),
         name: Type.Optional(Type.String()),
         role: Type.Optional(Type.String()),
-        model: Type.Optional(Type.String({ description: "provider/model" })),
+        model: Type.Optional(
+          Type.String({
+            description:
+              'provider/model-id from list_models (claude-code/<alias> runs it on Claude Code), or "default"',
+          }),
+        ),
         backend: Type.Optional(
           Type.Union(
             [Type.Literal("pi"), Type.Literal("claude-code-cli"), Type.Literal("codex-cli")],
@@ -358,7 +366,9 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
           ),
         ),
         cliModel: Type.Optional(
-          Type.String({ description: "claude-code-cli only: alias such as sonnet or opus" }),
+          Type.String({
+            description: "same as model claude-code/<alias>: alias such as sonnet or opus",
+          }),
         ),
         cliAllowedTools: stringList("claude-code-cli only: tools it may use, e.g. Read, Edit"),
         cliPermissionMode: Type.Optional(
@@ -495,12 +505,23 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
       },
     }),
     defineTool({
+      name: "list_mcp_catalog",
+      label: "List MCP servers",
+      description:
+        "List the MCP servers Shipmate offers, with the id to use, what each does, whether it is installed and ready, and who has it. Use it before install_mcp_server or equip_crew_member instead of guessing ids.",
+      promptSnippet: "list_mcp_catalog: MCP server ids and whether each is ready",
+      parameters: Type.Object({}),
+      async execute() {
+        return text(await host.listMcpCatalog());
+      },
+    }),
+    defineTool({
       name: "install_mcp_server",
       label: "Install MCP server",
       description:
         "Install a server from the MCP catalog and grant it to crew members. The person approves this first; servers that need keys still need an owner to enter them on the MCP page.",
       parameters: Type.Object({
-        id: Type.String({ description: "catalog id, e.g. todoist, weather" }),
+        id: Type.String({ description: "catalog id from list_mcp_catalog, e.g. todoist" }),
         crews: Type.Array(Type.String(), { description: "slugs of crew members to grant it to" }),
       }),
       async execute(_id, p) {

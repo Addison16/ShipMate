@@ -47,6 +47,8 @@ export interface CliTurnInput {
   mcpConfig?: string;
   /** `--settings` JSON: the approval hook for the crew member's installed MCP servers. */
   settingsJson?: string;
+  /** Ids of the crew member's MCP servers running this turn (their tools are allowed). */
+  mcpServers?: string[];
   /** Extra system prompt sections (the Captain's crew roster, how to answer a consult). */
   context?: string[];
   /** A one-off answer (the Captain answering a crew question): no resume, nothing stored. */
@@ -108,9 +110,11 @@ export class ClaudeCliTurns {
         own.allowedTools,
         input.mcpConfig !== undefined,
         folder.manifest.helpers,
+        input.mcpServers,
       ),
     };
-    const model = settings.model ?? cliModelFromRef(folder.manifest.model);
+    // crew.yaml `model` wins; cli.model only fills in when it names no Claude model.
+    const model = cliModelFromRef(folder.manifest.model) ?? settings.model;
 
     const controller = new AbortController();
     const set = this.#running.get(conv.id) ?? new Set();
@@ -257,13 +261,14 @@ export const CLI_HELPER_TOOLS = ["Task", "Agent"];
 
 /**
  * The `--allowedTools` for a turn: the defaults, the crew member's own, its sub agent tool when
- * helpers are on, and Shipmate's tools.
+ * helpers are on, Shipmate's tools, and the tools of the MCP servers it was given.
  */
 export function cliAllowedTools(
   crewDir: string,
   own: string[],
   shipmateTools: boolean,
   helpers = false,
+  mcpServers: string[] = [],
 ): string[] {
   return [
     ...new Set([
@@ -272,6 +277,9 @@ export function cliAllowedTools(
       ...(helpers ? CLI_HELPER_TOOLS : []),
       // Shipmate's tools go through its own approval policy, so the CLI may call them all.
       ...(shipmateTools ? [`mcp__${CLI_MCP_SERVER}`] : []),
+      // So do an assigned server's tools (a PreToolUse hook asks Shipmate first, see cli-mcp.ts);
+      // without this, dontAsk mode refuses a server someone gave the crew member.
+      ...(shipmateTools ? mcpServers.map((id) => `mcp__${id}`) : []),
     ]),
   ];
 }

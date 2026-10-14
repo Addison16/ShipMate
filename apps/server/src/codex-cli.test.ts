@@ -72,7 +72,11 @@ process.stdin.on("end", () => {
     const token = process.env[configs["mcp_servers.shipmate.bearer_token_env_var"]];
     const rpc = async (method, params, id) => {
       const res = await fetch(url, { method: "POST", headers: { authorization: "Bearer " + token, "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", ...(id ? { id } : {}), method, params }) });
-      return res.status === 202 ? null : res.json();
+      if (res.status === 202) return null;
+      const body = await res.text();
+      // Long tool calls come back as a stream with keep-alives, then one data event.
+      if ((res.headers.get("content-type") ?? "").includes("event-stream")) return JSON.parse(body.split(String.fromCharCode(10)).find((l) => l.startsWith("data: ")).slice(6));
+      return JSON.parse(body);
     };
     (async () => {
       await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "codex-mcp-client", version: "9" } }, 1);

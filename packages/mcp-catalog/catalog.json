@@ -46,7 +46,7 @@
     "tier": "core",
     "transport": "stdio",
     "command": "npx",
-    "args": ["-y", "@playwright/mcp@latest"],
+    "args": ["-y", "@playwright/mcp@latest", "--headless", "--browser", "chromium", "--no-sandbox"],
     "tags": ["web"]
   },
   {
@@ -61,6 +61,7 @@
       { "env": "SEARXNG_URL", "label": "SearXNG URL", "required": false },
       { "env": "BRAVE_API_KEY", "label": "Brave API key", "required": false }
     ],
+    "needsOneSecret": true,
     "tags": ["web"]
   },
   {
@@ -123,7 +124,7 @@
     "tier": "catalog",
     "transport": "stdio",
     "command": "uvx",
-    "args": ["mcp-server-sqlite"],
+    "args": ["--with", "mcp<2", "mcp-server-sqlite"],
     "tags": ["data"]
   },
   {
@@ -133,7 +134,7 @@
     "tier": "catalog",
     "transport": "stdio",
     "command": "uvx",
-    "args": ["docker-mcp"],
+    "args": ["--with", "mcp<2", "docker-mcp"],
     "tags": ["ops"]
   },
   {
@@ -238,7 +239,7 @@
     "tier": "catalog",
     "transport": "stdio",
     "command": "uvx",
-    "args": ["mcp-weather-server"],
+    "args": ["--with", "mcp<2", "--from", "mcp-weather-server", "mcp_weather_server"],
     "tags": ["life"]
   }
 ]

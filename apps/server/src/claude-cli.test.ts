@@ -57,7 +57,11 @@ process.stdin.on("end", () => {
     }
     const rpc = async (method, params, id) => {
       const res = await fetch(srv.url, { method: "POST", headers: { ...srv.headers, "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", ...(id ? { id } : {}), method, params }) });
-      return res.status === 202 ? null : res.json();
+      if (res.status === 202) return null;
+      const body = await res.text();
+      // Long tool calls come back as a stream with keep-alives, then one data event.
+      if ((res.headers.get("content-type") ?? "").includes("event-stream")) return JSON.parse(body.split(String.fromCharCode(10)).find((l) => l.startsWith("data: ")).slice(6));
+      return JSON.parse(body);
     };
     (async () => {
       const init = await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "fake", version: "1" } }, 1);

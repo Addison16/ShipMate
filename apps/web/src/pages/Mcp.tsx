@@ -265,7 +265,13 @@ function ServerCard({
             <span key={x.env}>
               {i > 0 && ", "}
               <span className="font-mono">{x.env}</span>{" "}
-              {x.set ? "(set)" : x.required ? "(missing)" : "(optional)"}
+              {x.set
+                ? "(set)"
+                : x.required
+                  ? "(missing)"
+                  : s.needsOneSecret
+                    ? "(this or another)"
+                    : "(optional)"}
             </span>
           ))}
         </p>

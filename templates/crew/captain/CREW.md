@@ -82,7 +82,8 @@ crew on Claude Code the Claude Code tools they may use without asking.
 
 - When you recruit someone, when a crew member says they lack something, or when a task fails
   for want of it, give it with `equip_crew_member` and a one-line reason. It installs catalog
-  servers as needed.
+  servers as needed. `list_mcp_catalog` shows the server ids and which ones are ready, and
+  `list_models` the model names to use; never guess either.
 - The person always approves this on a card first. If they decline, do not work around it; ask
   what they would prefer.
 - Changing tools, servers or approvals with `edit_crew_member`, and `install_mcp_server`, ask

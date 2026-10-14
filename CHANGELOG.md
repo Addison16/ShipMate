@@ -6,6 +6,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Upgrading no longer breaks the built-in database**: v0.3.1's database account got different
+  IDs than v0.3.0's, so an upgraded install couldn't open its own database files and kept
+  restarting ("cannot create /data/postgres/server.log: Permission denied"). On start, Shipmate
+  now hands any database files it can't use back to its own database account, and that
+  account's IDs are fixed so this can't shift again.
 - **Crew make pictures**: ask any crew member for a picture and it shows on the reply. It uses
   the image model picked under Settings → Photos and voice → Pictures and pets (an OpenAI key or
   a local image server such as LocalAI), the same one pets use. Crew on the Codex engine use

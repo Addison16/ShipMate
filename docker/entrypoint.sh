@@ -33,6 +33,12 @@ as_postgres() { runuser -u postgres -- "$@"; }
 mkdir -p "$PGDATA" "$SOCKET_DIR"
 chown postgres:postgres "$PGDATA" "$SOCKET_DIR"
 chmod 700 "$PGDATA"
+# An image whose postgres account had other IDs (0.3.0 used 100:102) leaves files Postgres can't
+# open. Nothing is running on them yet, so hand the whole folder over once.
+if [ -n "$(find "$PGDATA" \( ! -user postgres -o ! -group postgres \) -print -quit)" ]; then
+  echo "shipmate: giving the bundled database files in $PGDATA to this image's postgres user"
+  chown -R postgres:postgres "$PGDATA"
+fi
 
 if [ ! -s "$PGDATA/PG_VERSION" ]; then
   echo "shipmate: setting up the bundled database in $PGDATA"

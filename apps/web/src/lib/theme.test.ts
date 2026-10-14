@@ -6,7 +6,9 @@ import {
   COLOR_THEMES,
   DEFAULT_APPEARANCE,
   isDark,
+  paintTheme,
   readCachedAppearance,
+  readCachedTheme,
 } from "./theme.js";
 
 const publicFile = (path: string) => new URL(`../../public${path}`, import.meta.url);
@@ -25,6 +27,8 @@ describe("appearance", () => {
     expect(readCachedAppearance(store('{"themeMode":"dark","colorTheme":"admiral"}'))).toEqual({
       themeMode: "dark",
       colorTheme: "admiral",
+      style: "plain",
+      customTheme: null,
     });
     expect(readCachedAppearance(store('{"themeMode":"neon","colorTheme":"plaid"}'))).toEqual(
       DEFAULT_APPEARANCE,
@@ -34,9 +38,41 @@ describe("appearance", () => {
     expect(readCachedAppearance(null)).toEqual(DEFAULT_APPEARANCE);
   });
 
+  it("keeps a cached custom theme only while it is the one picked", () => {
+    const painted = paintTheme("t1", {
+      name: "Office",
+      description: "",
+      accent: "#2563eb",
+      neutral: "gray",
+      font: "serif",
+      corners: "sharp",
+      logo: "",
+      words: {},
+      voice: "",
+    });
+    expect(painted.favicon).toMatch(/^data:image\/svg\+xml/);
+    const cached = (customTheme: string) =>
+      store(
+        JSON.stringify({ themeMode: "auto", colorTheme: "harbor", customTheme, custom: painted }),
+      );
+    expect(readCachedTheme(cached("t1"))?.paint.fontFamily).toContain("Georgia");
+    expect(readCachedTheme(cached("t2"))).toBeNull();
+    expect(readCachedTheme(store("{"))).toBeNull();
+  });
+
   it("colors the browser bar with the theme in light mode and dark slate in dark mode", () => {
-    expect(barColor({ themeMode: "light", colorTheme: "open-sea" }, true)).toBe("#1d4ed8");
-    expect(barColor({ themeMode: "auto", colorTheme: "open-sea" }, true)).toBe("#0f172a");
+    expect(
+      barColor(
+        { themeMode: "light", colorTheme: "open-sea", customTheme: null, style: "plain" },
+        true,
+      ),
+    ).toBe("#1d4ed8");
+    expect(
+      barColor(
+        { themeMode: "auto", colorTheme: "open-sea", customTheme: null, style: "plain" },
+        true,
+      ),
+    ).toBe("#0f172a");
   });
 
   it("has a home-screen icon set and manifest in the theme's color for every color theme", () => {

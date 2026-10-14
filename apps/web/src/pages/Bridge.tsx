@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import { api, errorMessage } from "../api.js";
+import { useCrewName, useThemeWords } from "../appearance.js";
 import { useApprovals } from "../approvals.js";
 import { useUser } from "../auth.js";
 import { ApprovalCard } from "../components/ApprovalCard.js";
@@ -49,7 +50,7 @@ function conversationTitle(c: ConversationDto, crew: CrewDto[]): string {
     const member = crew.find((m) => m.slug === c.crewSlug);
     return member?.name ?? c.crewSlug ?? "Crew member";
   }
-  return "New bridge chat";
+  return "New chat";
 }
 
 /** Project names for conversations that work in a Shipyard project; fetched only when needed. */
@@ -169,13 +170,14 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
   }
 
   const canDirect = directCandidates(crewList).length > 0;
-  const captainName = crewList.find((m) => m.captain)?.name ?? "Captain";
+  const crewName = useCrewName();
+  const captainName = crewName(crewList.find((m) => m.captain)?.name ?? "Captain");
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       {noModels && (
         <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-100">
-          No model provider is configured yet, so the crew cannot answer.{" "}
+          No AI model is set up yet, so nothing can answer.{" "}
           <a href={href("/providers")} className="font-medium underline underline-offset-2">
             Set up a provider
           </a>
@@ -198,12 +200,12 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
                 disabled={creating}
                 onClick={() => void createBridge()}
               >
-                New bridge chat
+                New chat
               </Button>
               {canDirect && (
                 <Button
                   disabled={creating}
-                  title="Chat with one crew member yourself"
+                  title="Chat with one of them yourself"
                   aria-haspopup="dialog"
                   onClick={() => setPicking(true)}
                 >
@@ -250,7 +252,7 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
               {conversations.error && <ErrorText>{conversations.error}</ErrorText>}
               {conversations.data?.length === 0 && (
                 <p className="p-3 text-sm text-slate-500 dark:text-slate-400">
-                  No conversations yet. Start a bridge chat, or chat with one crew member.
+                  No conversations yet. Start a new chat.
                 </p>
               )}
               <ul className="stagger space-y-0.5">
@@ -364,6 +366,7 @@ function ConversationRow({
   onPinned: () => void;
   onDeleted: () => void;
 }) {
+  const words = useThemeWords();
   const [renaming, setRenaming] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -460,7 +463,7 @@ function ConversationRow({
             </span>
           )}
           <span className="mt-0.5 flex min-h-9 min-w-0 flex-wrap items-center gap-1.5 pr-32 text-xs sm:min-h-7 sm:pr-24 text-slate-500 dark:text-slate-400">
-            {c.kind === "bridge" ? `Bridge · ${who}` : `Direct · ${who}`}
+            {c.kind === "bridge" ? `${words.bridge} · ${who}` : `Direct · ${who}`}
             <ConversationTags c={c} projectNames={projectNames} />
           </span>
         </span>
@@ -532,6 +535,8 @@ function Thread({
   onPinned: () => void;
   onDeleted: () => void;
 }) {
+  const words = useThemeWords();
+  const crewName = useCrewName();
   const user = useUser();
   const socketState = useSocketState();
   // Chats from Discord, Telegram, Slack or a watch (opened from search) are shown, not continued.
@@ -747,7 +752,7 @@ function Thread({
                   <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                     {conversation?.kind === "direct"
                       ? `${member.name} · ${member.role}`
-                      : `${member.name} · brings in the right crew member`}
+                      : `${crewName(member.name)} · brings in the right ${words.crewMember}`}
                   </p>
                 )}
               </div>
@@ -853,7 +858,7 @@ function Thread({
             >
               {member && conversation?.kind === "direct"
                 ? `${member.role}. Ask a question, think something through, or hand over a job.`
-                : "Say hello. Ask for anything, and the right crew member picks it up."}
+                : `Say hello. Ask for anything, and the right ${words.crewMember} picks it up.`}
             </EmptyState>
           )}
           <TimelineView items={state.items} selfId={user.id} />
@@ -939,10 +944,10 @@ function Thread({
                 }}
                 placeholder={
                   state.busy
-                    ? `${member?.name ?? "The crew"} is working…`
+                    ? `${member ? crewName(member.name) : `The ${words.crew.toLowerCase()}`} is working…`
                     : conversation?.kind === "direct" && member
                       ? `Message ${member.name}`
-                      : "Message the crew"
+                      : `Message the ${words.crew.toLowerCase()}`
                 }
                 className={cx(
                   "min-h-[42px] flex-1 resize-none rounded-xl border border-control bg-white px-3.5 py-2 text-[15px] shadow-xs transition-[border-color,box-shadow] duration-150 dark:bg-slate-950",

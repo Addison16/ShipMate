@@ -15,6 +15,7 @@ function setup(role: ActingUser["role"] = "owner") {
   const equips: Array<[string, EquipSpec]> = [];
   const host: CaptainHost = {
     listCrew: async () => [],
+    listModels: async () => "",
     recruit: async () => {
       throw new Error("unused");
     },

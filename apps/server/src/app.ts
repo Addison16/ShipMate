@@ -33,6 +33,7 @@ import { shipyardRoutes } from "./routes/shipyard.js";
 import { skillRoutes } from "./routes/skills.js";
 import { slackRoutes } from "./routes/slack.js";
 import { telegramRoutes } from "./routes/telegram.js";
+import { themeRoutes } from "./routes/themes.js";
 import { settingsRoutes, usageRoutes } from "./routes/usage.js";
 import { userRoutes } from "./routes/users.js";
 import { voiceRoutes } from "./routes/voice.js";
@@ -211,6 +212,7 @@ export async function buildApp(
   await localAiRoutes(app, services);
   await healthRoutes(app, services);
   await oidcRoutes(app, services);
+  await themeRoutes(app, services);
 
   // The Bridge's live channel: streams crew replies and takes messages from the person.
   app.get("/api/ws", { websocket: true }, (socket, req) => {

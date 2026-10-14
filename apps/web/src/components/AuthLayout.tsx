@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Logo } from "./Logo.js";
+import { useThemeWords } from "../appearance.js";
+import { BrandLogo } from "./Logo.js";
 
 export function AuthLayout({
   title,
@@ -10,14 +11,15 @@ export function AuthLayout({
   subtitle?: string;
   children: ReactNode;
 }) {
+  const words = useThemeWords();
   return (
     <main className="grid min-h-dvh place-items-center bg-gradient-to-b from-accent-50 to-slate-50 px-4 py-10 dark:from-accent-950/40 dark:to-slate-950">
       <div className="w-full max-w-md">
         <div className="mb-6 flex animate-fade-in items-center gap-2.5 text-slate-900 dark:text-white">
           <span className="grid size-9 place-items-center rounded-lg bg-gradient-to-br from-accent-500 to-accent-700 text-white shadow-sm">
-            <Logo size={22} />
+            <BrandLogo size={22} />
           </span>
-          <span className="text-xl font-semibold tracking-tight">Shipmate</span>
+          <span className="text-xl font-semibold tracking-tight">{words.appName}</span>
         </div>
         <div className="animate-fade-up rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-accent-900/5 dark:border-slate-800 dark:bg-slate-900">
           <h1 className="text-xl font-semibold tracking-tight">{title}</h1>

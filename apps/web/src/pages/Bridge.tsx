@@ -24,6 +24,7 @@ import {
   useDraft,
 } from "../components/CrewChat.js";
 import { NavIcon } from "../components/icons.js";
+import { PetDock } from "../components/Pet.js";
 import { TimelineView } from "../components/Timeline.js";
 import {
   Badge,
@@ -36,6 +37,7 @@ import {
 } from "../components/ui.js";
 import { MicButton, speaker, useHandsFree, useVoiceStatus } from "../components/Voice.js";
 import { formatTime } from "../lib/format.js";
+import { dockPets } from "../lib/pets.js";
 import { splitHighlights } from "../lib/search.js";
 import { surfaceLabel } from "../lib/shipyard.js";
 import { initialTimeline, timelineReducer } from "../lib/timeline.js";
@@ -293,6 +295,7 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
               conversationId={conversationId}
               conversation={current}
               title={current ? conversationTitle(current, crewList) : ""}
+              crew={crewList}
               member={
                 current?.kind === "direct"
                   ? (crewList.find((m) => m.slug === current.crewSlug) ?? null)
@@ -516,6 +519,7 @@ function Thread({
   conversationId,
   conversation,
   title,
+  crew,
   member,
   tags,
   onRenamed,
@@ -525,6 +529,8 @@ function Thread({
   conversationId: string;
   conversation: ConversationDto | null;
   title: string;
+  /** Everyone aboard, for the pets of crew members who speak in this conversation. */
+  crew: CrewDto[];
   /** Who answers here: the crew member of a direct chat, or the Captain. */
   member: CrewDto | null;
   tags: ReactNode;
@@ -594,11 +600,15 @@ function Thread({
     }
   }, [socketState, load]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll whenever the items change
+  const pets = readOnly ? [] : dockPets(state.items, crew, member);
+  // Pets fade back while someone reads further up, so they never sit on top of what is read.
+  const [readingBack, setReadingBack] = useState(false);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll whenever the items (or the room left for pets) change
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [state.items, restoredApprovals.length]);
+  }, [state.items, restoredApprovals.length, pets.length > 0]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -608,6 +618,7 @@ function Thread({
     const el = scroller.current;
     if (!el) return;
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    setReadingBack(!stick.current);
   }
 
   /** The crew forget the chat so far; the messages stay, below a divider. */
@@ -822,7 +833,11 @@ function Thread({
       <div
         ref={scroller}
         onScroll={onScroll}
-        className="relative min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6"
+        className={cx(
+          "relative min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6",
+          // Room for the pets sitting on the message box, so they never cover the last message.
+          pets.length > 0 && "pb-16",
+        )}
         aria-live="polite"
         aria-busy={state.busy}
       >
@@ -879,7 +894,14 @@ function Thread({
           }}
           className="border-t border-slate-200 bg-white px-3 pt-3 pb-[calc(0.75rem+var(--safe-bottom))] sm:px-6 dark:border-slate-800 dark:bg-slate-900"
         >
-          <div className="mx-auto max-w-3xl space-y-2">
+          <div className="relative mx-auto max-w-3xl space-y-2">
+            <PetDock
+              pets={pets}
+              className={cx(
+                "absolute bottom-[calc(100%+0.5rem)] left-1 transition-opacity duration-300",
+                readingBack && "opacity-25 [&>*]:pointer-events-none!",
+              )}
+            />
             {state.error && (
               <div className="flex items-start gap-2">
                 <div className="flex-1">

@@ -2,11 +2,13 @@ import type { AttachmentDto, MessageDto } from "@shipmate/core";
 import type { ReactNode } from "react";
 import { messageAttachments } from "../lib/files.js";
 import { formatTime } from "../lib/format.js";
+import { petPreview } from "../lib/pets.js";
 import { type Handoff, messageHandoff, type TimelineItem, type ToolChip } from "../lib/timeline.js";
 import { ApprovalCard } from "./ApprovalCard.js";
 import { MessageFiles } from "./Attachments.js";
 import { Avatar } from "./Avatar.js";
 import { Markdown } from "./Markdown.js";
+import { PetPreviewCard } from "./Pet.js";
 import { cx } from "./ui.js";
 import { ListenButton } from "./Voice.js";
 
@@ -172,6 +174,8 @@ function MessageView({ message, selfId }: { message: MessageDto; selfId: string 
       </div>
     );
   }
+  const preview = petPreview(message);
+  if (preview) return <PetPreviewCard preview={preview} />;
   const question = answeredQuestion(message);
   if (question) return <AnsweredQuestion {...question} />;
   if (a.kind === "system" || message.role === "system") {

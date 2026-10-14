@@ -26,6 +26,7 @@ import { localAiRoutes } from "./routes/local-ai.js";
 import { mcpRoutes } from "./routes/mcp.js";
 import { oidcRoutes } from "./routes/oidc.js";
 import { onboardingRoutes } from "./routes/onboarding.js";
+import { petRoutes } from "./routes/pets.js";
 import { profileRoutes } from "./routes/profiles.js";
 import { providerRoutes } from "./routes/providers.js";
 import { pushRoutes } from "./routes/push.js";
@@ -95,6 +96,8 @@ export async function buildApp(
     /** Stand-in for speech services (tests). */
     voiceFetch?: import("./voice/service.js").VoiceFetch;
     googleFetch?: import("./services/google-oauth.js").GoogleFetch;
+    /** Stand-in for image models (tests). */
+    petFetch?: import("./pets/service.js").PetFetch;
   } = {},
 ) {
   const app = Fastify({
@@ -207,6 +210,7 @@ export async function buildApp(
   await pushRoutes(app, services);
   await fileRoutes(app, services);
   await voiceRoutes(app, services);
+  await petRoutes(app, services);
   await localAiRoutes(app, services);
   await healthRoutes(app, services);
   await oidcRoutes(app, services);

@@ -33,6 +33,8 @@ import {
   helperTools,
   MemoryStore,
   memoryTools,
+  type PetHost,
+  petTools,
   type QuestionHost,
   questionTools,
   skillTools,
@@ -47,6 +49,8 @@ import { CliToolServer } from "./cli-mcp.js";
 import type { EverydayTools } from "./everyday.js";
 import type { AttachmentService } from "./files/service.js";
 import { toDto as toAttachmentDto } from "./files/service.js";
+import { petHost } from "./pets/host.js";
+import type { PetService } from "./pets/service.js";
 import type { ApprovalService } from "./services/approvals.js";
 import type { AuditService } from "./services/audit.js";
 import type { CrewService } from "./services/crew.js";
@@ -100,7 +104,7 @@ export interface WorkspaceProvider {
 }
 
 /** Tools that show as their own line or card in the conversation, not as a tool chip. */
-const HIDDEN_TOOL_CHIPS = new Set(["delegate", "ask_captain", "ask_person"]);
+const HIDDEN_TOOL_CHIPS = new Set(["delegate", "ask_captain", "ask_person", "make_pet"]);
 
 /** Everything a cached session's tools need from the turn in progress. */
 interface TurnContext {
@@ -109,6 +113,8 @@ interface TurnContext {
   approvals: ApprovalHost;
   question: QuestionHost;
   helper: HelperHost;
+  /** The Captain's pet building; absent when pets are not wired up (some tests). */
+  pet?: PetHost | undefined;
 }
 
 /** Helper agents one crew member may start while answering one message. */
@@ -164,6 +170,7 @@ export class Bridge {
   #watches: WatchService | undefined;
   #workspaces: WorkspaceProvider | undefined;
   #everyday: EverydayTools | undefined;
+  #pets: PetService | undefined;
   /** Turns of `backend: claude-code-cli` crew members (the official `claude` binary). */
   #cli: ClaudeCliTurns;
   /** Shipmate's tools for those turns, served over loopback MCP. */
@@ -187,6 +194,11 @@ export class Bridge {
   /** Lists and other everyday-life tools every crew member gets. */
   attachEveryday(everyday: EverydayTools) {
     this.#everyday = everyday;
+  }
+
+  /** Pet pictures, for the Captain's pet tools. */
+  attachPets(pets: PetService) {
+    this.#pets = pets;
   }
 
   #people() {
@@ -871,7 +883,38 @@ export class Bridge {
         });
       },
     };
-    const context: TurnContext = { captain: host, crew: crewHost, approvals, question, helper };
+    const pets = this.#pets;
+    const pet: PetHost | undefined = pets
+      ? petHost({
+          crew: this.deps.crew,
+          pets,
+          roster: async () => (await this.#roster(user)).filter((c) => c.status !== "retired"),
+          preview: async (meta) => {
+            await this.#closeStream(conv, crewRow.id, stream);
+            try {
+              const message = await this.#store(conv, {
+                role: "system",
+                content: `${meta.crew.name}'s new pet: ${meta.name}`,
+                authorName: "Shipmate",
+                meta: { petPreview: meta },
+              });
+              this.emit(user.id, { type: "message", conversationId: conv.id, message });
+            } finally {
+              stream = this.#openStream(user.id, conv.id, crew);
+            }
+          },
+          ask: (q, signal) => question.ask(q, signal),
+          personName: user.displayName,
+        })
+      : undefined;
+    const context: TurnContext = {
+      captain: host,
+      crew: crewHost,
+      approvals,
+      question,
+      helper,
+      pet,
+    };
 
     if (folder.manifest.backend === "claude-code-cli") {
       if (options.images?.length) {
@@ -895,7 +938,7 @@ export class Bridge {
               tools: this.#cliTools(
                 user,
                 folder,
-                { captain: host, crew: crewHost, question },
+                { captain: host, crew: crewHost, question, pet },
                 isCaptain,
               ),
               gate: (call) =>
@@ -1218,6 +1261,16 @@ export class Bridge {
       updatePerson: (person, changes) => current().captain.updatePerson(person, changes),
       updateHousehold: (changes) => current().captain.updateHousehold(changes),
     };
+    const pet = (): PetHost => {
+      const p = current().pet;
+      if (!p) throw new Error("pets are not available");
+      return p;
+    };
+    const petProxy: PetHost = {
+      status: () => pet().status(),
+      make: (spec, signal) => pet().make(spec, signal),
+      show: (slug, show) => pet().show(slug, show),
+    };
     const skills = this.deps.skills;
     const { servers, skipped } = await this.deps.mcp.serversFor(folder);
     const model = await this.#model(folder);
@@ -1250,6 +1303,7 @@ export class Bridge {
                 ),
             }),
             ...(isCaptain ? captainTools(proxy, acting) : []),
+            ...(isCaptain && this.#pets ? petTools(petProxy, acting) : []),
             ...(folder.manifest.captain
               ? []
               : crewTools(
@@ -1450,7 +1504,12 @@ export class Bridge {
   #cliTools(
     user: UserRow,
     folder: CrewFolder,
-    hosts: { captain: CaptainHost; crew: CrewHost; question: QuestionHost },
+    hosts: {
+      captain: CaptainHost;
+      crew: CrewHost;
+      question: QuestionHost;
+      pet?: PetHost | undefined;
+    },
     isCaptain: boolean,
   ): ToolDefinition[] {
     const acting: ActingUser = { id: user.id, displayName: user.displayName, role: user.role };
@@ -1468,6 +1527,7 @@ export class Bridge {
           ),
       }),
       ...(isCaptain ? captainTools(hosts.captain, acting) : []),
+      ...(isCaptain && hosts.pet ? petTools(hosts.pet, acting) : []),
       ...(folder.manifest.captain
         ? []
         : crewTools(hosts.crew, this.deps.crew.captain().manifest.name)),

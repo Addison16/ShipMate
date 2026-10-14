@@ -8,6 +8,7 @@ import { openDirectChat } from "../components/CrewChat.js";
 import { CrewSettings } from "../components/CrewSettings.js";
 import { NavIcon } from "../components/icons.js";
 import { ModelSelect } from "../components/ModelSelect.js";
+import { CrewPetCard, PetSprite } from "../components/Pet.js";
 import { StarterCrewPicker } from "../components/StarterCrewPicker.js";
 import {
   Badge,
@@ -102,7 +103,7 @@ function CrewList() {
             <a
               href={href(`/crew/${c.slug}`)}
               className={cx(
-                "block h-full rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition duration-200 hover:-translate-y-0.5 hover:border-accent-600/50 hover:shadow-md active:translate-y-0 active:scale-[0.98] dark:border-slate-700 dark:bg-slate-900 dark:hover:border-accent-400/50",
+                "relative block h-full rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition duration-200 hover:-translate-y-0.5 hover:border-accent-600/50 hover:shadow-md active:translate-y-0 active:scale-[0.98] dark:border-slate-700 dark:bg-slate-900 dark:hover:border-accent-400/50",
                 focusRing,
               )}
             >
@@ -114,11 +115,25 @@ function CrewList() {
                     <StatusBadges crew={c} />
                   </div>
                   <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{c.role}</p>
-                  <p className="mt-3 truncate font-mono text-xs text-slate-500 dark:text-slate-400">
+                  <p
+                    className={cx(
+                      "mt-3 truncate font-mono text-xs text-slate-500 dark:text-slate-400",
+                      c.pet?.shown && "pr-12",
+                    )}
+                  >
                     {modelLabel(c.model, settings.data?.defaultModel)}
                   </p>
                 </div>
               </div>
+              {c.pet?.shown && (
+                <PetSprite
+                  pet={c.pet}
+                  crewName={c.name}
+                  mood="idle"
+                  size={44}
+                  className="absolute right-3 bottom-2"
+                />
+              )}
             </a>
           </li>
         ))}
@@ -317,6 +332,7 @@ function CrewDetail({ slug }: { slug: string }) {
   });
 
   const crew = detail.data;
+  const captainName = settings.data?.captainName || "the Captain";
 
   async function approve() {
     setActionError(null);
@@ -359,7 +375,18 @@ function CrewDetail({ slug }: { slug: string }) {
         <>
           <header className="mt-2 mb-4 flex flex-wrap items-start justify-between gap-3">
             <div className="flex items-start gap-4">
-              <Avatar name={crew.name} size="lg" />
+              <span className="relative shrink-0">
+                <Avatar name={crew.name} size="lg" />
+                {crew.pet?.shown && (
+                  <PetSprite
+                    pet={crew.pet}
+                    crewName={crew.name}
+                    mood="idle"
+                    size={34}
+                    className="absolute -right-3 -bottom-3"
+                  />
+                )}
+              </span>
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-2xl font-semibold tracking-tight">{crew.name}</h1>
@@ -449,6 +476,14 @@ function CrewDetail({ slug }: { slug: string }) {
               <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
                 Model, tools, approvals and the rest are in the Settings tab.
               </p>
+            )}
+            {tab === "settings" && (crew.pet || admin) && (
+              <CrewPetCard
+                crew={crew}
+                captainName={captainName}
+                admin={admin}
+                onSaved={() => void detail.reload()}
+              />
             )}
             {tab === "settings" && (
               <CrewSettings

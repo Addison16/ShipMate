@@ -401,6 +401,15 @@ function readDrafts(): Record<string, string> {
   }
 }
 
+/** Type `text` into a conversation's message box before it opens (it waits there to be sent). */
+export function setDraft(conversationId: string, text: string) {
+  try {
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ ...readDrafts(), [conversationId]: text }));
+  } catch {
+    // Storage can be unavailable (private mode); the box just starts empty.
+  }
+}
+
 /** The composer's text, kept per conversation for this browser tab, so switching chats loses nothing. */
 export function useDraft(
   conversationId: string,

@@ -6,6 +6,7 @@
  * `/api/setup` and `/api/auth/login`. Errors are `{ error: string }` with a 4xx/5xx status.
  */
 import type { CaptainVoice, OnboardingDto } from "./onboarding.js";
+import type { PetDto } from "./pets.js";
 import type { GitHubWatchEvent } from "./routine.js";
 import type { HouseholdFacts, PersonProfile, UserPreferences, UserRole } from "./user.js";
 
@@ -231,6 +232,8 @@ export interface CrewDto {
   mcp: string[];
   skills: string[];
   avatar: string | null;
+  /** Its pet, when it has one (check `shown`). */
+  pet: PetDto | null;
 }
 
 export interface CrewDetailDto extends CrewDto {

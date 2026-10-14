@@ -6,6 +6,13 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Crew pets (optional)**: any crew member can have a little creature that hangs out on the
+  message box, dances while that crew member works and hops when the reply lands. Off until you
+  make one: tap "Make a pet" on a crew member's Settings tab (or just ask the Captain), answer a
+  few tap questions, and keep or redo the result. Pictures come from the image model picked
+  under Settings → Photos and voice (an OpenAI or OpenAI-compatible provider, a local image
+  server, or your ChatGPT sign-in when OpenAI allows pictures for it); without one, the Captain
+  draws the pet as an SVG, so it always works. See [docs/pets.md](docs/pets.md).
 - **Helper agents (sub agents)**: tick "Let it start helper agents" in a crew member's
   settings (`helpers: true` in crew.yaml). On Shipmate (pi) it gets a `helper` tool that runs
   short-lived copies of itself side by side, with its tools and approvals, up to 8 per message;

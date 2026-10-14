@@ -4,6 +4,9 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 export type SocketState = "connecting" | "open" | "closed";
 type Listener = (event: ServerEvent) => void;
 
+/** Away at least this long, the page reconnects on return rather than trust its old socket. */
+const RESUME_RECONNECT_MS = 15_000;
+
 /** One shared WebSocket to /api/ws with reconnect and exponential backoff. */
 class ShipSocket {
   private ws: WebSocket | null = null;
@@ -14,20 +17,59 @@ class ShipSocket {
   private wanted = false;
   state: SocketState = "closed";
 
+  private hiddenAt: number | null = null;
+
   start() {
     if (this.wanted) return;
     this.wanted = true;
+    document.addEventListener("visibilitychange", this.onVisibility);
+    window.addEventListener("online", this.onOnline);
     this.connect();
   }
 
   stop() {
     this.wanted = false;
+    document.removeEventListener("visibilitychange", this.onVisibility);
+    window.removeEventListener("online", this.onOnline);
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     this.ws?.close();
     this.ws = null;
     this.setState("closed");
   }
+
+  /**
+   * Phones freeze a page in the background (iOS closes its socket without telling it), so a page
+   * coming back after a while reconnects at once; the chat then reloads and catches up with the
+   * crew, who kept working on the server meanwhile.
+   */
+  private onVisibility = () => {
+    if (document.visibilityState === "hidden") {
+      this.hiddenAt = Date.now();
+      return;
+    }
+    const away = this.hiddenAt === null ? 0 : Date.now() - this.hiddenAt;
+    this.hiddenAt = null;
+    if (away >= RESUME_RECONNECT_MS || this.ws?.readyState !== WebSocket.OPEN) this.reconnectNow();
+  };
+
+  private onOnline = () => {
+    if (this.ws?.readyState !== WebSocket.OPEN) this.reconnectNow();
+  };
+
+  private reconnectNow = () => {
+    if (!this.wanted) return;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    this.attempt = 0;
+    const old = this.ws;
+    if (old) {
+      // Its close event is ignored once it is no longer the current socket.
+      this.ws = null;
+      old.close();
+    }
+    this.connect();
+  };
 
   private connect() {
     const proto = location.protocol === "https:" ? "wss" : "ws";

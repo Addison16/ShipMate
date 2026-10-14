@@ -12,6 +12,10 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   few tap questions, and keep or redo the result. Pictures come from the image model picked
   under Settings → Photos and voice (an OpenAI or OpenAI-compatible provider, a local image
   server); without one, the Captain draws the pet as an SVG, so it always works. See [docs/pets.md](docs/pets.md).
+- **The crew keep working when you close the app**: a reply carries on on the server when you
+  close the tab or the phone app, as it always did, and now a chat you open again mid-reply
+  shows everything written so far and the Stop button, then keeps streaming. Coming back to
+  the phone app after a while reconnects at once instead of waiting on a dead connection.
 - **Custom themes, built by your AI**: Settings > Appearance > Make a custom theme opens a chat
   where the Captain follows a step-by-step build guide (`theme_build_guide`) to make a theme
   around any idea, a trainer adventure or a company with a CEO: accent color and grays (light

@@ -11,6 +11,8 @@ import {
   type ConversationSearchResultDto,
   type CrewManifest,
   DEFAULT_MODEL,
+  type LiveItemDto,
+  type LiveToolDto,
   type MessageDto,
   SEARCH_MARK,
   type ServerEvent,
@@ -182,6 +184,8 @@ export class Bridge {
   #sockets = new Map<string, Set<Send>>();
   #taps = new Set<(userId: string, event: ServerEvent) => void>();
   #runs = new Map<string, Run>();
+  /** Per conversation, the turn in progress as a page that opens now should show it. */
+  #live = new Map<string, LiveTurn>();
   #watches: WatchService | undefined;
   #workspaces: WorkspaceProvider | undefined;
   #everyday: EverydayTools | undefined;
@@ -240,8 +244,98 @@ export class Bridge {
   }
 
   emit(userId: string, event: ServerEvent) {
+    this.#track(event);
     for (const send of this.#sockets.get(userId) ?? []) send(event);
     for (const tap of this.#taps) tap(userId, event);
+  }
+
+  /**
+   * The turn in progress in a conversation, for a page that opens (or reconnects) mid-turn.
+   * Turns run on the server whether or not anyone is watching; this lets the page catch up.
+   */
+  async live(
+    user: UserRow,
+    conversationId: string,
+  ): Promise<Extract<ServerEvent, { type: "live" }>> {
+    await this.conversation(user, conversationId);
+    const live = this.#live.get(conversationId);
+    return {
+      type: "live",
+      conversationId,
+      busy: this.isBusy(conversationId),
+      items: (live?.items ?? []).map((it) =>
+        it.kind === "stream" ? { ...it, tools: [...it.tools.values()] } : it,
+      ),
+    };
+  }
+
+  /** Mirror what the person's pages see into `#live`. */
+  #track(event: ServerEvent) {
+    if (!("conversationId" in event) || !event.conversationId) return;
+    const id = event.conversationId;
+    let live = this.#live.get(id);
+    if (event.type === "status") {
+      if (event.busy) this.#live.set(id, { items: [] });
+      else this.#live.delete(id);
+      return;
+    }
+    const streamOf = (streamId: string) =>
+      live?.items.find((it): it is LiveStream => it.kind === "stream" && it.streamId === streamId);
+    switch (event.type) {
+      case "stream_start":
+        if (!live) {
+          // A watch run streams without a status event; the stream ends on its own.
+          live = { items: [] };
+          this.#live.set(id, live);
+        }
+        live.items.push({
+          kind: "stream",
+          streamId: event.streamId,
+          crew: event.crew,
+          text: "",
+          tools: new Map(),
+        });
+        break;
+      case "delta": {
+        const s = streamOf(event.streamId);
+        if (s) s.text += event.text;
+        break;
+      }
+      case "tool": {
+        const s = streamOf(event.streamId);
+        if (!s) break;
+        const before = s.tools.get(event.toolCallId);
+        s.tools.set(event.toolCallId, {
+          id: event.toolCallId,
+          name: event.toolName,
+          summary: event.summary || before?.summary || "",
+          running: event.phase === "start",
+          isError: Boolean(event.isError),
+        });
+        break;
+      }
+      case "stream_end":
+        {
+          if (!live) break;
+          const ended = streamOf(event.streamId);
+          // Its saved message follows; a page that opens now loads that instead. The hand-off
+          // line to its writer goes too: a page loads saved messages first and adds live items
+          // after them, so the line would land below the reply it introduced.
+          const handoff = ended
+            ? live.items.findLastIndex(
+                (it) => it.kind === "handoff" && it.to.slug === ended.crew.slug,
+              )
+            : -1;
+          live.items = live.items.filter(
+            (it, i) => i !== handoff && (it.kind !== "stream" || it.streamId !== event.streamId),
+          );
+          if (!live.items.length && !this.isBusy(id)) this.#live.delete(id);
+        }
+        break;
+      case "handoff":
+        live?.items.push({ kind: "handoff", from: event.from, to: event.to, task: event.task });
+        break;
+    }
   }
 
   /** See every event sent to anyone, connected or not (push notifications). */
@@ -1877,9 +1971,20 @@ export class Bridge {
     if (!run) return;
     this.#cli.abort(conversationId);
     clearTimeout(run.idleTimer);
+    this.#live.delete(conversationId);
     for (const s of run.sessions.values()) s.dispose();
     this.#runs.delete(conversationId);
   }
+}
+
+type LiveStream = Omit<Extract<LiveItemDto, { kind: "stream" }>, "tools"> & {
+  /** By tool call id. */
+  tools: Map<string, LiveToolDto>;
+};
+
+/** A turn in progress, as `Bridge.live` reports it. Hand-off lines stay until the turn ends. */
+interface LiveTurn {
+  items: (LiveStream | Extract<LiveItemDto, { kind: "handoff" }>)[];
 }
 
 interface Stream {

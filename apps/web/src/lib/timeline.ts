@@ -227,6 +227,8 @@ function applyEvent(state: TimelineState, ev: ServerEvent): TimelineState {
         ],
       };
     }
+    case "live":
+      return applyLive(state, ev);
     case "status":
       return {
         ...state,
@@ -239,4 +241,54 @@ function applyEvent(state: TimelineState, ev: ServerEvent): TimelineState {
     default:
       return state;
   }
+}
+
+/**
+ * Catch up with a turn that ran while this page was closed or offline: replies in progress show
+ * with everything written so far, and bubbles the server has already finished (their saved
+ * messages are loaded or on their way) go.
+ */
+function applyLive(
+  state: TimelineState,
+  ev: Extract<ServerEvent, { type: "live" }>,
+): TimelineState {
+  const live = new Map(
+    ev.items.flatMap((it) => (it.kind === "stream" ? [[it.streamId, it] as const] : [])),
+  );
+  let items = state.items.flatMap((it): TimelineItem[] => {
+    if (it.kind !== "stream") return [it];
+    const now = live.get(it.streamId);
+    return now ? [{ ...it, text: now.text, tools: now.tools, done: false }] : [];
+  });
+  let seq = state.seq;
+  for (const it of ev.items) {
+    if (it.kind === "stream") {
+      if (items.some((x) => x.kind === "stream" && x.streamId === it.streamId)) continue;
+      items = [
+        ...items,
+        {
+          kind: "stream",
+          key: `s:${it.streamId}`,
+          streamId: it.streamId,
+          crew: it.crew,
+          text: it.text,
+          tools: it.tools,
+          done: false,
+        },
+      ];
+    } else {
+      const same = (x: TimelineItem) =>
+        x.kind === "handoff" &&
+        x.from.slug === it.from.slug &&
+        x.to.slug === it.to.slug &&
+        x.task === it.task;
+      if (items.some(same)) continue;
+      seq++;
+      items = [
+        ...items,
+        { kind: "handoff", key: `h:${seq}`, from: it.from, to: it.to, task: it.task },
+      ];
+    }
+  }
+  return { ...state, seq, busy: ev.busy, items };
 }

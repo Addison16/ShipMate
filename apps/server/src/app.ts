@@ -69,6 +69,7 @@ const ClientEventSchema = z.discriminatedUnion("type", [
     attachments: z.array(z.string().uuid()).max(8).optional(),
   }),
   z.object({ type: z.literal("abort"), conversationId: z.string().uuid() }),
+  z.object({ type: z.literal("watch"), conversationId: z.string().uuid() }),
   z.object({
     type: z.literal("approve"),
     approvalId: z.string(),
@@ -231,6 +232,8 @@ export async function buildApp(
     const keepalive = setInterval(() => {
       if (socket.readyState === socket.OPEN) socket.ping();
     }, WS_PING_MS);
+    // Closing the page only stops the updates: turns keep running and are saved, and the page
+    // catches up with a `watch` when it comes back.
     socket.on("close", () => {
       clearInterval(keepalive);
       disconnect();
@@ -272,6 +275,8 @@ export async function buildApp(
           event.text,
           event.attachments ?? [],
         );
+      } else if (event.type === "watch") {
+        send(await services.bridge.live(current, event.conversationId));
       } else {
         await services.bridge.abort(current, event.conversationId);
       }

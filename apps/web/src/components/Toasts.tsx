@@ -1,38 +1,53 @@
 import { useState } from "react";
+import { useThemeWords } from "../appearance.js";
 import { href } from "../router.js";
 import { useServerEvents } from "../ws.js";
 import { cx, focusRing } from "./ui.js";
+
+/** How long a finished run's notice stays up. */
+const SUCCESS_TOAST_MS = 10_000;
 
 interface Toast {
   id: string;
   title: string;
   body: string;
   link: string;
+  linkText: string;
+  failed: boolean;
 }
 
-/** App-wide dismissible notices; today: failed watch runs. */
+/** App-wide dismissible notices: finished and failed watch runs. */
 export function Toasts() {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const words = useThemeWords();
+  const dismiss = (id: string) => setToasts((ts) => ts.filter((t) => t.id !== id));
 
   useServerEvents((ev) => {
-    if (ev.type !== "watch_run" || ev.run.status !== "failed") return;
-    const id = ev.run.id;
-    setToasts((ts) =>
-      ts.some((t) => t.id === id)
-        ? ts
-        : [
-            ...ts.slice(-3),
-            {
-              id,
-              title: `Watch "${ev.watchName}" failed`,
-              body: ev.run.error ?? "The run failed without an error message.",
-              link: `/watches/${ev.run.watchId}`,
-            },
-          ],
-    );
+    if (ev.type !== "watch_run") return;
+    const run = ev.run;
+    const failed = run.status === "failed";
+    if (!failed && run.status !== "succeeded") return;
+    const toast: Toast = failed
+      ? {
+          id: run.id,
+          title: `"${ev.watchName}" failed`,
+          body: run.error ?? "The run failed without an error message.",
+          link: `/watches/${run.watchId}`,
+          linkText: "View runs",
+          failed,
+        }
+      : {
+          id: run.id,
+          title: ev.watchName,
+          body: run.output?.trim() || "Done.",
+          link: run.conversationId ? `/bridge/${run.conversationId}` : `/watches/${run.watchId}`,
+          linkText: run.conversationId ? "Open" : `View in ${words.watches}`,
+          failed,
+        };
+    setToasts((ts) => (ts.some((t) => t.id === toast.id) ? ts : [...ts.slice(-3), toast]));
+    // A result stays in the chat list, so its notice can go by itself; a failure waits.
+    if (!failed) setTimeout(() => dismiss(toast.id), SUCCESS_TOAST_MS);
   });
-
-  const dismiss = (id: string) => setToasts((ts) => ts.filter((t) => t.id !== id));
 
   return (
     <section
@@ -42,13 +57,33 @@ export function Toasts() {
       {toasts.map((t) => (
         <div
           key={t.id}
-          role="alert"
-          className="pointer-events-auto animate-toast-in rounded-lg border border-red-200 bg-white p-3 text-sm shadow-lg dark:border-red-900 dark:bg-slate-900"
+          role={t.failed ? "alert" : "status"}
+          className={cx(
+            "pointer-events-auto animate-toast-in rounded-lg border bg-white p-3 text-sm shadow-lg dark:bg-slate-900",
+            t.failed
+              ? "border-red-200 dark:border-red-900"
+              : "border-slate-200 dark:border-slate-700",
+          )}
         >
           <div className="flex items-start gap-2">
-            <span aria-hidden="true" className="mt-1.5 size-2 shrink-0 rounded-full bg-red-500" />
+            <span
+              aria-hidden="true"
+              className={cx(
+                "mt-1.5 size-2 shrink-0 rounded-full",
+                t.failed ? "bg-red-500" : "bg-emerald-500",
+              )}
+            />
             <div className="min-w-0 flex-1">
-              <p className="font-medium text-red-800 dark:text-red-200">{t.title}</p>
+              <p
+                className={cx(
+                  "font-medium",
+                  t.failed
+                    ? "text-red-800 dark:text-red-200"
+                    : "text-slate-900 dark:text-slate-100",
+                )}
+              >
+                {t.title}
+              </p>
               <p className="mt-0.5 line-clamp-3 break-words text-slate-600 dark:text-slate-300">
                 {t.body}
               </p>
@@ -60,7 +95,7 @@ export function Toasts() {
                   focusRing,
                 )}
               >
-                View runs
+                {t.linkText}
               </a>
             </div>
             <button

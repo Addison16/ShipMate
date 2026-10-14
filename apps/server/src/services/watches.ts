@@ -52,6 +52,16 @@ export const WatchTriggerSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
+/** A finished watch run's result, for the chat apps the owner has linked. */
+export interface WatchReport {
+  userId: string;
+  crew: { slug: string; name: string };
+  watchName: string;
+  /** The crew member's final reply. */
+  text: string;
+  conversationId: string;
+}
+
 /** Arbitrary but fixed key so only one Shipmate process schedules watches (§7). */
 const LEADER_LOCK = 0x5348_4950;
 
@@ -65,6 +75,7 @@ export class WatchService {
   #leader: postgres.ReservedSql | null = null;
   #leaderTimer: NodeJS.Timeout | undefined;
   #stopped = false;
+  #reporters: ((report: WatchReport) => Promise<void>)[] = [];
 
   constructor(
     private readonly db: Db,
@@ -103,6 +114,11 @@ export class WatchService {
       this.#leader.release();
       this.#leader = null;
     }
+  }
+
+  /** Also send each successful run's result here (a chat bridge). */
+  onReport(reporter: (report: WatchReport) => Promise<void>) {
+    this.#reporters.push(reporter);
   }
 
   get isLeader() {
@@ -315,7 +331,8 @@ export class WatchService {
             (w.trigger as WatchTrigger).kind === "github"
               ? (w.trigger as Extract<WatchTrigger, { kind: "github" }>).projectId
               : null,
-          title: `${w.name} (${new Date().toISOString().slice(0, 16).replace("T", " ")})`,
+          // The chat list shows each watch's latest run under its name, with its time.
+          title: w.name,
           sessionFiles:
             w.session === "continue" && w.sessionFile ? { [w.crewSlug]: w.sessionFile } : {},
         })
@@ -341,7 +358,7 @@ export class WatchService {
     const prompt = extra?.trim()
       ? `${w.prompt}\n\n---\n${cause === "github" ? "" : "Webhook payload:\n"}${extra.slice(0, 20_000)}`
       : w.prompt;
-    void this.#execute(w, owner, conversationId, runId, prompt);
+    void this.#execute(w, owner, conversationId, runId, prompt, crewRow.name);
     return started;
   }
 
@@ -351,6 +368,7 @@ export class WatchService {
     conversationId: string,
     runId: string,
     prompt: string,
+    crewName: string,
   ) {
     let status: "succeeded" | "failed" = "succeeded";
     let output: string | null = null;
@@ -382,6 +400,22 @@ export class WatchService {
       .returning();
     if (run)
       this.emit(owner.id, { type: "watch_run", watchName: w.name, run: await this.#runDto(run) });
+    if (status === "succeeded" && output?.trim()) {
+      const report: WatchReport = {
+        userId: owner.id,
+        crew: { slug: w.crewSlug, name: crewName },
+        watchName: w.name,
+        text: output,
+        conversationId,
+      };
+      for (const reporter of this.#reporters) {
+        void reporter(report).catch((err) =>
+          console.error(
+            `shipmate: could not send the result of "${w.name}": ${(err as Error).message}`,
+          ),
+        );
+      }
+    }
     if (status === "succeeded") {
       const followers = (await this.db.select().from(watches)).filter((f) => {
         const t = f.trigger as WatchTrigger;

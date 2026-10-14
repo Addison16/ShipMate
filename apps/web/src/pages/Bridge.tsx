@@ -73,7 +73,9 @@ function ConversationTags({
   projectNames: Map<string, string>;
   linkProject?: boolean;
 }) {
-  const surface = surfaceLabel(c.surface);
+  const words = useThemeWords();
+  // A watch's run is labelled with the theme's word for watches, in the singular.
+  const surface = c.surface === "watch" ? words.watches.replace(/s$/, "") : surfaceLabel(c.surface);
   const projectName = c.projectId ? (projectNames.get(c.projectId) ?? "Project") : null;
   return (
     <>
@@ -545,8 +547,10 @@ function Thread({
   const crewName = useCrewName();
   const user = useUser();
   const socketState = useSocketState();
-  // Chats from Discord, Telegram, Slack or a watch (opened from search) are shown, not continued.
-  const readOnly = conversation !== null && conversation.surface !== "web";
+  // Chats from Discord, Telegram or Slack (opened from search) are shown, not continued. A
+  // watch's run can be answered: the crew member who ran it still has its context.
+  const readOnly =
+    conversation !== null && conversation.surface !== "web" && conversation.surface !== "watch";
   const [state, dispatch] = useReducer(timelineReducer, initialTimeline);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [text, setText] = useDraft(conversationId);
@@ -792,7 +796,7 @@ function Thread({
                 Hands-free
               </Button>
             )}
-            {conversation && !readOnly && (
+            {conversation?.surface === "web" && (
               <>
                 {/* Icons only on phones, so the chat's title keeps the room. */}
                 <Button
@@ -889,9 +893,7 @@ function Thread({
 
       {readOnly ? (
         <p className="border-t border-slate-200 bg-white px-3 pt-3 pb-[calc(0.75rem+var(--safe-bottom))] text-center text-sm text-slate-500 sm:px-6 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-          {conversation?.surface === "watch"
-            ? "A watch ran this conversation. It is shown here to read."
-            : `This conversation happened in ${surfaceLabel(conversation?.surface ?? "") ?? "another app"}. Reply there to continue it.`}
+          {`This conversation happened in ${surfaceLabel(conversation?.surface ?? "") ?? "another app"}. Reply there to continue it.`}
         </p>
       ) : (
         <form

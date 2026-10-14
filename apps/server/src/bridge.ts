@@ -47,7 +47,15 @@ import {
   type ThemeHost,
   themeTools,
 } from "@shipmate/crew";
-import { conversations, crewMembers, type Db, messages, users, watches } from "@shipmate/db";
+import {
+  conversations,
+  crewMembers,
+  type Db,
+  messages,
+  users,
+  watches,
+  watchRuns,
+} from "@shipmate/db";
 import { and, asc, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { accessSummary } from "./access-summary.js";
 import { HttpError, type UserRow } from "./auth.js";
@@ -374,7 +382,18 @@ export class Bridge {
       })
       .from(conversations)
       .leftJoin(crewMembers, eq(crewMembers.id, conversations.crewMemberId))
-      .where(and(eq(conversations.userId, userId), eq(conversations.surface, "web")))
+      .where(
+        and(
+          eq(conversations.userId, userId),
+          // Web chats, plus each watch's latest run, so its result reads like any reply.
+          sql`(${conversations.surface} = 'web' or ${conversations.id} in (
+            select distinct on (r.watch_id) r.conversation_id
+            from ${watchRuns} r
+            where r.conversation_id is not null
+            order by r.watch_id, r.started_at desc
+          ))`,
+        ),
+      )
       .orderBy(sql`${conversations.pinnedAt} desc nulls last`, desc(conversations.updatedAt));
     return rows.map((r) => toConversationDto(r.c, r.slug, r.preview));
   }

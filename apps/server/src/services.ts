@@ -223,6 +223,8 @@ export async function createServices(
     approvals,
     port: options.slackPort ?? new SlackWebApi(),
   });
+  // Each successful watch run's result also goes to the chat apps its owner has linked.
+  for (const app of [discord, telegram, slack]) watches.onReport((r) => app.report(r));
 
   const backups = new BackupService(
     db,

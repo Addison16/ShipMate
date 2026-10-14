@@ -174,4 +174,80 @@ describe("timelineReducer", () => {
     expect(run([{ type: "error", message: "boom" }]).error).toBe("boom");
     expect(run([{ type: "error", conversationId: "other", message: "x" }]).error).toBeNull();
   });
+
+  it("catches up with a reply that kept going while the page was closed", () => {
+    let s = timelineReducer(initialTimeline, { type: "open", conversationId: CID });
+    s = timelineReducer(s, {
+      type: "loaded",
+      conversationId: CID,
+      messages: [crewMessage("m0", captain, "older")],
+    });
+    s = run(
+      [
+        {
+          type: "live",
+          conversationId: CID,
+          busy: true,
+          items: [
+            {
+              kind: "handoff",
+              from: captain,
+              to: galley,
+              task: "Plan dinner",
+            },
+            {
+              kind: "stream",
+              streamId: "s1",
+              crew: galley,
+              text: "Tuesday: ",
+              tools: [{ id: "t1", name: "web_search", summary: "", running: true, isError: false }],
+            },
+          ],
+        },
+        // Later deltas add to what was already written.
+        { type: "delta", conversationId: CID, streamId: "s1", text: "curry" },
+      ],
+      s,
+    );
+    expect(s.busy).toBe(true);
+    expect(s.items.map((i) => i.kind)).toEqual(["message", "handoff", "stream"]);
+    const stream = s.items[2];
+    expect(stream?.kind === "stream" && stream.text).toBe("Tuesday: curry");
+    expect(stream?.kind === "stream" && stream.tools[0]?.running).toBe(true);
+
+    // A second catch-up (another reconnect) changes nothing that is already there.
+    const again = run(
+      [
+        {
+          type: "live",
+          conversationId: CID,
+          busy: true,
+          items: [
+            { kind: "handoff", from: captain, to: galley, task: "Plan dinner" },
+            { kind: "stream", streamId: "s1", crew: galley, text: "Tuesday: curry", tools: [] },
+          ],
+        },
+      ],
+      s,
+    );
+    expect(again.items.map((i) => i.key)).toEqual(s.items.map((i) => i.key));
+  });
+
+  it("drops bubbles the server finished while the page was away", () => {
+    let s = run([
+      { type: "status", conversationId: CID, busy: true },
+      { type: "stream_start", conversationId: CID, streamId: "s1", crew: captain },
+      { type: "delta", conversationId: CID, streamId: "s1", text: "Half a rep" },
+    ]);
+    // The socket dropped; the turn ended and its reply was saved meanwhile. The reload has it.
+    s = timelineReducer(s, {
+      type: "loaded",
+      conversationId: CID,
+      messages: [crewMessage("m1", captain, "Done.")],
+    });
+    expect(s.items).toHaveLength(2);
+    s = run([{ type: "live", conversationId: CID, busy: false, items: [] }], s);
+    expect(s.busy).toBe(false);
+    expect(s.items.map((i) => i.key)).toEqual(["m:m1"]);
+  });
 });

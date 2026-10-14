@@ -6,6 +6,10 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **The crew keep working when you close the app**: a reply carries on on the server when you
+  close the tab or the phone app, as it always did, and now a chat you open again mid-reply
+  shows everything written so far and the Stop button, then keeps streaming. Coming back to
+  the phone app after a while reconnects at once instead of waiting on a dead connection.
 - **Custom themes, built by your AI**: Settings > Appearance > Make a custom theme opens a chat
   where the Captain follows a step-by-step build guide (`theme_build_guide`) to make a theme
   around any idea, a trainer adventure or a company with a CEO: accent color and grays (light

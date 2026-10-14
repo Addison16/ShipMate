@@ -571,12 +571,18 @@ function Thread({
   });
   useEffect(() => () => speaker.stop(), []);
 
+  // Whether the last load ran with the socket open; a reply saved before the socket opened
+  // reaches neither that load nor the socket, so the first open loads again.
+  const loadedLive = useRef(false);
   const load = useCallback(async () => {
+    loadedLive.current = socket.state === "open";
     dispatch({ type: "open", conversationId });
     setLoadError(null);
     try {
       const { messages } = await api.listMessages(conversationId);
       dispatch({ type: "loaded", conversationId, messages });
+      // The crew may still be working (they carry on while the page is closed): catch up.
+      socket.send({ type: "watch", conversationId });
     } catch (err) {
       setLoadError(errorMessage(err));
     }
@@ -591,13 +597,14 @@ function Thread({
   const dropped = useRef(false);
   useEffect(() => {
     if (socketState === "open") {
-      if (dropped.current) void load();
+      if (dropped.current || !loadedLive.current) void load();
+      else socket.send({ type: "watch", conversationId });
       dropped.current = false;
       seenOpen.current = true;
     } else if (seenOpen.current) {
       dropped.current = true;
     }
-  }, [socketState, load]);
+  }, [socketState, load, conversationId]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll whenever the items change
   useLayoutEffect(() => {

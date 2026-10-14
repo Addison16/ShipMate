@@ -1401,6 +1401,12 @@ export type ClientEvent =
   /** `attachments`: ids of files uploaded for this message (see phone.ts). */
   | { type: "send"; conversationId: string; text: string; attachments?: string[] | undefined }
   | { type: "abort"; conversationId: string }
+  /**
+   * Ask for a `live` event: what the crew are doing in this conversation right now. Sent when a
+   * chat opens and after reconnecting, so a reply that kept going while the page was closed
+   * shows up mid-sentence instead of missing.
+   */
+  | { type: "watch"; conversationId: string }
   /** Answer an approval_request (phase 2). */
   | {
       type: "approve";
@@ -1409,8 +1415,39 @@ export type ClientEvent =
       answer?: string | undefined;
     };
 
+/** A live tool chip on a reply that is still being written. */
+export interface LiveToolDto {
+  id: string;
+  name: string;
+  summary: string;
+  running: boolean;
+  isError: boolean;
+}
+
+/** Part of a turn in progress: a reply being written, or a hand-off line. */
+export type LiveItemDto =
+  | {
+      kind: "stream";
+      streamId: string;
+      crew: { slug: string; name: string };
+      /** Everything written so far. */
+      text: string;
+      tools: LiveToolDto[];
+    }
+  | {
+      kind: "handoff";
+      from: { slug: string; name: string };
+      to: { slug: string; name: string };
+      task: string;
+    };
+
 export type ServerEvent =
   | { type: "hello"; version: string; userId: string }
+  /**
+   * Answer to `watch`, sent only to the socket that asked: whether the crew are working and the
+   * replies in progress. Turns run on the server whether or not a page is open.
+   */
+  | { type: "live"; conversationId: string; busy: boolean; items: LiveItemDto[] }
   /** A persisted message: the user's own echo, or a crew member's completed reply. */
   | { type: "message"; conversationId: string; message: MessageDto }
   /** A crew member starts streaming a reply (the Captain, or a crew member it delegated to). */

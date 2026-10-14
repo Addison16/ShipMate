@@ -9,6 +9,7 @@ import type {
   WatchTemplateDto,
   WatchTrigger,
 } from "@shipmate/core";
+import { singular } from "@shipmate/core";
 import { type FormEvent, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { useCrewName, useThemeText, useThemeWords } from "../appearance.js";
@@ -268,7 +269,7 @@ function WatchList() {
         )}
         actions={
           <Button variant="primary" onClick={() => navigate("/watches/new")}>
-            New {words.watches.replace(/s$/, "").toLowerCase()}
+            New {singular(words.watches).toLowerCase()}
           </Button>
         }
       />
@@ -607,7 +608,7 @@ function WatchForm({
 }) {
   const t = useThemeText();
   const crewName = useCrewName();
-  const one = useThemeWords().watches.replace(/s$/, "").toLowerCase();
+  const one = singular(useThemeWords().watches).toLowerCase();
   const [f, setF] = useState<FormState>(() => toForm(watch, crew));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

@@ -1,4 +1,5 @@
 import type { ConversationDto, ConversationSearchResultDto, CrewDto } from "@shipmate/core";
+import { singular } from "@shipmate/core";
 import {
   type FormEvent,
   type KeyboardEvent,
@@ -81,7 +82,7 @@ function ConversationTags({
   const words = useThemeWords();
   const t = useThemeText();
   // A watch's run is labelled with the theme's word for watches, in the singular.
-  const surface = c.surface === "watch" ? words.watches.replace(/s$/, "") : surfaceLabel(c.surface);
+  const surface = c.surface === "watch" ? singular(words.watches) : surfaceLabel(c.surface);
   const projectName = c.projectId ? (projectNames.get(c.projectId) ?? "Project") : null;
   return (
     <>

@@ -1,3 +1,4 @@
+import { singular } from "@shipmate/core";
 import { useEffect, useId, useRef, useState } from "react";
 import { useCrewName, useThemeText, useThemeWords } from "../appearance.js";
 import { useApprovals } from "../approvals.js";
@@ -16,7 +17,7 @@ export function ApprovalTray({ variant }: { variant: "sidebar" | "topbar" }) {
   const t = useThemeText();
   const words = useThemeWords();
   // "Open routine": the theme's word for a watch, in the singular.
-  const watch = words.watches.replace(/s$/, "").toLowerCase();
+  const watch = singular(words.watches).toLowerCase();
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const panelRef = useRef<HTMLDivElement>(null);

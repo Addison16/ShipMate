@@ -206,6 +206,13 @@ const plural = (s: string) => {
   if (/(ss|x|z|ch|sh)$/i.test(s)) return `${s}es`;
   return /s$/i.test(s) ? s : `${s}s`;
 };
+/** One of a plural page name: "Routines" → "Routine", "Activities" → "Activity". */
+export function singular(s: string): string {
+  if (/[^aeiou]ies$/i.test(s)) return `${s.slice(0, -3)}y`;
+  if (/(ss|x|z|ch|sh)es$/i.test(s)) return s.slice(0, -2);
+  if (/[^s]s$/i.test(s)) return s.slice(0, -1);
+  return s;
+}
 const article = (s: string) => (/^[aeiou]/i.test(s) ? "an" : "a");
 const cased = (like: string, s: string) => (/^[A-Z]/.test(like) ? capitalize(s) : s);
 
@@ -253,7 +260,7 @@ export function themeText(text: string, words: ThemeWordMap): string {
     if (g.page) return page[g.page] ?? g.page;
     // One watch, after a word that makes it a noun ("a watch", "the watch's page").
     if (g.det) {
-      const one = words.watches.replace(/s$/i, "").toLowerCase();
+      const one = singular(words.watches).toLowerCase();
       return `${cased(g.det, /^an?$/i.test(g.det) ? article(one) : g.det.toLowerCase())} ${one}`;
     }
     if (g.captain) return words.captain;

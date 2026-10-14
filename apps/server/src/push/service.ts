@@ -8,7 +8,7 @@ import type {
   ServerEvent,
   ThemeWordMap,
 } from "@shipmate/core";
-import { STOCK_CAPTAIN_NAME } from "@shipmate/core";
+import { STOCK_CAPTAIN_NAME, singular } from "@shipmate/core";
 import { conversations, type Db, pushSubscriptions, secrets } from "@shipmate/db";
 import type { SecretVault } from "@shipmate/providers";
 import { and, eq } from "drizzle-orm";
@@ -229,7 +229,7 @@ export class PushService {
   /** One scheduled job, in `userId`'s words ("Watch", "Routine", "Quest"). */
   async #watchWord(userId: string): Promise<string> {
     const words = await this.options.wordsFor?.(userId).catch(() => null);
-    return (words?.watches ?? "Watches").replace(/s$/i, "");
+    return singular(words?.watches ?? "Watches");
   }
 
   /** The notification for an approval request, with a token for its Approve and Deny buttons. */

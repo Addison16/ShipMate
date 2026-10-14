@@ -1,4 +1,5 @@
 import type { InstallStartersResponse, ShipmateUse, StarterCrewDto } from "@shipmate/core";
+import { singular } from "@shipmate/core";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { useThemeWords } from "../appearance.js";
@@ -141,7 +142,7 @@ function StarterRow({
 }) {
   const id = `starter-${starter.slug}`;
   // The theme's word for watches, in the singular.
-  const watch = useThemeWords().watches.replace(/s$/, "");
+  const watch = singular(useThemeWords().watches);
   return (
     <li>
       <label

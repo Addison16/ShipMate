@@ -1,3 +1,6 @@
+import { logoDataUri } from "@shipmate/core";
+import { useActiveTheme } from "../appearance.js";
+
 /** The North Star mark: a faceted four-point compass star. Drawn in currentColor. */
 export function Logo({ size = 24 }: { size?: number }) {
   return (
@@ -18,4 +21,14 @@ export function Logo({ size = 24 }: { size?: number }) {
       />
     </svg>
   );
+}
+
+/**
+ * The app's mark: the custom theme's logo when it has one (shown as an image, so nothing in it
+ * can run), else the North Star. Sits on the accent tile, drawn in white.
+ */
+export function BrandLogo({ size = 24 }: { size?: number }) {
+  const { theme } = useActiveTheme();
+  if (!theme?.logo) return <Logo size={size} />;
+  return <img src={logoDataUri(theme.logo)} width={size} height={size} alt="" aria-hidden="true" />;
 }

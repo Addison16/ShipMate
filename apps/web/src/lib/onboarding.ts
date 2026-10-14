@@ -1,4 +1,10 @@
-import type { OnboardingDto, OnboardingStep, ShipmateUse, StarterCrewDto } from "@shipmate/core";
+import type {
+  OnboardingDto,
+  OnboardingStep,
+  ShipmateUse,
+  StarterCrewDto,
+  ThemeWordMap,
+} from "@shipmate/core";
 
 export interface GuideStep {
   id: OnboardingStep;
@@ -12,6 +18,7 @@ export interface GuideStep {
 export const GUIDE_STEPS: GuideStep[] = [
   { id: "account", label: "Owner account", optional: false },
   { id: "purpose", label: "What it's for", optional: true },
+  { id: "style", label: "Style", optional: true },
   { id: "model", label: "AI model", optional: true },
   { id: "captain", label: "Your Captain", optional: true },
   { id: "household", label: "About you", optional: true },
@@ -20,6 +27,14 @@ export const GUIDE_STEPS: GuideStep[] = [
   { id: "shipyard", label: "Shipyard", optional: true },
   { id: "finish", label: "Tour", optional: false },
 ];
+
+/** A step's label in the words of the person's style or theme ("Your Assistant", "Your CEO"). */
+export function stepLabel(step: GuideStep, words: ThemeWordMap): string {
+  if (step.id === "captain") return `Your ${words.captain}`;
+  if (step.id === "crew") return `Starter ${words.crew.toLowerCase()}`;
+  if (step.id === "shipyard") return words.shipyard;
+  return step.label;
+}
 
 const index = (step: OnboardingStep) => GUIDE_STEPS.findIndex((s) => s.id === step);
 
@@ -59,50 +74,54 @@ export interface TourStop {
   icon: "bridge" | "lists" | "watches" | "shipyard" | "crew" | "settings" | "bridges";
 }
 
-export const TOUR_STOPS: TourStop[] = [
-  {
-    path: "/bridge",
-    title: "Bridge",
-    body: "Chat with your Captain. Ask anything; it hands recurring work to the right crew member.",
-    icon: "bridge",
-  },
-  {
-    path: "/lists",
-    title: "Lists",
-    body: "Groceries, chores and bills the whole household shares, kept up to date by the crew.",
-    icon: "lists",
-  },
-  {
-    path: "/watches",
-    title: "Watches",
-    body: "Routines on a schedule: a morning briefing, a weekly meal plan, bill reminders.",
-    icon: "watches",
-  },
-  {
-    path: "/crew",
-    title: "Crew",
-    body: "Everyone aboard and what they do. Edit a persona, recruit new crew, or retire one.",
-    icon: "crew",
-  },
-  {
-    path: "/shipyard",
-    title: "Shipyard",
-    body: "Point a crew member at a GitHub repo to plan features, fix issues and review PRs.",
-    icon: "shipyard",
-  },
-  {
-    path: "/bridges",
-    title: "Chat bridges",
-    body: "Talk to the crew from Discord, Telegram or Slack.",
-    icon: "bridges",
-  },
-  {
-    path: "/settings",
-    title: "Settings",
-    body: "Your profile, notifications, theme and, for owners, this guide again.",
-    icon: "settings",
-  },
-];
+/** The tour, in the words of the person's style or theme. */
+export function tourStops(w: ThemeWordMap): TourStop[] {
+  const crew = w.crew.toLowerCase();
+  return [
+    {
+      path: "/bridge",
+      title: w.bridge,
+      body: `Chat with your ${w.captain}. Ask anything; it hands recurring work to the right ${w.crewMember}.`,
+      icon: "bridge",
+    },
+    {
+      path: "/lists",
+      title: "Lists",
+      body: `Groceries, chores and bills the whole household shares, kept up to date by your ${crew}.`,
+      icon: "lists",
+    },
+    {
+      path: "/watches",
+      title: w.watches,
+      body: "Routines on a schedule: a morning briefing, a weekly meal plan, bill reminders.",
+      icon: "watches",
+    },
+    {
+      path: "/crew",
+      title: w.crew,
+      body: `Everyone on your team and what they do. Edit one, add new ${crew}, or retire one.`,
+      icon: "crew",
+    },
+    {
+      path: "/shipyard",
+      title: w.shipyard,
+      body: `Point one of your ${crew} at a GitHub repo to plan features, fix issues and review PRs.`,
+      icon: "shipyard",
+    },
+    {
+      path: "/bridges",
+      title: "Chat apps",
+      body: `Talk to your ${crew} from Discord, Telegram or Slack.`,
+      icon: "bridges",
+    },
+    {
+      path: "/settings",
+      title: "Settings",
+      body: "Your profile, notifications, theme and, for owners, this guide again.",
+      icon: "settings",
+    },
+  ];
+}
 
 /** The answers to "What's Shipmate for?", the first question of the guide. */
 export const USE_CHOICES: Array<{ id: ShipmateUse; title: string; body: string }> = [

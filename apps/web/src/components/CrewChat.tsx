@@ -1,6 +1,8 @@
 import type { ConversationDto, CrewDto } from "@shipmate/core";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useCrewName, useThemeWords } from "../appearance.js";
+import { useKeyboardInset } from "../lib/keyboard.js";
 import { href, navigate } from "../router.js";
 import { Avatar } from "./Avatar.js";
 import { Button, cx, ErrorText, focusRing } from "./ui.js";
@@ -52,6 +54,7 @@ function MemberButton({
   onClick: () => void;
   card?: boolean;
 }) {
+  const name = useCrewName()(member.name);
   return (
     <button
       type="button"
@@ -69,9 +72,9 @@ function MemberButton({
         focusRing,
       )}
     >
-      <Avatar name={member.name} />
+      <Avatar name={name} />
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-medium">{member.name}</span>
+        <span className="truncate text-sm font-medium">{name}</span>
         <span className="truncate text-xs text-slate-500 dark:text-slate-400">
           {busy ? "Opening chat…" : (subtitle ?? member.role)}
         </span>
@@ -107,6 +110,8 @@ export function ChatLanding({
 }) {
   const [opening, setOpening] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const words = useThemeWords();
+  const crewName = useCrewName();
   const captain = crew.find((m) => m.captain);
   const members = directCandidates(crew);
   const talked = chattedWith(conversations);
@@ -128,15 +133,16 @@ export function ChatLanding({
       <div className="space-y-2">
         <h1 className="text-xl font-semibold tracking-tight">Who would you like to talk to?</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Ask {captain?.name ?? "the Captain"} and the right crew member is pulled in, or talk to
-          one of them yourself. Your chat with each crew member picks up where you left off.
+          Ask {captain ? crewName(captain.name) : `your ${words.captain}`} and the right{" "}
+          {words.crewMember} is pulled in, or talk to one yourself. Each chat picks up where you
+          left off.
         </p>
       </div>
       {captain && (
         <MemberButton
           card
           member={captain}
-          subtitle="New bridge chat · hands each job to the right crew member"
+          subtitle={`New chat · hands each job to the right ${words.crewMember}`}
           busy={creating}
           disabled={creating || opening !== null}
           onClick={onNewBridge}
@@ -193,6 +199,7 @@ export function CrewStrip({
 }) {
   const [opening, setOpening] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const crewName = useCrewName();
   const captain = crew.find((m) => m.captain);
   const people = [...(captain ? [captain] : []), ...directCandidates(crew)];
   if (people.length < 2) return null;
@@ -222,7 +229,7 @@ export function CrewStrip({
               type="button"
               disabled={creating || opening !== null}
               onClick={() => void open(m)}
-              title={m.captain ? `New bridge chat with ${m.name}` : `Chat with ${m.name}`}
+              title={m.captain ? `New chat with ${crewName(m.name)}` : `Chat with ${m.name}`}
               className={cx(
                 "flex w-16 flex-col items-center gap-1 rounded-lg py-1.5 transition active:scale-95 disabled:opacity-60",
                 focusRing,
@@ -235,10 +242,10 @@ export function CrewStrip({
                   opening === m.slug && "animate-pulse",
                 )}
               >
-                <Avatar name={m.name} size="lg" />
+                <Avatar name={crewName(m.name)} size="lg" />
               </span>
               <span className="w-full truncate text-center text-[11px] text-slate-600 dark:text-slate-300">
-                {m.name}
+                {crewName(m.name)}
               </span>
             </button>
           </li>
@@ -269,6 +276,7 @@ export function CrewPicker({
   const [index, setIndex] = useState(0);
   const [opening, setOpening] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const keyboard = useKeyboardInset(open);
   const talked = chattedWith(conversations);
   const q = query.trim().toLowerCase();
   const shown = directCandidates(crew).filter((m) =>
@@ -324,10 +332,17 @@ export function CrewPicker({
         if (e.target === dialog.current) onClose();
       }}
       aria-labelledby="crew-picker-title"
-      className="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-xl max-sm:mb-0 max-sm:w-full max-sm:max-w-none max-sm:rounded-b-none max-sm:pb-[var(--safe-bottom)] border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/40 backdrop:backdrop-blur-[2px] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+      // With the phone keyboard open, sit on top of it and fit the space left, so the matches
+      // stay in view as the list narrows instead of sinking behind the keyboard.
+      style={
+        keyboard.inset > 0 && keyboard.height !== null
+          ? { marginBottom: keyboard.inset, maxHeight: keyboard.height - 8, paddingBottom: 0 }
+          : undefined
+      }
+      className="m-auto open:flex open:flex-col w-[min(28rem,calc(100vw-2rem))] rounded-xl max-sm:mb-0 max-sm:w-full max-sm:max-w-none max-sm:rounded-b-none max-sm:pb-[var(--safe-bottom)] border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/40 backdrop:backdrop-blur-[2px] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
     >
-      <div className="flex flex-col">
-        <div className="space-y-3 border-b border-slate-200 p-4 dark:border-slate-800">
+      <div className="flex min-h-0 flex-col">
+        <div className="shrink-0 space-y-3 border-b border-slate-200 p-4 dark:border-slate-800">
           <div className="flex items-center justify-between gap-2">
             <h2 id="crew-picker-title" className="text-sm font-semibold">
               Chat with a crew member
@@ -357,7 +372,7 @@ export function CrewPicker({
             )}
           />
         </div>
-        <div className="relative max-h-[50vh] overflow-y-auto p-2 max-sm:max-h-[60vh]">
+        <div className="relative min-h-0 max-h-[50vh] overflow-y-auto overscroll-contain p-2 max-sm:max-h-[60vh]">
           {shown.length === 0 ? (
             <p className="px-2.5 py-6 text-sm text-slate-500 dark:text-slate-400">
               {q ? "No one matches. Try another name or role." : "No crew to chat with yet."}
@@ -398,6 +413,15 @@ function readDrafts(): Record<string, string> {
     return raw ? (JSON.parse(raw) as Record<string, string>) : {};
   } catch {
     return {};
+  }
+}
+
+/** Put text in a conversation's composer before opening it (the person reads it and sends). */
+export function setDraft(conversationId: string, text: string) {
+  try {
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ ...readDrafts(), [conversationId]: text }));
+  } catch {
+    // Storage unavailable: the chat opens with an empty composer.
   }
 }
 

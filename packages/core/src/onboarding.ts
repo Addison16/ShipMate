@@ -7,6 +7,7 @@ import { z } from "zod";
 export const ONBOARDING_STEPS = [
   "account",
   "purpose",
+  "style",
   "model",
   "captain",
   "household",

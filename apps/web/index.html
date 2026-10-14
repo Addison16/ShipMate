@@ -38,6 +38,19 @@
             };
             for (const s in links) document.querySelector(s)?.setAttribute("href", links[s]);
           }
+          // A custom theme's colors, corners, font and tab icon, as last painted (see paintTheme).
+          const c = p.custom;
+          if (c && c.id === p.customTheme && c.paint?.vars) {
+            for (const k in c.paint.vars) root.style.setProperty(k, c.paint.vars[k]);
+            if (c.paint.fontFamily) root.style.setProperty("font-family", c.paint.fontFamily);
+            const dark = root.classList.contains("dark");
+            document
+              .querySelector('meta[name="theme-color"]')
+              ?.setAttribute("content", dark ? c.paint.barDark : c.paint.barLight);
+            if (c.favicon) {
+              document.querySelector('link[rel="icon"][type="image/svg+xml"]')?.setAttribute("href", c.favicon);
+            }
+          }
         } catch {}
       })();
     </script>

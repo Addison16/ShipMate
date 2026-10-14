@@ -16,6 +16,7 @@ import { approvalRoutes, DecisionSchema } from "./routes/approvals.js";
 import { authRoutes } from "./routes/auth.js";
 import { backupRoutes } from "./routes/backups.js";
 import { claudeCliRoutes } from "./routes/claude-cli.js";
+import { codexCliRoutes } from "./routes/codex-cli.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { crewRoutes } from "./routes/crew.js";
 import { discordRoutes } from "./routes/discord.js";
@@ -208,6 +209,7 @@ export async function buildApp(
   await slackRoutes(app, services);
   await backupRoutes(app, services);
   await claudeCliRoutes(app, services);
+  await codexCliRoutes(app, services);
   await cliMcpRoutes(app, services.bridge.cliTools);
   await pushRoutes(app, services);
   await fileRoutes(app, services);

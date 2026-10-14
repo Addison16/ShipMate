@@ -24,10 +24,12 @@ export const ApprovalPolicy = z.union([
 
 /**
  * What runs a crew member's turns: `pi` (default; Shipmate's own agent with the instance's
- * providers) or `claude-code-cli` (the unmodified official `claude` binary, signed in by the user
- * with their own Claude subscription; Shipmate never touches its credentials, §11/§12).
+ * providers), `claude-code-cli` (the unmodified official `claude` binary, signed in by the user
+ * with their own Claude subscription) or `codex-cli` (the unmodified official `codex` binary,
+ * signed in by the user with their own ChatGPT plan). Shipmate never touches either CLI's
+ * credentials (§11/§12).
  */
-export const CrewBackend = z.enum(["pi", "claude-code-cli"]);
+export const CrewBackend = z.enum(["pi", "claude-code-cli", "codex-cli"]);
 export type CrewBackend = z.infer<typeof CrewBackend>;
 
 /** Settings for the `claude-code-cli` backend (ignored by `pi`). */
@@ -70,6 +72,20 @@ export const CrewPet = z.object({
 });
 export type CrewPet = z.infer<typeof CrewPet>;
 
+/** Settings for the `codex-cli` backend (ignored by the others). The model is `codex/<id>`. */
+export const CodexCliSettings = z.object({
+  /**
+   * `codex exec --sandbox`. `read-only` (default) lets it read and run read-only commands in its
+   * folder; `workspace-write` also lets it change files there; `danger-full-access` lifts the
+   * sandbox (it still runs inside Shipmate's container).
+   */
+  sandbox: z.enum(["read-only", "workspace-write", "danger-full-access"]).default("read-only"),
+});
+export type CodexCliSettings = z.infer<typeof CodexCliSettings>;
+
+/** The provider id Codex models use in crew.yaml (`codex/gpt-6.1-sol`). */
+export const CODEX_PROVIDER = "codex";
+
 /**
  * `crew.yaml` — the manifest of one crew member. The folder it lives in is the
  * crew member's working directory for its pi session.
@@ -82,6 +98,8 @@ export const CrewManifest = z.object({
   backend: CrewBackend.default("pi"),
   /** Options for the claude-code-cli backend. */
   cli: ClaudeCliSettings.optional(),
+  /** Options for the codex-cli backend. */
+  codex: CodexCliSettings.optional(),
   /** Built-in pi tools this crew member may use. */
   tools: z.array(z.string().min(1)).default([]),
   /** MCP server ids from the catalog or custom servers. */

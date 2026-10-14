@@ -29,6 +29,7 @@ import {
   TextField,
 } from "../components/ui.js";
 import { claudeCliApi } from "../lib/claude-cli.js";
+import { codexChoices, codexCliApi } from "../lib/codex-cli.js";
 import { formatTime } from "../lib/format.js";
 import { CREW_DEFAULT, modelLabel } from "../lib/models.js";
 import { useResource } from "../lib/useResource.js";
@@ -327,6 +328,7 @@ function CrewDetail({ slug }: { slug: string }) {
   const settings = useResource(() => api.getSettings());
   // Admins only; for others it fails quietly and the Claude subscription is not offered.
   const cli = useResource(() => claudeCliApi.status().then((r) => r.claudeCli));
+  const codex = useResource(() => codexCliApi.status().then((r) => r.codexCli));
   const [tab, setTab] = useState<Tab>("persona");
   const [actionError, setActionError] = useState<string | null>(null);
   useServerEvents((ev) => {
@@ -494,6 +496,7 @@ function CrewDetail({ slug }: { slug: string }) {
                 models={models.data}
                 crewDefault={settings.data?.defaultModel ?? ""}
                 claudeCode={!!cli.data?.signedIn}
+                codexModels={codexChoices(codex.data)}
                 readOnly={!admin}
                 onSaved={detail.setData}
               />

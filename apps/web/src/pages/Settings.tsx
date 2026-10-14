@@ -25,6 +25,7 @@ import {
 } from "../components/ui.js";
 import { VoiceSettings } from "../components/VoiceSettings.js";
 import { claudeCliApi } from "../lib/claude-cli.js";
+import { codexChoices, codexCliApi } from "../lib/codex-cli.js";
 import {
   CLAUDE_CODE_PROVIDER,
   CREW_DEFAULT,
@@ -212,10 +213,10 @@ function InstanceSettings() {
   // The Claude subscription is not a provider: it can still be the crew default when signed in.
   const cli = useResource(() => claudeCliApi.status().then((r) => r.claudeCli));
   const claudeSignedIn = !!cli.data?.signedIn;
+  const codex = useResource(() => codexCliApi.status().then((r) => r.codexCli));
+  const codexModels = codexChoices(codex.data);
   const crew = useResource(() => api.listCrew().then((r) => r.crew));
-  const ownModel = (crew.data ?? []).filter(
-    (c) => c.backend !== "claude-code-cli" && c.model !== CREW_DEFAULT,
-  );
+  const ownModel = (crew.data ?? []).filter((c) => c.backend === "pi" && c.model !== CREW_DEFAULT);
   const [moving, setMoving] = useState(false);
   const [captainName, setCaptainName] = useState("");
   const [defaultModel, setDefaultModel] = useState("");
@@ -274,10 +275,16 @@ function InstanceSettings() {
             models={models.data}
             disabled={!owner}
             claudeCode={claudeSignedIn || providerOf(defaultModel) === CLAUDE_CODE_PROVIDER}
+            codexModels={codexModels}
           />
-          {models.data && !cli.loading && (
+          {models.data && !cli.loading && !codex.loading && (
             <DefaultModelNotice
-              status={defaultModelStatus(defaultModel, models.data, claudeSignedIn)}
+              status={defaultModelStatus(
+                defaultModel,
+                models.data,
+                claudeSignedIn,
+                codexModels.length > 0,
+              )}
               claudeSignedIn={claudeSignedIn}
               saved={defaultModel === settings.data.defaultModel}
             />

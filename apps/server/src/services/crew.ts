@@ -195,14 +195,14 @@ export class CrewService {
 
   /**
    * Point every crew member on Shipmate's own backend at the crew default (`model: default`), so
-   * changing the default in Settings moves them all. Claude Code crew pick their model in the
+   * changing the default in Settings moves them all. Claude Code and Codex crew pick their model in the
    * CLI and are left alone. Returns the slugs that changed.
    */
   async useDefaultModel(): Promise<string[]> {
     const changed: string[] = [];
     for (const folder of this.registry.list()) {
       const m = folder.manifest;
-      if (m.backend === "claude-code-cli" || m.model === DEFAULT_MODEL) continue;
+      if (m.backend !== "pi" || m.model === DEFAULT_MODEL) continue;
       await this.#mirror(
         this.#validated(() => this.registry.patchManifest(folder.slug, { model: DEFAULT_MODEL })),
       );

@@ -224,8 +224,8 @@ export interface CrewDto {
   role: string;
   model: string;
   captain: boolean;
-  /** What runs it: Shipmate's own harness (pi) or the official Claude Code CLI. */
-  backend: "pi" | "claude-code-cli";
+  /** What runs it: Shipmate's own harness (pi), the official Claude Code CLI or Codex CLI. */
+  backend: "pi" | "claude-code-cli" | "codex-cli";
   visibility: "shared" | "private";
   status: CrewStatus;
   tools: string[];
@@ -1221,6 +1221,30 @@ export interface ClaudeCliStatusDto {
 }
 /** GET /api/claude-cli (admin) → { claudeCli: ClaudeCliStatusDto } */
 
+// ---------- ChatGPT plan: the Codex CLI backend ----------
+
+/**
+ * A crew member with `backend: codex-cli` in crew.yaml answers through the unmodified official
+ * `codex` binary that the user signed in with their own ChatGPT account (`codex login`). Shipmate
+ * never reads, stores or forwards that login (it only asks `codex login status`) and does no
+ * keep-alive pinging (§12). Its model is `codex/<id>`; optional `codex: { sandbox }` in crew.yaml.
+ */
+export interface CodexCliStatusDto {
+  installed: boolean;
+  version: string | null;
+  /** From `codex login status` only. */
+  signedIn: boolean;
+  /** "chatgpt" or "api_key" as the CLI reports it; null when unknown. */
+  authMethod: "chatgpt" | "api_key" | null;
+  /** CODEX_HOME, where the CLI keeps its own login (the image uses /data/codex). */
+  configDir: string;
+  /** Model refs crew can pick (`codex/<id>`), newest first. */
+  models: Array<{ ref: string; name: string }>;
+  /** The command that signs it in. */
+  signInCommand: string;
+}
+/** GET /api/codex-cli (admin) → { codexCli: CodexCliStatusDto } */
+
 // ---------- starter crew (everyday life) ----------
 
 /** A ready-made crew member from templates/crew/<slug> with its opt-in starter watch. */
@@ -1375,7 +1399,7 @@ export interface CrewImportPreviewDto {
   model: string;
   /** The bundle asked for a model this instance cannot use, so the default replaces it. */
   modelReplaced: string | null;
-  backend: "pi" | "claude-code-cli";
+  backend: "pi" | "claude-code-cli" | "codex-cli";
   tools: string[];
   mcp: Array<{ id: string; known: boolean; installed: boolean }>;
   skills: Array<{ name: string; description: string }>;

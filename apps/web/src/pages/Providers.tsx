@@ -1,9 +1,10 @@
-import type { ProviderAuth, ProviderDto, ProviderKindDto } from "@shipmate/core";
+import type { CodexCliStatusDto, ProviderAuth, ProviderDto, ProviderKindDto } from "@shipmate/core";
 import { type FormEvent, useCallback, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { useUser } from "../auth.js";
 import { ChatGptCard } from "../components/ChatGptCard.js";
 import { ClaudeCliCard } from "../components/ClaudeCliCard.js";
+import { CodexCliCard } from "../components/CodexCliCard.js";
 import { LocalAiCard } from "../components/LocalAiCard.js";
 import {
   Badge,
@@ -21,6 +22,7 @@ import {
   th,
 } from "../components/ui.js";
 import { usableModels } from "../lib/claude-cli.js";
+import { codexChoices } from "../lib/codex-cli.js";
 import { groupByProvider, providerLabel } from "../lib/models.js";
 import { useResource } from "../lib/useResource.js";
 
@@ -46,7 +48,9 @@ export function ProvidersPage() {
   const kinds = providers.data?.kinds ?? [];
   const [cliSignedIn, setCliSignedIn] = useState(false);
   const onCliStatus = useCallback((s: { signedIn: boolean }) => setCliSignedIn(s.signedIn), []);
-  const usable = models.data ? usableModels(models.data, cliSignedIn) : null;
+  const [codexModels, setCodexModels] = useState<Array<{ ref: string; name: string }>>([]);
+  const onCodexStatus = useCallback((s: CodexCliStatusDto) => setCodexModels(codexChoices(s)), []);
+  const usable = models.data ? usableModels(models.data, cliSignedIn, codexModels) : null;
 
   const reloadAll = async () => {
     await Promise.all([providers.reload(), models.reload()]);
@@ -95,6 +99,9 @@ export function ProvidersPage() {
           <ChatGptCard onChanged={reloadAll} />
         </div>
         <ClaudeCliCard onStatus={onCliStatus} />
+        <div className="mt-4">
+          <CodexCliCard onStatus={onCodexStatus} />
+        </div>
       </div>
 
       <h2 className="mt-10 mb-1 text-lg font-semibold">Models</h2>

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyManifestForm,
   cleanList,
+  engineFor,
   hasToolGroup,
   otherCliTools,
   readManifestForm,
@@ -135,5 +136,23 @@ describe("helper agents and engine", () => {
     expect(switchEngine(cli, "pi")).toEqual({ backend: "pi", model: "default" });
     const cliOnDefault = form("name: A\nrole: r\nmodel: default\nbackend: claude-code-cli\n");
     expect(switchEngine(cliOnDefault, "pi")).toEqual({ backend: "pi" });
+  });
+
+  it("moves to and from Codex, and picks the engine from the model", () => {
+    const pi = form("name: A\nrole: r\nmodel: default\n");
+    expect(switchEngine(pi, "codex-cli")).toEqual({ backend: "codex-cli" });
+    const codex = form("name: A\nrole: r\nmodel: codex/gpt-6.1-sol\nbackend: codex-cli\n");
+    expect(codex.codexSandbox).toBe("read-only");
+    expect(switchEngine(codex, "pi")).toEqual({ backend: "pi", model: "default" });
+    expect(engineFor("codex/gpt-6.1-sol")).toBe("codex-cli");
+    expect(engineFor("claude-code/opus")).toBe("claude-code-cli");
+    expect(engineFor("chatgpt/gpt-6.1-sol")).toBe("pi");
+  });
+
+  it("writes Codex's sandbox into crew.yaml", () => {
+    const yaml = "name: A\nrole: r\nmodel: codex/gpt-6.1-sol\nbackend: codex-cli\n";
+    const out = applyManifestForm(yaml, { ...form(yaml), codexSandbox: "workspace-write" });
+    expect(out).toContain("codex:\n  sandbox: workspace-write");
+    expect(form(out).codexSandbox).toBe("workspace-write");
   });
 });

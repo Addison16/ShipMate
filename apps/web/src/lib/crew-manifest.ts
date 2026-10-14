@@ -69,7 +69,8 @@ export interface ManifestForm {
   name: string;
   role: string;
   model: string;
-  backend: "pi" | "claude-code-cli";
+  backend: "pi" | "claude-code-cli" | "codex-cli";
+  codexSandbox: CodexSandbox;
   cliModel: string;
   cliAllowedTools: string[];
   cliPermissionMode: PermissionMode;
@@ -116,6 +117,7 @@ export function readManifestForm(yaml: string): ReadResult {
       role: m.role,
       model: m.model,
       backend: m.backend,
+      codexSandbox: m.codex?.sandbox ?? "read-only",
       cliModel: m.cli?.model ?? "",
       cliAllowedTools: m.cli?.allowedTools ?? [],
       cliPermissionMode: m.cli?.permissionMode ?? "dontAsk",
@@ -165,6 +167,7 @@ export function applyManifestForm(yaml: string, form: ManifestForm): string {
   scalar("role", form.role, old.role);
   scalar("model", form.model, old.model);
   scalar("backend", form.backend, old.backend);
+  if (form.codexSandbox !== old.codexSandbox) doc.setIn(["codex", "sandbox"], form.codexSandbox);
 
   optional(["cli", "model"], form.cliModel, old.cliModel);
   if (!same(form.cliAllowedTools, old.cliAllowedTools))
@@ -198,17 +201,45 @@ export function applyManifestForm(yaml: string, form: ManifestForm): string {
 export type Engine = ManifestForm["backend"];
 
 /**
- * Move a crew member to the other engine. Claude Code runs on the Claude subscription, so a
+ * Move a crew member to another engine. Claude Code and Codex run on their own sign-ins, so a
  * model from another provider is left for the CLI's own default; back on pi, a Claude
- * subscription model makes way for the crew default.
+ * subscription or Codex model makes way for the crew default.
  */
 export function switchEngine(form: ManifestForm, engine: Engine): Partial<ManifestForm> {
   if (engine === form.backend) return {};
-  const claude = form.model.startsWith("claude-code/");
+  const cliModel = form.model.startsWith("claude-code/") || form.model.startsWith("codex/");
   return engine === "pi"
-    ? { backend: "pi", ...(claude ? { model: "default" } : {}) }
-    : { backend: "claude-code-cli" };
+    ? { backend: "pi", ...(cliModel ? { model: "default" } : {}) }
+    : { backend: engine };
 }
+
+/** The engine a picked model runs on: its CLI for Claude subscription and Codex models. */
+export function engineFor(model: string): Engine {
+  if (model.startsWith("claude-code/")) return "claude-code-cli";
+  if (model.startsWith("codex/")) return "codex-cli";
+  return "pi";
+}
+
+export type CodexSandbox = "read-only" | "workspace-write" | "danger-full-access";
+
+/** Codex's sandbox choices, in plain words. */
+export const CODEX_SANDBOXES: ReadonlyArray<{ id: CodexSandbox; label: string; hint: string }> = [
+  {
+    id: "read-only",
+    label: "Read only",
+    hint: "Reads files and runs read-only commands in its own folder.",
+  },
+  {
+    id: "workspace-write",
+    label: "Edit its folder",
+    hint: "Can also change files in its own folder.",
+  },
+  {
+    id: "danger-full-access",
+    label: "Anything",
+    hint: "Runs any command with no sandbox. It can read all of Shipmate's data, including other people's chats.",
+  },
+];
 
 /** Trim, drop blanks and duplicates. */
 export function cleanList(values: string[]): string[] {

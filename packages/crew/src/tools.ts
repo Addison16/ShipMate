@@ -41,7 +41,7 @@ export interface EditSpec {
   name?: string | undefined;
   role?: string | undefined;
   model?: string | undefined;
-  backend?: "pi" | "claude-code-cli" | undefined;
+  backend?: "pi" | "claude-code-cli" | "codex-cli" | undefined;
   /** Merged into the current `cli` settings. */
   cli?:
     | {
@@ -341,7 +341,7 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
       name: "edit_crew_member",
       label: "Edit crew member",
       description:
-        "Change any of a crew member's settings: name, role, model, backend, Claude Code options, helper agents, tools, MCP servers, skills, approvals, spending cap, visibility, or persona (replaces CREW.md entirely when given). Only the fields you pass change; read crew_settings first.",
+        "Change any of a crew member's settings: name, role, model, backend (engine), Claude Code options, helper agents, tools, MCP servers, skills, approvals, spending cap, visibility, or persona (replaces CREW.md entirely when given). Only the fields you pass change; read crew_settings first.",
       promptSnippet: "edit_crew_member: change any crew member setting (read crew_settings first)",
       parameters: Type.Object({
         slug: Type.String(),
@@ -349,10 +349,13 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
         role: Type.Optional(Type.String()),
         model: Type.Optional(Type.String({ description: "provider/model" })),
         backend: Type.Optional(
-          Type.Union([Type.Literal("pi"), Type.Literal("claude-code-cli")], {
-            description:
-              '"pi" (Shipmate with the instance providers) or "claude-code-cli" (an owner\'s own Claude subscription)',
-          }),
+          Type.Union(
+            [Type.Literal("pi"), Type.Literal("claude-code-cli"), Type.Literal("codex-cli")],
+            {
+              description:
+                '"pi" (Shipmate with the instance providers), "claude-code-cli" (an owner\'s own Claude subscription) or "codex-cli" (an owner\'s own ChatGPT plan through Codex; model codex/<id>)',
+            },
+          ),
         ),
         cliModel: Type.Optional(
           Type.String({ description: "claude-code-cli only: alias such as sonnet or opus" }),

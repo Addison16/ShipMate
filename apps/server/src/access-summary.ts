@@ -3,6 +3,7 @@ const ENGINE_NAMES: Record<string, string> = {
   "claude-code-cli": "Claude Code",
   "codex-cli": "Codex",
   "cursor-cli": "Cursor",
+  "gemini-cli": "Gemini CLI",
 };
 
 /**

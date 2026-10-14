@@ -176,4 +176,19 @@ describe("helper agents and engine", () => {
     expect(out).toContain("cursor:\n  mode: edit");
     expect(form(out).cursorMode).toBe("edit");
   });
+
+  it("moves to and from Gemini CLI, and writes its mode into crew.yaml", () => {
+    const pi = form("name: A\nrole: r\nmodel: default\n");
+    expect(switchEngine(pi, "gemini-cli")).toEqual({ backend: "gemini-cli" });
+    const yaml = "name: A\nrole: r\nmodel: gemini-cli/flash\nbackend: gemini-cli\n";
+    const gemini = form(yaml);
+    expect(gemini.geminiMode).toBe("read-only");
+    expect(switchEngine(gemini, "pi")).toEqual({ backend: "pi", model: "default" });
+    expect(engineFor("gemini-cli/flash")).toBe("gemini-cli");
+    // pi's own Google provider stays on pi.
+    expect(engineFor("google/gemini-2.5-flash")).toBe("pi");
+    const out = applyManifestForm(yaml, { ...gemini, geminiMode: "anything" });
+    expect(out).toContain("gemini:\n  mode: anything");
+    expect(form(out).geminiMode).toBe("anything");
+  });
 });

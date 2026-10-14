@@ -7,6 +7,7 @@ import {
   CODEX_PROVIDER,
   CREW_DEFAULT,
   CURSOR_PROVIDER,
+  GEMINI_PROVIDER,
   groupByProvider,
   type ModelChoice,
   providerLabel,
@@ -32,6 +33,7 @@ export function ModelSelect({
   claudeCode,
   codexModels,
   cursorModels,
+  geminiModels,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -47,6 +49,8 @@ export function ModelSelect({
   codexModels?: ReadonlyArray<ModelChoice>;
   /** Cursor models to offer (`cursor/<slug>`), when Cursor is signed in. */
   cursorModels?: ReadonlyArray<ModelChoice>;
+  /** Gemini CLI models to offer (`gemini-cli/<id>`), when it has a key or login. */
+  geminiModels?: ReadonlyArray<ModelChoice>;
 }) {
   const groups = groupByProvider(
     (models ?? [])
@@ -56,6 +60,7 @@ export function ModelSelect({
   if (claudeCode) groups.set(CLAUDE_CODE_PROVIDER, [...CLAUDE_CODE_MODELS]);
   if (codexModels?.length) groups.set(CODEX_PROVIDER, [...codexModels]);
   if (cursorModels?.length) groups.set(CURSOR_PROVIDER, [...cursorModels]);
+  if (geminiModels?.length) groups.set(GEMINI_PROVIDER, [...geminiModels]);
   const offerDefault = crewDefault !== undefined;
   const valueProvider = value === CREW_DEFAULT ? CREW_DEFAULT : providerOf(value);
   // A saved model nothing can run any more still shows, marked.

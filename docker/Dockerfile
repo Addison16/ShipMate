@@ -37,9 +37,9 @@ RUN groupadd --system --gid 103 postgres \
     && pipx install uv && rm -rf /var/lib/apt/lists/* \
     && test "$(id -u postgres):$(id -g postgres)" = "101:103"
 ENV PATH=/root/.local/bin:$PATH
-# Official Claude Code and Codex CLIs, unmodified, for the subscription routes (users sign in
-# themselves).
-RUN npm install -g @anthropic-ai/claude-code @openai/codex
+# Official Claude Code, Codex and Gemini CLIs, unmodified, for the subscription and CLI engines
+# (users sign in themselves).
+RUN npm install -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli
 # The official Cursor CLI is ~560 MB, so it is not baked in: `install-cursor` downloads it into
 # /data/cursor/cli on demand (docker/install-cursor.sh).
 COPY --chmod=0755 docker/install-cursor.sh /usr/local/bin/install-cursor
@@ -50,7 +50,7 @@ COPY --from=build /app/packages/cli/dist /app/cli
 # Inside a running container (docker exec) it finds the bundled database by its socket.
 RUN printf '#!/bin/sh\nif [ -z "$DATABASE_URL" ] && [ -S /run/postgresql/.s.PGSQL.5432 ]; then\n  export DATABASE_URL="postgres://shipmate@%%2Frun%%2Fpostgresql/shipmate"\nfi\nexec node /app/cli/index.js "$@"\n' > /usr/local/bin/shipmate && chmod +x /usr/local/bin/shipmate
 COPY templates /app/templates
-ENV NODE_ENV=production PORT=3000 SHIPMATE_DATA_DIR=/data WEB_DIST=/app/web TEMPLATES_DIR=/app/templates CLAUDE_CONFIG_DIR=/data/claude CODEX_HOME=/data/codex SHIPMATE_CURSOR_HOME=/data/cursor \
+ENV NODE_ENV=production PORT=3000 SHIPMATE_DATA_DIR=/data WEB_DIST=/app/web TEMPLATES_DIR=/app/templates CLAUDE_CONFIG_DIR=/data/claude CODEX_HOME=/data/codex SHIPMATE_CURSOR_HOME=/data/cursor GEMINI_CLI_HOME=/data/gemini SHIPMATE_GEMINI_HOME=/data/gemini \
     SHIPMATE_BROWSER_PATH=/usr/bin/chromium
 VOLUME /data
 EXPOSE 3000

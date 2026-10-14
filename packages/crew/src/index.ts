@@ -78,6 +78,31 @@ export {
   weatherTools,
 } from "./everyday.js";
 export { type CrewFolder, loadCrewFolder, writeCrewFolder } from "./folder.js";
+export {
+  GEMINI_MCP_TOKEN_ENV,
+  GEMINI_MODELS,
+  GEMINI_POLICY_FILE,
+  GEMINI_SIGN_IN_COMMAND,
+  GEMINI_SIGN_IN_HINT,
+  GEMINI_TURN_TIMEOUT_MS,
+  type GeminiCliEvent,
+  GeminiCliMissingError,
+  type GeminiCliResult,
+  type GeminiCliRunOptions,
+  type GeminiCliStatus,
+  type GeminiCliUsage,
+  geminiApprovalMode,
+  geminiAuth,
+  geminiCliArgs,
+  geminiCliBin,
+  geminiCliStatus,
+  geminiHome,
+  geminiLoginFile,
+  geminiPolicy,
+  geminiProjectFiles,
+  geminiPrompt,
+  runGeminiCli,
+} from "./gemini-cli.js";
 export { type GuardOptions, guardExtension, isInside } from "./guard.js";
 export { type MemoryEntry, type MemoryScope, MemoryStore } from "./memory.js";
 export { EXAMPLE_PET_SVG, type PetHost, petGuide, petTools, SVG_RULES } from "./pets.js";

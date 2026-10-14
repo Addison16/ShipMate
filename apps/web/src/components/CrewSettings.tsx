@@ -22,6 +22,8 @@ import {
   cleanList,
   type Engine,
   engineFor,
+  GEMINI_MODES,
+  type GeminiMode,
   hasToolGroup,
   type ManifestForm,
   otherCliTools,
@@ -35,6 +37,7 @@ import {
   CLAUDE_CODE_PROVIDER,
   CODEX_PROVIDER,
   CURSOR_PROVIDER,
+  GEMINI_PROVIDER,
   providerOf,
 } from "../lib/models.js";
 import { useResource } from "../lib/useResource.js";
@@ -66,6 +69,7 @@ export function CrewSettings({
   claudeCode,
   codexModels = [],
   cursorModels = [],
+  geminiModels = [],
   readOnly,
   onSaved,
 }: {
@@ -79,6 +83,8 @@ export function CrewSettings({
   codexModels?: ReadonlyArray<{ ref: string; name: string }>;
   /** Cursor models to offer; empty while Cursor is not signed in. */
   cursorModels?: ReadonlyArray<{ ref: string; name: string }>;
+  /** Gemini CLI models to offer; empty while it has no API key or login. */
+  geminiModels?: ReadonlyArray<{ ref: string; name: string }>;
   readOnly: boolean;
   onSaved: (crew: CrewDetailDto) => void;
 }) {
@@ -203,6 +209,7 @@ export function CrewSettings({
           claudeCode={claudeCode}
           codexModels={codexModels}
           cursorModels={cursorModels}
+          geminiModels={geminiModels}
           readOnly={readOnly}
           patch={patch}
         />
@@ -270,6 +277,7 @@ function ManifestFields({
   claudeCode,
   codexModels,
   cursorModels,
+  geminiModels,
   readOnly,
   patch,
 }: {
@@ -280,6 +288,7 @@ function ManifestFields({
   claudeCode: boolean;
   codexModels: ReadonlyArray<{ ref: string; name: string }>;
   cursorModels: ReadonlyArray<{ ref: string; name: string }>;
+  geminiModels: ReadonlyArray<{ ref: string; name: string }>;
   readOnly: boolean;
   patch: (p: Partial<ManifestForm>) => void;
 }) {
@@ -290,6 +299,8 @@ function ManifestFields({
   const codexReady = codexModels.length > 0;
   const cursor = form.backend === "cursor-cli";
   const cursorReady = cursorModels.length > 0;
+  const gemini = form.backend === "gemini-cli";
+  const geminiReady = geminiModels.length > 0;
   // On a CLI engine, a model from elsewhere means "the CLI's own default": show its provider
   // with no model picked yet.
   const engineProvider = cli
@@ -298,7 +309,9 @@ function ManifestFields({
       ? CODEX_PROVIDER
       : cursor
         ? CURSOR_PROVIDER
-        : null;
+        : gemini
+          ? GEMINI_PROVIDER
+          : null;
 
   const builtin = new Set(BUILTIN_TOOLS.map((t) => t.id));
   const otherTools = form.tools.filter((t) => !builtin.has(t));
@@ -365,8 +378,11 @@ function ManifestFields({
           value={form.backend}
           onChange={(e) => patch(switchEngine(form, e.target.value as Engine))}
           hint={
-            (!claudeCode && !cli) || (!codexReady && !codex) || (!cursorReady && !cursor)
-              ? "To use Claude Code, Codex or Cursor, sign in to it on the Providers page first."
+            (!claudeCode && !cli) ||
+            (!codexReady && !codex) ||
+            (!cursorReady && !cursor) ||
+            (!geminiReady && !gemini)
+              ? "To use Claude Code, Codex, Cursor or Gemini CLI, set it up on the Providers page first."
               : undefined
           }
         >
@@ -379,6 +395,9 @@ function ManifestFields({
           </option>
           <option value="cursor-cli" disabled={!cursorReady && !cursor}>
             Cursor (your Cursor plan)
+          </option>
+          <option value="gemini-cli" disabled={!geminiReady && !gemini}>
+            Gemini CLI (API key or work login)
           </option>
         </SelectField>
         <ModelSelect
@@ -398,6 +417,7 @@ function ManifestFields({
           claudeCode={claudeCode || cli}
           codexModels={codexModels}
           cursorModels={cursorModels}
+          geminiModels={geminiModels}
           disabled={readOnly}
           hint={
             cli
@@ -406,7 +426,9 @@ function ManifestFields({
                 ? "Runs on your ChatGPT plan through Codex. Not available in Shipyard projects."
                 : cursor
                   ? "Runs on your Cursor plan through Cursor. Not available in Shipyard projects."
-                  : "Crew default follows the model picked in Settings. Pick a provider and model to give this crew member its own."
+                  : gemini
+                    ? "Runs through Gemini CLI on your Gemini API key or work login. Not available in Shipyard projects."
+                    : "Crew default follows the model picked in Settings. Pick a provider and model to give this crew member its own."
           }
         />
         {codex && (
@@ -451,6 +473,30 @@ function ManifestFields({
             }
           >
             {CURSOR_MODES.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </SelectField>
+        )}
+        {gemini && (
+          <SelectField
+            label="What Gemini may do"
+            disabled={readOnly}
+            value={form.geminiMode}
+            onChange={(e) => patch({ geminiMode: e.target.value as GeminiMode })}
+            hint={
+              <span
+                className={cx(
+                  form.geminiMode === "anything" &&
+                    "font-medium text-amber-800 dark:text-amber-200",
+                )}
+              >
+                {GEMINI_MODES.find((m) => m.id === form.geminiMode)?.hint}
+              </span>
+            }
+          >
+            {GEMINI_MODES.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.label}
               </option>
@@ -535,7 +581,7 @@ function ManifestFields({
       <Section
         title="Tools"
         description={
-          cli || codex || cursor
+          cli || codex || cursor || gemini
             ? "Used when this crew member runs on Shipmate (pi)."
             : "Shipmate's own tools and its MCP servers are always added."
         }

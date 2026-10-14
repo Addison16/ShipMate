@@ -130,7 +130,7 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
   );
 
   const crewList = crew.data ?? [];
-  // A Captain on Claude Code, Codex or Cursor answers without a provider.
+  // A Captain on Claude Code, Codex, Cursor or Gemini CLI answers without a provider.
   const captainOnCli = crewList.some((m) => m.captain && m.backend !== "pi");
   const noModels = models.data !== null && !models.data.some((m) => m.available) && !captainOnCli;
   const current =

@@ -14,6 +14,7 @@ import {
   type CrewManifest,
   CURSOR_PROVIDER,
   DEFAULT_MODEL,
+  GEMINI_PROVIDER,
   type LiveItemDto,
   type LiveToolDto,
   type McpServerDto,
@@ -69,6 +70,7 @@ import { CursorCliTurns, type CursorTurnInput, cursorModels } from "./cursor-cli
 import type { EverydayTools } from "./everyday.js";
 import type { AttachmentService } from "./files/service.js";
 import { toDto as toAttachmentDto } from "./files/service.js";
+import { GeminiCliTurns, geminiModels } from "./gemini-cli-turn.js";
 import { modelList, modelPrice } from "./model-price.js";
 import { petHost } from "./pets/host.js";
 import type { PetService } from "./pets/service.js";
@@ -106,6 +108,8 @@ export interface BridgeDeps {
   /** Custom themes: the Captain builds them, and the crew talks in the person's theme. */
   themes: ThemeService;
   agentDir: string;
+  /** The Gemini API key an owner saved for the Gemini CLI engine (see GeminiKeyService). */
+  geminiKey?: () => Promise<string | null>;
 }
 
 /**
@@ -214,6 +218,8 @@ export class Bridge {
   #codex: CodexCliTurns;
   /** Turns of `backend: cursor-cli` crew members (the official `cursor-agent` binary). */
   #cursor: CursorCliTurns;
+  /** Turns of `backend: gemini-cli` crew members (the official `gemini` binary). */
+  #gemini: GeminiCliTurns;
   /** Shipmate's tools for those turns, served over loopback MCP. */
   readonly cliTools = new CliToolServer();
   /** Bumped on every crew change, so idle sessions pick up the new crew list (see send). */
@@ -223,6 +229,7 @@ export class Bridge {
     this.#cli = new ClaudeCliTurns(deps.db);
     this.#codex = new CodexCliTurns(deps.db);
     this.#cursor = new CursorCliTurns(deps.db);
+    this.#gemini = new GeminiCliTurns(deps.db, deps.geminiKey);
     deps.crew.onChange(() => {
       this.#crewVersion++;
       this.broadcast({ type: "crew_changed" });
@@ -768,6 +775,7 @@ export class Bridge {
     this.#cli.abort(conversationId);
     this.#codex.abort(conversationId);
     this.#cursor.abort(conversationId);
+    this.#gemini.abort(conversationId);
     await Promise.all([...run.sessions.values()].map((s) => s.abort()));
   }
 
@@ -850,10 +858,11 @@ export class Bridge {
         if (clean.model !== undefined) {
           await this.#checkModel(clean.model);
           const provider = splitModelRef(clean.model)?.provider;
-          // A Claude Code, Codex or Cursor model only runs on its own engine; any other model on pi.
+          // A Claude Code, Codex, Cursor or Gemini CLI model only runs on its own engine; any other model on pi.
           if (!clean.backend && provider === "claude-code") clean.backend = "claude-code-cli";
           if (!clean.backend && provider === CODEX_PROVIDER) clean.backend = "codex-cli";
           if (!clean.backend && provider === CURSOR_PROVIDER) clean.backend = "cursor-cli";
+          if (!clean.backend && provider === GEMINI_PROVIDER) clean.backend = "gemini-cli";
           if (
             !clean.backend &&
             now.backend !== "pi" &&
@@ -861,6 +870,7 @@ export class Bridge {
             provider !== "claude-code" &&
             provider !== CODEX_PROVIDER &&
             provider !== CURSOR_PROVIDER &&
+            provider !== GEMINI_PROVIDER &&
             !(provider === "anthropic" && now.backend === "claude-code-cli")
           ) {
             clean.backend = "pi";
@@ -1227,10 +1237,22 @@ export class Bridge {
     };
 
     const backend = folder.manifest.backend;
-    if (backend === "claude-code-cli" || backend === "codex-cli" || backend === "cursor-cli") {
+    if (
+      backend === "claude-code-cli" ||
+      backend === "codex-cli" ||
+      backend === "cursor-cli" ||
+      backend === "gemini-cli"
+    ) {
       const codex = backend === "codex-cli";
       const cursor = backend === "cursor-cli";
-      const engine = codex ? "Codex" : cursor ? "Cursor" : "the Claude Code CLI";
+      const gemini = backend === "gemini-cli";
+      const engine = codex
+        ? "Codex"
+        : cursor
+          ? "Cursor"
+          : gemini
+            ? "Gemini CLI"
+            : "the Claude Code CLI";
       if (options.images?.length) {
         await this.#note(
           conv,
@@ -1242,10 +1264,10 @@ export class Bridge {
       // A consult is a one-off answer without tools, like the pi Captain's consult session.
       const allowed = new Set(folder.manifest.allow);
       // The crew member's installed MCP servers run inside Claude Code, behind the same
-      // approvals. Codex and Cursor have no hook to ask Shipmate first, so they get only
+      // approvals. Codex, Cursor and Gemini have no hook to ask Shipmate first, so they get only
       // Shipmate's tools.
       const mcp =
-        options.consultFor || codex || cursor
+        options.consultFor || codex || cursor || gemini
           ? { servers: {}, skipped: [] as string[] }
           : await this.deps.mcp.serversFor(folder);
       const grant = options.consultFor
@@ -1281,7 +1303,7 @@ export class Bridge {
             ...(mcp.skipped.length
               ? [`MCP servers not started (missing setup): ${mcp.skipped.join(", ")}.`]
               : []),
-            ...((codex || cursor) && folder.manifest.mcp.length
+            ...((codex || cursor || gemini) && folder.manifest.mcp.length
               ? [
                   `Its MCP servers (${folder.manifest.mcp.join(", ")}) are not available on ${engine}; switch to the Shipmate or Claude Code engine to use them.`,
                 ]
@@ -1294,7 +1316,7 @@ export class Bridge {
         routineId: options.watchId ?? null,
       };
       try {
-        if (codex || cursor) {
+        if (codex || cursor || gemini) {
           const input: CursorTurnInput = {
             user,
             conv,
@@ -1309,6 +1331,10 @@ export class Bridge {
             context,
             oneOff: options.consultFor !== undefined,
           };
+          if (gemini) {
+            const { addImage: _none, ...rest } = input;
+            return await this.#gemini.turn(rest);
+          }
           return await (codex ? this.#codex.turn(input) : this.#cursor.turn(input));
         }
         return await this.#cli.turn({
@@ -2043,8 +2069,8 @@ export class Bridge {
 
   /**
    * The model a crew member's turns actually use: the crew default for `default`, and for crew on
-   * the Claude Code, Codex or Cursor CLI the model it passes as --model (`claude-code/<model>`,
-   * `codex/<model>`, `cursor/<model>`).
+   * the Claude Code, Codex, Cursor or Gemini CLI the model it passes as --model
+   * (`claude-code/<model>`, `codex/<model>`, `cursor/<model>`, `gemini-cli/<model>`).
    */
   #effectiveModel(slug: string, defaultModel: string): string {
     let folder: CrewFolder;
@@ -2063,6 +2089,9 @@ export class Bridge {
     }
     if (m.backend === "cursor-cli") {
       return m.model.startsWith(`${CURSOR_PROVIDER}/`) ? m.model : `${CURSOR_PROVIDER}/default`;
+    }
+    if (m.backend === "gemini-cli") {
+      return m.model.startsWith(`${GEMINI_PROVIDER}/`) ? m.model : `${GEMINI_PROVIDER}/default`;
     }
     return m.model === DEFAULT_MODEL ? defaultModel : m.model;
   }
@@ -2112,6 +2141,7 @@ export class Bridge {
       [
         ...(refs.some((r) => r.startsWith(`${CODEX_PROVIDER}/`)) ? codexModels() : []),
         ...(refs.some((r) => r.startsWith(`${CURSOR_PROVIDER}/`)) ? cursorModels() : []),
+        ...(refs.some((r) => r.startsWith(`${GEMINI_PROVIDER}/`)) ? geminiModels() : []),
       ],
     );
     return [
@@ -2234,6 +2264,7 @@ export class Bridge {
     this.#cli.abort(conversationId);
     this.#codex.abort(conversationId);
     this.#cursor.abort(conversationId);
+    this.#gemini.abort(conversationId);
     clearTimeout(run.idleTimer);
     this.#live.delete(conversationId);
     for (const s of run.sessions.values()) s.dispose();

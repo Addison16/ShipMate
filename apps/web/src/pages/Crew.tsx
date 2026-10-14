@@ -32,6 +32,7 @@ import { claudeCliApi } from "../lib/claude-cli.js";
 import { codexChoices, codexCliApi } from "../lib/codex-cli.js";
 import { cursorChoices, cursorCliApi } from "../lib/cursor-cli.js";
 import { formatTime } from "../lib/format.js";
+import { geminiChoices, geminiCliApi } from "../lib/gemini-cli.js";
 import { CREW_DEFAULT, modelLabel } from "../lib/models.js";
 import { useResource } from "../lib/useResource.js";
 import { href, navigate } from "../router.js";
@@ -331,6 +332,7 @@ function CrewDetail({ slug }: { slug: string }) {
   const cli = useResource(() => claudeCliApi.status().then((r) => r.claudeCli));
   const codex = useResource(() => codexCliApi.status().then((r) => r.codexCli));
   const cursor = useResource(() => cursorCliApi.status().then((r) => r.cursorCli));
+  const gemini = useResource(() => geminiCliApi.status().then((r) => r.geminiCli));
   const [tab, setTab] = useState<Tab>("persona");
   const [actionError, setActionError] = useState<string | null>(null);
   useServerEvents((ev) => {
@@ -500,6 +502,7 @@ function CrewDetail({ slug }: { slug: string }) {
                 claudeCode={!!cli.data?.signedIn}
                 codexModels={codexChoices(codex.data)}
                 cursorModels={cursorChoices(cursor.data)}
+                geminiModels={geminiChoices(gemini.data)}
                 readOnly={!admin}
                 onSaved={detail.setData}
               />

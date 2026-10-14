@@ -12,6 +12,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
+import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { ChatGptStatusDto } from "@shipmate/core";
 import { type Db, secrets } from "@shipmate/db";
@@ -360,9 +361,17 @@ export function chatGptProvider(
 ): Provider {
   const inner = openAIResponsesApi();
   const zero = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-  const models = openaiProvider()
-    .getModels()
-    .filter((m) => m.api === "openai-responses")
+  const byId = new Map(
+    openaiProvider()
+      .getModels()
+      .filter((m) => m.api === "openai-responses")
+      .map((m) => [m.id, m]),
+  );
+  // Only the models a ChatGPT plan can run (OpenAI's API-only ones, gpt-4 and the like, are
+  // refused for these tokens), newest first so a fresh pick lands on the latest.
+  const models = planModelIds()
+    .map((id) => byId.get(id))
+    .filter((m): m is NonNullable<typeof m> => Boolean(m))
     .map((m) => ({ ...m, provider: CHATGPT_PROVIDER_ID, cost: zero }) as Model<Api>);
   const asOpenAI = (m: Model<Api>): Model<Api> => ({
     ...m,
@@ -394,6 +403,14 @@ export function chatGptProvider(
         inner.streamSimple(asOpenAI(model), context, options),
     },
   });
+}
+
+/** Model ids a ChatGPT plan can run, newest first (pi's catalog lists them oldest first). */
+export function planModelIds(): string[] {
+  return openaiCodexProvider()
+    .getModels()
+    .map((m) => m.id)
+    .reverse();
 }
 
 function fromPi(credential: OAuthCredential, previous: StoredCredential | null): StoredCredential {

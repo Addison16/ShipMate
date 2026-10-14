@@ -1,11 +1,14 @@
 import type { DiscordChannelDto, DiscordLinkCode, DiscordStatusDto } from "@shipmate/core";
+import { CAPTAIN_SLUG } from "@shipmate/crew";
 import { conversations, type Db, discordChannels, secrets, settings, users } from "@shipmate/db";
 import type { SecretVault } from "@shipmate/providers";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { HttpError, type UserRow } from "../auth.js";
 import type { Bridge } from "../bridge.js";
+import { watchReportText } from "../chat/core.js";
 import type { ApprovalService } from "../services/approvals.js";
 import type { CrewService } from "../services/crew.js";
+import type { WatchReport } from "../services/watches.js";
 import { LinkCodes } from "./link-codes.js";
 import {
   type ChannelSpec,
@@ -159,6 +162,28 @@ export class DiscordService {
     const next = this.#lock.then(run, run);
     this.#lock = next.catch(() => {});
     return next;
+  }
+
+  /**
+   * A finished watch's result, posted in that crew member's channel (else the Captain's) with
+   * a mention of its owner, where they already talk to that crew member.
+   */
+  async report(r: WatchReport): Promise<void> {
+    if (!this.deps.port.connected) return;
+    const [u] = await this.deps.db
+      .select({ discordUserId: users.discordUserId })
+      .from(users)
+      .where(eq(users.id, r.userId))
+      .limit(1);
+    if (!u?.discordUserId) return;
+    const byCrew = new Map([...this.#channels].map(([channelId, slug]) => [slug, channelId]));
+    const channelId = byCrew.get(r.crew.slug) ?? byCrew.get(CAPTAIN_SLUG);
+    if (!channelId) return;
+    this.relay.post(
+      { channelId, discordUserId: u.discordUserId },
+      r.crew.name,
+      watchReportText(r.watchName, r.text),
+    );
   }
 
   // ---------- settings ----------

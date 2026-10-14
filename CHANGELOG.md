@@ -6,6 +6,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Routine results reach you**: a routine that finished used to say "succeeded" and put its
+  answer in a hidden chat. Now each routine's latest result shows in the chat list under the
+  routine's name (marked "Routine"), and you can reply there to follow up. A notice pops up in
+  the app, the phone notification opens that chat, and the result is also sent on Discord
+  (that crew member's channel), Telegram and Slack (your direct messages) if you linked them.
 - **Fixes from the Captain's own scan**: a crew member whose model isn't set up now gets a note
   in the chat naming it, instead of quietly answering on another model. The Captain can no
   longer save a model name that doesn't exist (it is told which ones work), `list_models` shows

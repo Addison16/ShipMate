@@ -93,6 +93,16 @@ export class LinkedAccounts {
     return u ?? null;
   }
 
+  /** The account linked to this Shipmate person, if any. */
+  async externalId(userId: string): Promise<string | null> {
+    const [u] = await this.db
+      .select({ id: users[this.column] })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return u?.id ?? null;
+  }
+
   async linkedUserIds(): Promise<string[]> {
     const rows = await this.db
       .select({ id: users.id })
@@ -143,6 +153,11 @@ export class LinkedAccounts {
       .set({ [this.column]: null })
       .where(eq(users.id, userId));
   }
+}
+
+/** How a finished watch's result reads in a chat app: its name, then the crew's reply. */
+export function watchReportText(watchName: string, text: string): string {
+  return `**${watchName}**\n\n${text.trim()}`;
 }
 
 /** Bridge listeners for linked people while a chat app is connected. */

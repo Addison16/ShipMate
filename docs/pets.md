@@ -27,7 +27,11 @@ picture is kept, so it can come back.
 
 ## Where pictures come from
 
-Owners pick this under **Settings → Photos and voice → Crew pets**:
+Owners pick this under **Settings → Photos and voice → Pictures and pets**. The same choice
+makes any picture someone asks a crew member for (the `make_picture` tool), shown on the reply.
+With "The Captain draws them", the crew can't make other pictures.
+
+
 
 | Choice | What happens |
 | --- | --- |
@@ -37,9 +41,10 @@ Owners pick this under **Settings → Photos and voice → Crew pets**:
 
 If a picture fails for any reason, the Captain is told why and draws the pet itself.
 
-A ChatGPT plan can't make pet pictures. OpenAI documents Sign in with ChatGPT for chat only, and
+A ChatGPT plan can't be used here. OpenAI documents Sign in with ChatGPT for chat only, and
 Shipmate only uses subscriptions the way their terms allow. Use an OpenAI API key or a local image
-server instead.
+server instead. Crew on the Codex engine make pictures with a ChatGPT plan through Codex's own
+image tool.
 
 Image models are asked for a sticker-style character on a plain background. Shipmate clears a
 plain background so the pet stands on its own, and stores it small (384 pixels) so it loads fast

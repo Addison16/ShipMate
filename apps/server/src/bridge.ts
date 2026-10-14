@@ -39,7 +39,9 @@ import {
   MemoryStore,
   memoryTools,
   type PetHost,
+  type PictureHost,
   petTools,
+  pictureTools,
   type QuestionHost,
   questionTools,
   skillTools,
@@ -141,6 +143,8 @@ interface TurnContext {
   helper: HelperHost;
   /** The Captain's pet building; absent when pets are not wired up (some tests). */
   pet?: PetHost | undefined;
+  /** make_picture; absent when pictures are not wired up (some tests). */
+  picture?: PictureHost | undefined;
   theme: ThemeHost;
 }
 
@@ -1158,6 +1162,51 @@ export class Bridge {
           personName: user.displayName,
         })
       : undefined;
+    // A picture shows on the reply, stored like a photo the person sent.
+    const showPicture = async (file: { name: string; data: Buffer }) => {
+      const dto = await this.deps.files.upload(user.id, conv.id, { ...file, type: "" });
+      if (dto.kind === "image") stream.files.push(dto);
+    };
+    const picture: PictureHost | undefined = pets
+      ? {
+          make: async (description, signal) => {
+            if (!(await pets.painter()).paints) {
+              return `No image model is set up, so you cannot make pictures yet. Tell ${user.displayName} that an owner can pick one under Settings, Photos and voice.`;
+            }
+            let made: Awaited<ReturnType<PetService["picture"]>>;
+            const startedAt = performance.now();
+            try {
+              // A paid image API spends like the chat model, so the same caps stop it.
+              await this.#checkCap(user, slug, options.watchId);
+              made = await pets.picture(description, signal);
+            } catch (err) {
+              return `The picture was not made: ${(err as Error).message}. Tell ${user.displayName} in one short sentence.`;
+            }
+            this.#recordUsage(
+              run,
+              {
+                userId: user.id,
+                crewMemberId: crewRow.id,
+                conversationId: conv.id,
+                routineId: options.watchId ?? null,
+              },
+              pictureModel(made.model),
+              {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: made.costUsd },
+              },
+              performance.now() - startedAt,
+              "api",
+            );
+            await showPicture({ name: `picture.${made.ext}`, data: Buffer.from(made.bytes) });
+            return "The picture is shown on your reply. Say in one short sentence what it shows. Do not add a link or an image tag.";
+          },
+        }
+      : undefined;
     const context: TurnContext = {
       captain: host,
       crew: crewHost,
@@ -1165,6 +1214,7 @@ export class Bridge {
       question,
       helper,
       pet,
+      picture,
       theme,
     };
 
@@ -1194,7 +1244,15 @@ export class Bridge {
               tools: this.#cliTools(
                 user,
                 folder,
-                { captain: host, crew: crewHost, question, theme, pet },
+                // Codex makes pictures with its own image tool.
+                {
+                  captain: host,
+                  crew: crewHost,
+                  question,
+                  theme,
+                  pet,
+                  picture: codex ? undefined : picture,
+                },
                 isCaptain,
               ),
               gate: (call) =>
@@ -1236,13 +1294,7 @@ export class Bridge {
             emit: (event) => this.emit(user.id, event),
             record: (...args) => this.#recordUsage(run, ...args),
             ...(grant ? { mcp: grant.http } : {}),
-            addImage: async (file) => {
-              const dto = await this.deps.files.upload(user.id, conv.id, {
-                ...file,
-                type: "",
-              });
-              if (dto.kind === "image") stream.files.push(dto);
-            },
+            addImage: showPicture,
             context,
             oneOff: options.consultFor !== undefined,
           });
@@ -1579,6 +1631,13 @@ export class Bridge {
       make: (spec, signal) => pet().make(spec, signal),
       show: (slug, show) => pet().show(slug, show),
     };
+    const pictureProxy: PictureHost = {
+      make: (description, signal) => {
+        const p = current().picture;
+        if (!p) throw new Error("pictures are not available");
+        return p.make(description, signal);
+      },
+    };
     const themeProxy: ThemeHost = {
       list: () => current().theme.list(),
       save: (t, id) => current().theme.save(t, id),
@@ -1624,6 +1683,7 @@ export class Bridge {
             }),
             ...(isCaptain ? [...captainTools(proxy, acting), ...themeTools(themeProxy)] : []),
             ...(isCaptain && this.#pets ? petTools(petProxy, acting) : []),
+            ...(this.#pets && !consultFor ? pictureTools(pictureProxy) : []),
             ...(folder.manifest.captain
               ? []
               : crewTools(
@@ -1858,6 +1918,7 @@ export class Bridge {
       question: QuestionHost;
       theme: ThemeHost;
       pet?: PetHost | undefined;
+      picture?: PictureHost | undefined;
     },
     isCaptain: boolean,
   ): ToolDefinition[] {
@@ -1877,6 +1938,7 @@ export class Bridge {
       }),
       ...(isCaptain ? [...captainTools(hosts.captain, acting), ...themeTools(hosts.theme)] : []),
       ...(isCaptain && hosts.pet ? petTools(hosts.pet, acting) : []),
+      ...(hosts.picture ? pictureTools(hosts.picture) : []),
       ...(folder.manifest.captain
         ? []
         : crewTools(hosts.crew, this.deps.crew.captain().manifest.name)),
@@ -2218,6 +2280,22 @@ interface Stream {
   /** Pictures shown on the reply (Codex's image tool). */
   files: AttachmentDto[];
   closed: boolean;
+}
+
+/** How a `make_picture` call shows in usage: `images/<model>`, priced per picture. */
+function pictureModel(id: string): Model<Api> {
+  return {
+    id,
+    name: id,
+    api: "openai-responses",
+    provider: "images",
+    baseUrl: "",
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 0,
+    maxTokens: 0,
+  } as unknown as Model<Api>;
 }
 
 function withoutImages(options: TurnOptions): TurnOptions {

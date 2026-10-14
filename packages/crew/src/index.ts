@@ -57,6 +57,7 @@ export { type CrewFolder, loadCrewFolder, writeCrewFolder } from "./folder.js";
 export { type GuardOptions, guardExtension, isInside } from "./guard.js";
 export { type MemoryEntry, type MemoryScope, MemoryStore } from "./memory.js";
 export { EXAMPLE_PET_SVG, type PetHost, petGuide, petTools, SVG_RULES } from "./pets.js";
+export { type PictureHost, pictureTools } from "./pictures.js";
 export {
   CAPTAIN_SLUG,
   CrewRegistry,

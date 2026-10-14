@@ -69,8 +69,10 @@ export interface ManifestForm {
   name: string;
   role: string;
   model: string;
-  backend: "pi" | "claude-code-cli" | "codex-cli";
+  backend: "pi" | "claude-code-cli" | "codex-cli" | "cursor-cli" | "gemini-cli";
   codexSandbox: CodexSandbox;
+  cursorMode: CursorMode;
+  geminiMode: GeminiMode;
   cliModel: string;
   cliAllowedTools: string[];
   cliPermissionMode: PermissionMode;
@@ -118,6 +120,8 @@ export function readManifestForm(yaml: string): ReadResult {
       model: m.model,
       backend: m.backend,
       codexSandbox: m.codex?.sandbox ?? "read-only",
+      cursorMode: m.cursor?.mode ?? "read-only",
+      geminiMode: m.gemini?.mode ?? "read-only",
       cliModel: m.cli?.model ?? "",
       cliAllowedTools: m.cli?.allowedTools ?? [],
       cliPermissionMode: m.cli?.permissionMode ?? "dontAsk",
@@ -168,6 +172,8 @@ export function applyManifestForm(yaml: string, form: ManifestForm): string {
   scalar("model", form.model, old.model);
   scalar("backend", form.backend, old.backend);
   if (form.codexSandbox !== old.codexSandbox) doc.setIn(["codex", "sandbox"], form.codexSandbox);
+  if (form.cursorMode !== old.cursorMode) doc.setIn(["cursor", "mode"], form.cursorMode);
+  if (form.geminiMode !== old.geminiMode) doc.setIn(["gemini", "mode"], form.geminiMode);
 
   // `model` is the one model setting: picking a new one drops an old cli.model that would
   // otherwise override it on Claude Code.
@@ -204,22 +210,27 @@ export function applyManifestForm(yaml: string, form: ManifestForm): string {
 export type Engine = ManifestForm["backend"];
 
 /**
- * Move a crew member to another engine. Claude Code and Codex run on their own sign-ins, so a
- * model from another provider is left for the CLI's own default; back on pi, a Claude
- * subscription or Codex model makes way for the crew default.
+ * Move a crew member to another engine. Claude Code, Codex, Cursor and Gemini CLI run on their
+ * own sign-ins, so a model from another provider is left for the CLI's own default; back on pi, a
+ * Claude subscription, Codex, Cursor or Gemini CLI model makes way for the crew default.
  */
 export function switchEngine(form: ManifestForm, engine: Engine): Partial<ManifestForm> {
   if (engine === form.backend) return {};
-  const cliModel = form.model.startsWith("claude-code/") || form.model.startsWith("codex/");
+  const cliModel = engineFor(form.model) !== "pi";
   return engine === "pi"
     ? { backend: "pi", ...(cliModel ? { model: "default" } : {}) }
     : { backend: engine };
 }
 
-/** The engine a picked model runs on: its CLI for Claude subscription and Codex models. */
+/**
+ * The engine a picked model runs on: its CLI for Claude subscription, Codex, Cursor and Gemini CLI
+ * models.
+ */
 export function engineFor(model: string): Engine {
   if (model.startsWith("claude-code/")) return "claude-code-cli";
   if (model.startsWith("codex/")) return "codex-cli";
+  if (model.startsWith("cursor/")) return "cursor-cli";
+  if (model.startsWith("gemini-cli/")) return "gemini-cli";
   return "pi";
 }
 
@@ -243,6 +254,33 @@ export const CODEX_SANDBOXES: ReadonlyArray<{ id: CodexSandbox; label: string; h
     hint: "Runs any command with no sandbox. It can read all of Shipmate's data, including other people's chats.",
   },
 ];
+
+export type CursorMode = "read-only" | "edit" | "anything";
+
+/** What Cursor may do, in plain words. */
+export const CURSOR_MODES: ReadonlyArray<{ id: CursorMode; label: string; hint: string }> = [
+  {
+    id: "read-only",
+    label: "Read only",
+    hint: "Reads files in its own folder.",
+  },
+  {
+    id: "edit",
+    label: "Edit its folder",
+    hint: "Can also change files in its own folder.",
+  },
+  {
+    id: "anything",
+    label: "Anything",
+    hint: "Runs any command with no limits. It can read all of Shipmate's data, including other people's chats.",
+  },
+];
+
+export type GeminiMode = CursorMode;
+
+/** What Gemini may do, in plain words (the same choices as Cursor). */
+export const GEMINI_MODES: ReadonlyArray<{ id: GeminiMode; label: string; hint: string }> =
+  CURSOR_MODES;
 
 /** Trim, drop blanks and duplicates. */
 export function cleanList(values: string[]): string[] {

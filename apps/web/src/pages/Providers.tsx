@@ -1,10 +1,19 @@
-import type { CodexCliStatusDto, ProviderAuth, ProviderDto, ProviderKindDto } from "@shipmate/core";
+import type {
+  CodexCliStatusDto,
+  CursorCliStatusDto,
+  GeminiCliStatusDto,
+  ProviderAuth,
+  ProviderDto,
+  ProviderKindDto,
+} from "@shipmate/core";
 import { type FormEvent, useCallback, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { useUser } from "../auth.js";
 import { ChatGptCard } from "../components/ChatGptCard.js";
 import { ClaudeCliCard } from "../components/ClaudeCliCard.js";
 import { CodexCliCard } from "../components/CodexCliCard.js";
+import { CursorCliCard } from "../components/CursorCliCard.js";
+import { GeminiCliCard } from "../components/GeminiCliCard.js";
 import { LocalAiCard } from "../components/LocalAiCard.js";
 import {
   Badge,
@@ -23,6 +32,8 @@ import {
 } from "../components/ui.js";
 import { usableModels } from "../lib/claude-cli.js";
 import { codexChoices } from "../lib/codex-cli.js";
+import { cursorChoices } from "../lib/cursor-cli.js";
+import { geminiChoices } from "../lib/gemini-cli.js";
 import { groupByProvider, providerLabel } from "../lib/models.js";
 import { useResource } from "../lib/useResource.js";
 
@@ -50,7 +61,19 @@ export function ProvidersPage() {
   const onCliStatus = useCallback((s: { signedIn: boolean }) => setCliSignedIn(s.signedIn), []);
   const [codexModels, setCodexModels] = useState<Array<{ ref: string; name: string }>>([]);
   const onCodexStatus = useCallback((s: CodexCliStatusDto) => setCodexModels(codexChoices(s)), []);
-  const usable = models.data ? usableModels(models.data, cliSignedIn, codexModels) : null;
+  const [cursorModels, setCursorModels] = useState<Array<{ ref: string; name: string }>>([]);
+  const onCursorStatus = useCallback(
+    (s: CursorCliStatusDto) => setCursorModels(cursorChoices(s)),
+    [],
+  );
+  const [geminiModels, setGeminiModels] = useState<Array<{ ref: string; name: string }>>([]);
+  const onGeminiStatus = useCallback(
+    (s: GeminiCliStatusDto) => setGeminiModels(geminiChoices(s)),
+    [],
+  );
+  const usable = models.data
+    ? usableModels(models.data, cliSignedIn, codexModels, cursorModels, geminiModels)
+    : null;
 
   const reloadAll = async () => {
     await Promise.all([providers.reload(), models.reload()]);
@@ -101,6 +124,12 @@ export function ProvidersPage() {
         <ClaudeCliCard onStatus={onCliStatus} />
         <div className="mt-4">
           <CodexCliCard onStatus={onCodexStatus} />
+        </div>
+        <div className="mt-4">
+          <CursorCliCard onStatus={onCursorStatus} />
+        </div>
+        <div className="mt-4">
+          <GeminiCliCard onStatus={onGeminiStatus} />
         </div>
       </div>
 

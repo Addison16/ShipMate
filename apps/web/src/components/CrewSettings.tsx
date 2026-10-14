@@ -24,9 +24,13 @@ import {
   CLI_TOOL_GROUPS,
   CODEX_SANDBOXES,
   type CodexSandbox,
+  CURSOR_MODES,
+  type CursorMode,
   cleanList,
   type Engine,
   engineFor,
+  GEMINI_MODES,
+  type GeminiMode,
   hasToolGroup,
   type ManifestForm,
   otherCliTools,
@@ -36,7 +40,13 @@ import {
   setToolGroup,
   switchEngine,
 } from "../lib/crew-manifest.js";
-import { CLAUDE_CODE_PROVIDER, CODEX_PROVIDER, providerOf } from "../lib/models.js";
+import {
+  CLAUDE_CODE_PROVIDER,
+  CODEX_PROVIDER,
+  CURSOR_PROVIDER,
+  GEMINI_PROVIDER,
+  providerOf,
+} from "../lib/models.js";
 import { useResource } from "../lib/useResource.js";
 import { ModelSelect } from "./ModelSelect.js";
 import {
@@ -65,6 +75,8 @@ export function CrewSettings({
   crewDefault,
   claudeCode,
   codexModels = [],
+  cursorModels = [],
+  geminiModels = [],
   readOnly,
   onSaved,
 }: {
@@ -76,6 +88,10 @@ export function CrewSettings({
   claudeCode: boolean;
   /** Codex models to offer; empty while Codex is not signed in. */
   codexModels?: ReadonlyArray<{ ref: string; name: string }>;
+  /** Cursor models to offer; empty while Cursor is not signed in. */
+  cursorModels?: ReadonlyArray<{ ref: string; name: string }>;
+  /** Gemini CLI models to offer; empty while it has no API key or login. */
+  geminiModels?: ReadonlyArray<{ ref: string; name: string }>;
   readOnly: boolean;
   onSaved: (crew: CrewDetailDto) => void;
 }) {
@@ -201,6 +217,8 @@ export function CrewSettings({
           crewDefault={crewDefault}
           claudeCode={claudeCode}
           codexModels={codexModels}
+          cursorModels={cursorModels}
+          geminiModels={geminiModels}
           readOnly={readOnly}
           patch={patch}
         />
@@ -267,6 +285,8 @@ function ManifestFields({
   crewDefault,
   claudeCode,
   codexModels,
+  cursorModels,
+  geminiModels,
   readOnly,
   patch,
 }: {
@@ -276,6 +296,8 @@ function ManifestFields({
   crewDefault: string;
   claudeCode: boolean;
   codexModels: ReadonlyArray<{ ref: string; name: string }>;
+  cursorModels: ReadonlyArray<{ ref: string; name: string }>;
+  geminiModels: ReadonlyArray<{ ref: string; name: string }>;
   readOnly: boolean;
   patch: (p: Partial<ManifestForm>) => void;
 }) {
@@ -286,9 +308,21 @@ function ManifestFields({
   const cli = form.backend === "claude-code-cli";
   const codex = form.backend === "codex-cli";
   const codexReady = codexModels.length > 0;
+  const cursor = form.backend === "cursor-cli";
+  const cursorReady = cursorModels.length > 0;
+  const gemini = form.backend === "gemini-cli";
+  const geminiReady = geminiModels.length > 0;
   // On a CLI engine, a model from elsewhere means "the CLI's own default": show its provider
   // with no model picked yet.
-  const engineProvider = cli ? CLAUDE_CODE_PROVIDER : codex ? CODEX_PROVIDER : null;
+  const engineProvider = cli
+    ? CLAUDE_CODE_PROVIDER
+    : codex
+      ? CODEX_PROVIDER
+      : cursor
+        ? CURSOR_PROVIDER
+        : gemini
+          ? GEMINI_PROVIDER
+          : null;
 
   const builtin = new Set(BUILTIN_TOOLS.map((tool) => tool.id));
   const otherTools = form.tools.filter((tool) => !builtin.has(tool));
@@ -368,8 +402,11 @@ function ManifestFields({
           value={form.backend}
           onChange={(e) => patch(switchEngine(form, e.target.value as Engine))}
           hint={
-            (!claudeCode && !cli) || (!codexReady && !codex)
-              ? "To use Claude Code or Codex, sign in to it on the Providers page first."
+            (!claudeCode && !cli) ||
+            (!codexReady && !codex) ||
+            (!cursorReady && !cursor) ||
+            (!geminiReady && !gemini)
+              ? "To use Claude Code, Codex, Cursor or Gemini CLI, set it up on the Providers page first."
               : undefined
           }
         >
@@ -379,6 +416,12 @@ function ManifestFields({
           </option>
           <option value="codex-cli" disabled={!codexReady && !codex}>
             Codex (your ChatGPT plan)
+          </option>
+          <option value="cursor-cli" disabled={!cursorReady && !cursor}>
+            Cursor (your Cursor plan)
+          </option>
+          <option value="gemini-cli" disabled={!geminiReady && !gemini}>
+            Gemini CLI (API key or work login)
           </option>
         </SelectField>
         <ModelSelect
@@ -397,6 +440,8 @@ function ManifestFields({
           crewDefault={crewDefault}
           claudeCode={claudeCode || cli}
           codexModels={codexModels}
+          cursorModels={cursorModels}
+          geminiModels={geminiModels}
           disabled={readOnly}
           hint={
             cli
@@ -405,9 +450,17 @@ function ManifestFields({
                 )
               : codex
                 ? t("Runs on your ChatGPT plan through Codex. Not available in Shipyard projects.")
-                : t(
-                    "Crew default follows the model picked in Settings. Pick a provider and model to give this crew member its own.",
-                  )
+                : cursor
+                  ? t(
+                      "Runs on your Cursor plan through Cursor. Not available in Shipyard projects.",
+                    )
+                  : gemini
+                    ? t(
+                        "Runs through Gemini CLI on your Gemini API key or work login. Not available in Shipyard projects.",
+                      )
+                    : t(
+                        "Crew default follows the model picked in Settings. Pick a provider and model to give this crew member its own.",
+                      )
           }
         />
         {codex && (
@@ -428,6 +481,54 @@ function ManifestFields({
             }
           >
             {CODEX_SANDBOXES.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </SelectField>
+        )}
+        {cursor && (
+          <SelectField
+            label="What Cursor may do"
+            disabled={readOnly}
+            value={form.cursorMode}
+            onChange={(e) => patch({ cursorMode: e.target.value as CursorMode })}
+            hint={
+              <span
+                className={cx(
+                  form.cursorMode === "anything" &&
+                    "font-medium text-amber-800 dark:text-amber-200",
+                )}
+              >
+                {CURSOR_MODES.find((m) => m.id === form.cursorMode)?.hint}
+              </span>
+            }
+          >
+            {CURSOR_MODES.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </SelectField>
+        )}
+        {gemini && (
+          <SelectField
+            label="What Gemini may do"
+            disabled={readOnly}
+            value={form.geminiMode}
+            onChange={(e) => patch({ geminiMode: e.target.value as GeminiMode })}
+            hint={
+              <span
+                className={cx(
+                  form.geminiMode === "anything" &&
+                    "font-medium text-amber-800 dark:text-amber-200",
+                )}
+              >
+                {GEMINI_MODES.find((m) => m.id === form.geminiMode)?.hint}
+              </span>
+            }
+          >
+            {GEMINI_MODES.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.label}
               </option>
@@ -512,7 +613,7 @@ function ManifestFields({
       <Section
         title="Tools"
         description={
-          cli || codex
+          cli || codex || cursor || gemini
             ? t("Used when this crew member runs on Shipmate (pi).")
             : "Shipmate's own tools and its MCP servers are always added."
         }

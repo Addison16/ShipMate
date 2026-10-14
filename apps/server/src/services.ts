@@ -1,7 +1,14 @@
 import { join } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { CODEX_PROVIDER, DEFAULT_MODEL, type ServerEvent, SHIPMATE_VERSION } from "@shipmate/core";
-import { claudeCliStatus, codexCliStatus } from "@shipmate/crew";
+import {
+  CODEX_PROVIDER,
+  CURSOR_PROVIDER,
+  DEFAULT_MODEL,
+  GEMINI_PROVIDER,
+  type ServerEvent,
+  SHIPMATE_VERSION,
+} from "@shipmate/core";
+import { claudeCliStatus, codexCliStatus, cursorCliStatus, geminiCliStatus } from "@shipmate/crew";
 import type { Db } from "@shipmate/db";
 import { SecretVault } from "@shipmate/providers";
 import { SessionStore } from "./auth.js";
@@ -23,6 +30,7 @@ import { AuditService } from "./services/audit.js";
 import { BackupService } from "./services/backups.js";
 import { CrewService } from "./services/crew.js";
 import { CrewBundleService } from "./services/crew-bundles.js";
+import { GeminiKeyService } from "./services/gemini-key.js";
 import { type GoogleFetch, GoogleOAuthService } from "./services/google-oauth.js";
 import { ListService } from "./services/lists.js";
 import { LocalAiService } from "./services/local-ai.js";
@@ -73,6 +81,8 @@ export interface Services {
   crewBundles: CrewBundleService;
   push: PushService;
   files: AttachmentService;
+  /** The Gemini API key for the Gemini CLI engine. */
+  geminiKey: GeminiKeyService;
   voice: VoiceService;
   localAi: LocalAiService;
   health: HealthService;
@@ -141,6 +151,7 @@ export async function createServices(
   );
   const files = new AttachmentService(db, config.dirs.files);
   const themes = new ThemeService(db);
+  const geminiKey = new GeminiKeyService(db, vault);
   bridge = new Bridge({
     themes,
     db,
@@ -154,6 +165,7 @@ export async function createServices(
     skills,
     files,
     agentDir: config.dirs.pi,
+    geminiKey: () => geminiKey.get(),
   });
   const watches = new WatchService(db, db.$client, crew, bridge, audit, emit, config.SHIPMATE_URL);
   bridge.attachWatches(watches);
@@ -267,6 +279,32 @@ export async function createServices(
         const s = await codexCliStatus();
         return { used, installed: s.installed, signedIn: s.signedIn };
       },
+      cursorCli: async () => {
+        const onDefault = (await settings.get()).defaultModel.startsWith(`${CURSOR_PROVIDER}/`);
+        const used = crew.registry
+          .list()
+          .some(
+            (f) =>
+              f.manifest.backend === "cursor-cli" ||
+              (onDefault && f.manifest.model === DEFAULT_MODEL),
+          );
+        if (!used) return { used, installed: false, signedIn: false };
+        const s = await cursorCliStatus();
+        return { used, installed: s.installed, signedIn: s.signedIn };
+      },
+      geminiCli: async () => {
+        const onDefault = (await settings.get()).defaultModel.startsWith(`${GEMINI_PROVIDER}/`);
+        const used = crew.registry
+          .list()
+          .some(
+            (f) =>
+              f.manifest.backend === "gemini-cli" ||
+              (onDefault && f.manifest.model === DEFAULT_MODEL),
+          );
+        if (!used) return { used, installed: false, signedIn: false };
+        const s = await geminiCliStatus({ apiKey: await geminiKey.get() });
+        return { used, installed: s.installed, signedIn: s.signedIn };
+      },
       bridges: [
         { id: "discord", name: "Discord", status: () => discord.status() },
         { id: "telegram", name: "Telegram", status: () => telegram.status() },
@@ -313,6 +351,7 @@ export async function createServices(
     starters: new StarterService(config.TEMPLATES_DIR, crew, mcp, watches),
     push,
     files,
+    geminiKey,
     voice: new VoiceService(db, vault, settings, options.voiceFetch),
     backups,
     health,

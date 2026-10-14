@@ -1,7 +1,13 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Api, Model, Usage } from "@earendil-works/pi-ai";
-import { CODEX_PROVIDER, DEFAULT_MODEL, type ServerEvent } from "@shipmate/core";
+import {
+  CODEX_PROVIDER,
+  CURSOR_PROVIDER,
+  DEFAULT_MODEL,
+  GEMINI_PROVIDER,
+  type ServerEvent,
+} from "@shipmate/core";
 import {
   type ClaudeCliEvent,
   type CrewFolder,
@@ -293,7 +299,10 @@ export function shipmateToolName(name: string): string {
 /**
  * A crew member set to the crew default runs where the default does. With the Claude
  * subscription as the default (`claude-code/<alias>`), it runs on the Claude Code CLI with that
- * model, and with a Codex model (`codex/<id>`) on the Codex CLI; a CLI crew member on the default takes a Claude default's model. Anything else is as is.
+ * model, with a Codex model (`codex/<id>`) on the Codex CLI, with a Cursor model
+ * (`cursor/<slug>`) on the Cursor CLI and with a Gemini CLI model (`gemini-cli/<id>`) on the
+ * Gemini CLI; a CLI crew member on the default takes a Claude default's model. Anything else is
+ * as is.
  */
 export function onCrewDefault(folder: CrewFolder, defaultModel: string): CrewFolder {
   const m = folder.manifest;
@@ -304,6 +313,12 @@ export function onCrewDefault(folder: CrewFolder, defaultModel: string): CrewFol
   }
   if (provider === CODEX_PROVIDER) {
     return { ...folder, manifest: { ...m, backend: "codex-cli", model: defaultModel } };
+  }
+  if (provider === CURSOR_PROVIDER) {
+    return { ...folder, manifest: { ...m, backend: "cursor-cli", model: defaultModel } };
+  }
+  if (provider === GEMINI_PROVIDER) {
+    return { ...folder, manifest: { ...m, backend: "gemini-cli", model: defaultModel } };
   }
   if (m.backend === "claude-code-cli" && provider === "anthropic") {
     return { ...folder, manifest: { ...m, model: defaultModel } };

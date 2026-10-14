@@ -25,11 +25,19 @@ export const ApprovalPolicy = z.union([
 /**
  * What runs a crew member's turns: `pi` (default; Shipmate's own agent with the instance's
  * providers), `claude-code-cli` (the unmodified official `claude` binary, signed in by the user
- * with their own Claude subscription) or `codex-cli` (the unmodified official `codex` binary,
- * signed in by the user with their own ChatGPT plan). Shipmate never touches either CLI's
- * credentials (§11/§12).
+ * with their own Claude subscription), `codex-cli` (the unmodified official `codex` binary,
+ * signed in by the user with their own ChatGPT plan), `cursor-cli` (the unmodified official
+ * `cursor-agent` binary, signed in by the user with their own Cursor plan) or `gemini-cli` (the
+ * unmodified official `gemini` binary, signed in by the user with a Gemini API key or a Google
+ * work login). Shipmate never touches any CLI's credentials (§11/§12).
  */
-export const CrewBackend = z.enum(["pi", "claude-code-cli", "codex-cli"]);
+export const CrewBackend = z.enum([
+  "pi",
+  "claude-code-cli",
+  "codex-cli",
+  "cursor-cli",
+  "gemini-cli",
+]);
 export type CrewBackend = z.infer<typeof CrewBackend>;
 
 /** Settings for the `claude-code-cli` backend (ignored by `pi`). */
@@ -86,6 +94,38 @@ export type CodexCliSettings = z.infer<typeof CodexCliSettings>;
 /** The provider id Codex models use in crew.yaml (`codex/gpt-6.1-sol`). */
 export const CODEX_PROVIDER = "codex";
 
+/** Settings for the `cursor-cli` backend (ignored by the others). The model is `cursor/<slug>`. */
+export const CursorCliSettings = z.object({
+  /**
+   * What the Cursor agent may do, set through its permission rules. `read-only` (default) lets it
+   * read files in its folder; `edit` also lets it change files there; `anything` runs it with
+   * `--force` (every tool, any command; it still runs inside Shipmate's container).
+   */
+  mode: z.enum(["read-only", "edit", "anything"]).default("read-only"),
+});
+export type CursorCliSettings = z.infer<typeof CursorCliSettings>;
+
+/** The provider id Cursor models use in crew.yaml (`cursor/composer-2.5`). */
+export const CURSOR_PROVIDER = "cursor";
+
+/** Settings for the `gemini-cli` backend (ignored by the others). The model is `gemini-cli/<id>`. */
+export const GeminiCliSettings = z.object({
+  /**
+   * What Gemini may do, set through its `--approval-mode` and a policy file. `read-only`
+   * (default) lets it read files in its folder; `edit` also lets it change files there;
+   * `anything` runs it in yolo mode (every tool, any command; it still runs inside Shipmate's
+   * container).
+   */
+  mode: z.enum(["read-only", "edit", "anything"]).default("read-only"),
+});
+export type GeminiCliSettings = z.infer<typeof GeminiCliSettings>;
+
+/**
+ * The provider id Gemini CLI models use in crew.yaml (`gemini-cli/flash`). Not `google`: that is
+ * pi's own provider for a Gemini API key.
+ */
+export const GEMINI_PROVIDER = "gemini-cli";
+
 /**
  * `crew.yaml` — the manifest of one crew member. The folder it lives in is the
  * crew member's working directory for its pi session.
@@ -100,6 +140,10 @@ export const CrewManifest = z.object({
   cli: ClaudeCliSettings.optional(),
   /** Options for the codex-cli backend. */
   codex: CodexCliSettings.optional(),
+  /** Options for the cursor-cli backend. */
+  cursor: CursorCliSettings.optional(),
+  /** Options for the gemini-cli backend. */
+  gemini: GeminiCliSettings.optional(),
   /** Built-in pi tools this crew member may use. */
   tools: z.array(z.string().min(1)).default([]),
   /** MCP server ids from the catalog or custom servers. */

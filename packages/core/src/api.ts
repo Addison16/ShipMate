@@ -224,8 +224,11 @@ export interface CrewDto {
   role: string;
   model: string;
   captain: boolean;
-  /** What runs it: Shipmate's own harness (pi), the official Claude Code CLI or Codex CLI. */
-  backend: "pi" | "claude-code-cli" | "codex-cli";
+  /**
+   * What runs it: Shipmate's own harness (pi), or the official Claude Code, Codex, Cursor or
+   * Gemini CLI.
+   */
+  backend: "pi" | "claude-code-cli" | "codex-cli" | "cursor-cli" | "gemini-cli";
   visibility: "shared" | "private";
   status: CrewStatus;
   tools: string[];
@@ -1247,6 +1250,73 @@ export interface CodexCliStatusDto {
 }
 /** GET /api/codex-cli (admin) → { codexCli: CodexCliStatusDto } */
 
+// ---------- Cursor plan: the Cursor CLI backend ----------
+
+/**
+ * A crew member with `backend: cursor-cli` in crew.yaml answers through the unmodified official
+ * `cursor-agent` binary that the user signed in with their own Cursor account (`cursor-agent
+ * login`). Shipmate never reads, stores or forwards that login (it only asks `cursor-agent
+ * status`) and does no keep-alive pinging (§12). Its model is `cursor/<slug>`; optional
+ * `cursor: { mode }` in crew.yaml.
+ */
+export interface CursorCliStatusDto {
+  installed: boolean;
+  version: string | null;
+  /** From `cursor-agent status` only. */
+  signedIn: boolean;
+  /** "login" (a Cursor account) or "api_key" (CURSOR_API_KEY); null when signed out. */
+  authMethod: "login" | "api_key" | null;
+  /** The account's email, as the CLI reports it. */
+  email: string | null;
+  /** The CLI's HOME, where it keeps its own login (the image uses /data/cursor). */
+  configDir: string;
+  /** Model refs crew can pick (`cursor/<slug>`). */
+  models: Array<{ ref: string; name: string }>;
+  /** The command that signs it in. */
+  signInCommand: string;
+  /** The command that installs it (it is not in the image). */
+  installCommand: string;
+}
+/** GET /api/cursor-cli (admin) → { cursorCli: CursorCliStatusDto } */
+
+// ---------- Gemini: the Gemini CLI backend ----------
+
+/**
+ * A crew member with `backend: gemini-cli` in crew.yaml answers through the unmodified official
+ * `gemini` binary. Since 2026-06-18 it no longer serves Google AI Pro/Ultra, Google One or free
+ * personal accounts: it needs a paid Gemini API key (kept encrypted by Shipmate, or
+ * GEMINI_API_KEY) or a Gemini Code Assist Standard/Enterprise Google login the user does
+ * themselves (`NO_BROWSER=true gemini`). Shipmate never reads that login (it only checks the file
+ * is there) and does no keep-alive pinging (§12). Its model is `gemini-cli/<id>`; optional
+ * `gemini: { mode }` in crew.yaml.
+ */
+export interface GeminiCliStatusDto {
+  installed: boolean;
+  version: string | null;
+  /** An API key is set, or the CLI has a Google login on file. */
+  signedIn: boolean;
+  /** "api_key" (Shipmate's key or GEMINI_API_KEY, used first) or "login"; null when neither. */
+  authMethod: "login" | "api_key" | null;
+  /** The Google account of the login, as the CLI recorded it. */
+  email: string | null;
+  /** Whether an owner saved an API key in Shipmate (never sent back). */
+  keySaved: boolean;
+  /** GEMINI_API_KEY is set in Shipmate's environment. */
+  keyInEnv: boolean;
+  /** GEMINI_CLI_HOME, where the CLI keeps its login and chats (the image uses /data/gemini). */
+  configDir: string;
+  /** Model refs crew can pick (`gemini-cli/<id>`). */
+  models: Array<{ ref: string; name: string }>;
+  /** The command that signs it in with a Google login. */
+  signInCommand: string;
+}
+/** GET /api/gemini-cli (admin) → { geminiCli: GeminiCliStatusDto } */
+
+/** PUT /api/gemini-cli/key (owner): save the Gemini API key, or remove it with null. */
+export interface GeminiKeyRequest {
+  key: string | null;
+}
+
 // ---------- starter crew (everyday life) ----------
 
 /** A ready-made crew member from templates/crew/<slug> with its opt-in starter watch. */
@@ -1401,7 +1471,7 @@ export interface CrewImportPreviewDto {
   model: string;
   /** The bundle asked for a model this instance cannot use, so the default replaces it. */
   modelReplaced: string | null;
-  backend: "pi" | "claude-code-cli" | "codex-cli";
+  backend: "pi" | "claude-code-cli" | "codex-cli" | "cursor-cli" | "gemini-cli";
   tools: string[];
   mcp: Array<{ id: string; known: boolean; installed: boolean }>;
   skills: Array<{ name: string; description: string }>;

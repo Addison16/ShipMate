@@ -1,5 +1,7 @@
 import type { Api, Model, Usage } from "@earendil-works/pi-ai";
 import { calculateCost } from "@earendil-works/pi-ai";
+import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
+import { googleProvider } from "@earendil-works/pi-ai/providers/google";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import type { UsageResponse, UsageTotals } from "@shipmate/core";
 import { crewMembers, type Db, usageEvents, users, watches } from "@shipmate/db";
@@ -32,31 +34,56 @@ export function costMicroUsd(model: Model<Api>, usage: Usage): number {
 /**
  * How a call was paid for. "api": billed per token (an API key, or a free local model).
  * "subscription": covered by a flat plan the person already pays for (Claude through the Claude
- * Code CLI, ChatGPT through Sign in with ChatGPT or Codex), so it is not spend and does not count
- * towards caps; its API-price estimate is kept apart.
+ * Code CLI, ChatGPT through Sign in with ChatGPT or Codex, a Cursor plan through its CLI), so it
+ * is not spend and does not count towards caps; its API-price estimate is kept apart.
  */
 export type Billing = "api" | "subscription";
 
 /** Providers whose calls run on someone's plan rather than an API key. */
-const SUBSCRIPTION_PROVIDERS = new Set(["claude-code", "chatgpt", "codex"]);
+const SUBSCRIPTION_PROVIDERS = new Set(["claude-code", "chatgpt", "codex", "cursor"]);
 
 export const defaultBilling = (model: Pick<Model<Api>, "provider">): Billing =>
   SUBSCRIPTION_PROVIDERS.has(model.provider) ? "subscription" : "api";
 
 let openaiPrices: Map<string, Model<Api>> | undefined;
+let anthropicPrices: Map<string, Model<Api>> | undefined;
+let googlePrices: Map<string, Model<Api>> | undefined;
 
 /**
  * The same model with its API prices, for pricing a subscription call: ChatGPT-plan models are
- * registered at zero cost, so look the id up in pi's OpenAI catalog. Others keep their own table.
+ * registered at zero cost, so look the id up in pi's OpenAI catalog. Cursor's slugs name OpenAI
+ * and Anthropic models (`gpt-5.5`, `claude-opus-4-8`, at times with `-thinking` or an effort
+ * after them), so look in both; its own (`auto`, `composer-…`) have no API price and stay at
+ * zero. Gemini CLI turns are recorded under the model that answered (`gemini-2.5-flash`), priced
+ * from pi's Google table; an alias (`auto`) has no price. Others keep their own table.
  */
 function apiPriced(model: Model<Api>): Model<Api> {
-  if (model.provider !== "chatgpt" && model.provider !== "codex") return model;
+  if (model.provider === "gemini-cli") {
+    googlePrices ??= new Map(
+      googleProvider()
+        .getModels()
+        .map((m) => [m.id, m as Model<Api>]),
+    );
+    return googlePrices.get(model.id) ?? model;
+  }
+  if (!["chatgpt", "codex", "cursor"].includes(model.provider)) return model;
   openaiPrices ??= new Map(
     openaiProvider()
       .getModels()
       .map((m) => [m.id, m as Model<Api>]),
   );
-  return openaiPrices.get(model.id) ?? model;
+  if (model.provider !== "cursor") return openaiPrices.get(model.id) ?? model;
+  anthropicPrices ??= new Map(
+    anthropicProvider()
+      .getModels()
+      .map((m) => [m.id, m as Model<Api>]),
+  );
+  const bare = model.id.replace(/(-(thinking|fast|max|xhigh|high|medium|low))+$/, "");
+  for (const id of [model.id, bare]) {
+    const found = openaiPrices.get(id) ?? anthropicPrices.get(id);
+    if (found) return found;
+  }
+  return model;
 }
 
 /**
@@ -70,7 +97,7 @@ export function callCost(
   billing: Billing = defaultBilling(model),
 ): { billing: Billing; costMicroUsd: number; apiEquivalentMicroUsd: number } {
   if (billing === "api") {
-    // Codex signed in with an API key: its models carry no prices of their own.
+    // Codex, Cursor or Gemini CLI on an API key: their models carry no prices of their own.
     return {
       billing,
       costMicroUsd: costMicroUsd(apiPriced(model), usage),

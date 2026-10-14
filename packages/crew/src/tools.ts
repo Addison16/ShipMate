@@ -41,7 +41,7 @@ export interface EditSpec {
   name?: string | undefined;
   role?: string | undefined;
   model?: string | undefined;
-  backend?: "pi" | "claude-code-cli" | "codex-cli" | undefined;
+  backend?: "pi" | "claude-code-cli" | "codex-cli" | "cursor-cli" | "gemini-cli" | undefined;
   /** Merged into the current `cli` settings. */
   cli?:
     | {
@@ -358,10 +358,16 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
         ),
         backend: Type.Optional(
           Type.Union(
-            [Type.Literal("pi"), Type.Literal("claude-code-cli"), Type.Literal("codex-cli")],
+            [
+              Type.Literal("pi"),
+              Type.Literal("claude-code-cli"),
+              Type.Literal("codex-cli"),
+              Type.Literal("cursor-cli"),
+              Type.Literal("gemini-cli"),
+            ],
             {
               description:
-                '"pi" (Shipmate with the instance providers), "claude-code-cli" (an owner\'s own Claude subscription) or "codex-cli" (an owner\'s own ChatGPT plan through Codex; model codex/<id>)',
+                '"pi" (Shipmate with the instance providers), "claude-code-cli" (an owner\'s own Claude subscription), "codex-cli" (an owner\'s own ChatGPT plan through Codex; model codex/<id>), "cursor-cli" (an owner\'s own Cursor plan; model cursor/<slug>) or "gemini-cli" (the Gemini CLI on an owner\'s Gemini API key or Code Assist login; model gemini-cli/<id>)',
             },
           ),
         ),

@@ -1,3 +1,11 @@
+/** Engines as people know them, by crew.yaml backend. */
+const ENGINE_NAMES: Record<string, string> = {
+  "claude-code-cli": "Claude Code",
+  "codex-cli": "Codex",
+  "cursor-cli": "Cursor",
+  "gemini-cli": "Gemini CLI",
+};
+
 /**
  * Plain one-line cards for the Captain's requests to change what a crew member may do, so the
  * person reads "Captain wants to give Navigator: GitHub" instead of a tool name and JSON.
@@ -36,7 +44,7 @@ export function accessSummary(
     case "edit_crew_member": {
       const changes = [
         input.backend !== undefined &&
-          `runs on ${input.backend === "claude-code-cli" ? "Claude Code" : input.backend === "codex-cli" ? "Codex" : "Shipmate"}`,
+          `runs on ${ENGINE_NAMES[String(input.backend)] ?? "Shipmate"}`,
         input.mcp !== undefined && `servers: ${list("mcp", names.server).join(", ") || "none"}`,
         input.tools !== undefined && `tools: ${list("tools").join(", ") || "all built-in"}`,
         input.skills !== undefined && `skills: ${list("skills").join(", ") || "none"}`,

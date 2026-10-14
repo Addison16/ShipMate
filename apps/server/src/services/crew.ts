@@ -195,8 +195,8 @@ export class CrewService {
 
   /**
    * Point every crew member on Shipmate's own backend at the crew default (`model: default`), so
-   * changing the default in Settings moves them all. Claude Code and Codex crew pick their model in the
-   * CLI and are left alone. Returns the slugs that changed.
+   * changing the default in Settings moves them all. Claude Code, Codex, Cursor and Gemini CLI
+   * crew pick their model in the CLI and are left alone. Returns the slugs that changed.
    */
   async useDefaultModel(): Promise<string[]> {
     const changed: string[] = [];

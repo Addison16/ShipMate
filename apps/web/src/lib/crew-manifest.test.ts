@@ -162,4 +162,33 @@ describe("helper agents and engine", () => {
     expect(out).toContain("codex:\n  sandbox: workspace-write");
     expect(form(out).codexSandbox).toBe("workspace-write");
   });
+
+  it("moves to and from Cursor, and writes its mode into crew.yaml", () => {
+    const pi = form("name: A\nrole: r\nmodel: default\n");
+    expect(switchEngine(pi, "cursor-cli")).toEqual({ backend: "cursor-cli" });
+    const yaml = "name: A\nrole: r\nmodel: cursor/composer-2.5\nbackend: cursor-cli\n";
+    const cursor = form(yaml);
+    expect(cursor.cursorMode).toBe("read-only");
+    expect(switchEngine(cursor, "pi")).toEqual({ backend: "pi", model: "default" });
+    expect(switchEngine(cursor, "codex-cli")).toEqual({ backend: "codex-cli" });
+    expect(engineFor("cursor/composer-2.5")).toBe("cursor-cli");
+    const out = applyManifestForm(yaml, { ...cursor, cursorMode: "edit" });
+    expect(out).toContain("cursor:\n  mode: edit");
+    expect(form(out).cursorMode).toBe("edit");
+  });
+
+  it("moves to and from Gemini CLI, and writes its mode into crew.yaml", () => {
+    const pi = form("name: A\nrole: r\nmodel: default\n");
+    expect(switchEngine(pi, "gemini-cli")).toEqual({ backend: "gemini-cli" });
+    const yaml = "name: A\nrole: r\nmodel: gemini-cli/flash\nbackend: gemini-cli\n";
+    const gemini = form(yaml);
+    expect(gemini.geminiMode).toBe("read-only");
+    expect(switchEngine(gemini, "pi")).toEqual({ backend: "pi", model: "default" });
+    expect(engineFor("gemini-cli/flash")).toBe("gemini-cli");
+    // pi's own Google provider stays on pi.
+    expect(engineFor("google/gemini-2.5-flash")).toBe("pi");
+    const out = applyManifestForm(yaml, { ...gemini, geminiMode: "anything" });
+    expect(out).toContain("gemini:\n  mode: anything");
+    expect(form(out).geminiMode).toBe("anything");
+  });
 });

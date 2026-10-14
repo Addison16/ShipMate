@@ -91,6 +91,15 @@ function updateStream(
   return items.map((it) => (it.kind === "stream" && it.streamId === streamId ? fn(it) : it));
 }
 
+/**
+ * A finished stream that never said anything gets no saved message (the server only stores
+ * replies with text), so it would sit on screen as an empty box with typing dots. This happens
+ * whenever a crew member hands off, asks the Captain or asks a question before writing a word.
+ */
+function dropEmpty(items: TimelineItem[]): TimelineItem[] {
+  return items.filter((it) => it.kind !== "stream" || !it.done || it.text.trim() !== "");
+}
+
 export function timelineReducer(state: TimelineState, action: TimelineAction): TimelineState {
   switch (action.type) {
     case "open":
@@ -199,11 +208,13 @@ function applyEvent(state: TimelineState, ev: ServerEvent): TimelineState {
     case "stream_end":
       return {
         ...state,
-        items: updateStream(state.items, ev.streamId, (s) => ({
-          ...s,
-          done: true,
-          tools: s.tools.map((t) => ({ ...t, running: false })),
-        })),
+        items: dropEmpty(
+          updateStream(state.items, ev.streamId, (s) => ({
+            ...s,
+            done: true,
+            tools: s.tools.map((t) => ({ ...t, running: false })),
+          })),
+        ),
       };
     case "handoff": {
       const seq = state.seq + 1;
@@ -223,7 +234,7 @@ function applyEvent(state: TimelineState, ev: ServerEvent): TimelineState {
         // When work stops, any stream that never ended is finished.
         items: ev.busy
           ? state.items
-          : state.items.map((it) => (it.kind === "stream" ? { ...it, done: true } : it)),
+          : dropEmpty(state.items.map((it) => (it.kind === "stream" ? { ...it, done: true } : it))),
       };
     default:
       return state;

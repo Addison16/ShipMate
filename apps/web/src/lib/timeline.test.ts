@@ -138,10 +138,36 @@ describe("timelineReducer", () => {
     const s = run([
       { type: "status", conversationId: CID, busy: true },
       { type: "stream_start", conversationId: CID, streamId: "s1", crew: captain },
+      { type: "delta", conversationId: CID, streamId: "s1", text: "Half a reply" },
+      { type: "stream_start", conversationId: CID, streamId: "s2", crew: galley },
       { type: "status", conversationId: CID, busy: false },
     ]);
     expect(s.busy).toBe(false);
+    // The stream with text stays, finished; the one that never said anything goes.
+    expect(s.items).toHaveLength(1);
     expect(s.items[0]?.kind === "stream" && s.items[0].done).toBe(true);
+  });
+
+  it("drops a stream that ends without text instead of leaving an empty box", () => {
+    // The Captain hands off before writing anything, then answers after Galley.
+    const s = run([
+      { type: "stream_start", conversationId: CID, streamId: "s1", crew: captain },
+      { type: "stream_end", conversationId: CID, streamId: "s1" },
+      { type: "handoff", conversationId: CID, from: captain, to: galley, task: "plan dinner" },
+      { type: "stream_start", conversationId: CID, streamId: "s2", crew: galley },
+      { type: "delta", conversationId: CID, streamId: "s2", text: "Pasta" },
+      { type: "stream_end", conversationId: CID, streamId: "s2" },
+      { type: "message", conversationId: CID, message: crewMessage("m2", galley, "Pasta") },
+      { type: "stream_start", conversationId: CID, streamId: "s3", crew: captain },
+      { type: "delta", conversationId: CID, streamId: "s3", text: "Galley says pasta" },
+      { type: "stream_end", conversationId: CID, streamId: "s3" },
+      {
+        type: "message",
+        conversationId: CID,
+        message: crewMessage("m3", captain, "Galley says pasta"),
+      },
+    ]);
+    expect(s.items.map((i) => i.key)).toEqual(["h:1", "m:m2", "m:m3"]);
   });
 
   it("records errors for this conversation and global ones", () => {

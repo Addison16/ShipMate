@@ -79,6 +79,7 @@ export async function authRoutes(app: FastifyInstance, s: Services) {
         themeMode: ThemeMode.optional(),
         colorTheme: ColorTheme.optional(),
         customTheme: z.string().uuid().nullable().optional(),
+        style: z.enum(["plain", "nautical"]).optional(),
         welcome: z.literal("done").optional(),
       })
       .strict()

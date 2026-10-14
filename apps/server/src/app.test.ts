@@ -128,6 +128,7 @@ describe.skipIf(!db)("Shipmate server", () => {
     expect(before.preferences).toEqual({
       themeMode: "auto",
       colorTheme: "harbor",
+      style: "plain",
       customTheme: null,
     });
     expect(
@@ -138,15 +139,18 @@ describe.skipIf(!db)("Shipmate server", () => {
     expect(res.json().user.preferences).toEqual({
       themeMode: "dark",
       colorTheme: "harbor",
+      style: "plain",
       customTheme: null,
     });
     const both = await api("PATCH", "/api/auth/preferences", {
       colorTheme: "coral-reef",
+      style: "plain",
       customTheme: null,
     });
     expect(both.json().user.preferences).toEqual({
       themeMode: "dark",
       colorTheme: "coral-reef",
+      style: "plain",
       customTheme: null,
     });
     expect((await api("PATCH", "/api/auth/preferences", { colorTheme: "plaid" })).statusCode).toBe(
@@ -160,7 +164,12 @@ describe.skipIf(!db)("Shipmate server", () => {
       "",
     );
     const kid = (await api("GET", "/api/auth/me", undefined, cookieOf(login))).json().user;
-    expect(kid.preferences).toEqual({ themeMode: "auto", colorTheme: "harbor", customTheme: null });
+    expect(kid.preferences).toEqual({
+      themeMode: "auto",
+      colorTheme: "harbor",
+      style: "plain",
+      customTheme: null,
+    });
   });
 
   it("stores provider keys encrypted and never returns them", async () => {

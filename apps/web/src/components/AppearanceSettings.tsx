@@ -14,6 +14,11 @@ const MODE_HINTS = {
   auto: "Follows this device",
 } as const;
 
+const STYLES = [
+  { id: "plain", label: "Plain", example: "Assistant, Agents, Chat" },
+  { id: "nautical", label: "Nautical", example: "Captain, Crew, Bridge" },
+] as const;
+
 const choice = (on: boolean) =>
   cx(
     "relative flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent-600",
@@ -31,13 +36,13 @@ function Picked() {
 }
 
 /**
- * Per-user theme: Light, Dark or Auto, an accent color theme, or a custom theme the Captain
- * builds (colors, logo, words and voice). Saved to the account.
+ * Per-user theme: Light, Dark or Auto, an accent color theme, plain or nautical words, or a
+ * custom theme the Captain builds (colors, logo, words and voice). Saved to the account.
  */
 export function AppearanceSettings() {
   const user = useUser();
   const { update, error } = useUpdateAppearance();
-  const { themeMode, colorTheme, customTheme } = user.preferences;
+  const { themeMode, colorTheme, customTheme, style } = user.preferences;
 
   return (
     <Card>
@@ -120,6 +125,34 @@ export function AppearanceSettings() {
         </p>
       </fieldset>
 
+      <fieldset className="mt-6">
+        <legend className="mb-2 text-sm font-medium">Words</legend>
+        <div className="grid grid-cols-2 gap-2">
+          {STYLES.map((st) => {
+            const on = !customTheme && style === st.id;
+            return (
+              <label key={st.id} className={choice(on)}>
+                <input
+                  type="radio"
+                  name="style"
+                  value={st.id}
+                  checked={on}
+                  onChange={() => void update({ style: st.id, customTheme: null })}
+                  className="sr-only"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">{st.label}</span>
+                  <span className="block text-xs text-slate-500 dark:text-slate-400">
+                    {st.example}
+                  </span>
+                </span>
+                {on && <Picked />}
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+
       <CustomThemes
         current={customTheme}
         onPick={(id) => void update({ customTheme: id })}
@@ -190,7 +223,7 @@ function CustomThemes({
     <fieldset className="mt-6 min-w-0">
       <legend className="mb-1 text-sm font-medium">Custom theme</legend>
       <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
-        Any idea you like. Your AI builds the colors, logo, words and how the crew talks.
+        Any idea you like. Your AI builds the colors, logo, words and how it talks.
       </p>
       <div className="flex flex-wrap gap-2">
         <Button variant="primary" disabled={starting} onClick={() => void start()}>

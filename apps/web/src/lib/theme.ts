@@ -37,6 +37,7 @@ export const THEME_MODES: Array<{ id: ThemeMode; label: string }> = [
 export const DEFAULT_APPEARANCE: UserPreferences = {
   themeMode: "auto",
   colorTheme: "harbor",
+  style: "plain",
   customTheme: null,
 };
 
@@ -56,6 +57,7 @@ export function readCachedAppearance(storage: Pick<Storage, "getItem"> | null): 
     const parsed = raw ? (JSON.parse(raw) as Partial<UserPreferences>) : {};
     return {
       customTheme: typeof parsed.customTheme === "string" ? parsed.customTheme : null,
+      style: parsed.style === "nautical" ? "nautical" : "plain",
       themeMode: THEME_MODES.some((m) => m.id === parsed.themeMode)
         ? (parsed.themeMode as ThemeMode)
         : DEFAULT_APPEARANCE.themeMode,

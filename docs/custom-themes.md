@@ -1,13 +1,17 @@
 # Custom themes
 
-Shipmate doesn't have to be nautical. In **Settings > Appearance > Make a custom theme**, your
-Captain walks you through building a theme of your own: colors, grays, font, corners, an
-original logo, the app's words (Bridge, Crew, Captain...) and how the crew talks to you. A
-preview card appears in the chat with a **Try it** button.
+Shipmate uses plain AI words out of the box (Assistant, Agents, Chat, Routines, Projects).
+Each person can switch to the **Nautical** words (Captain, Crew, Bridge, Watches, Shipyard) in
+**Settings > Appearance > Words**, or have their AI build a whole theme of their own. The setup
+guide asks about this too (the **Style** step).
+
+In **Settings > Appearance > Make a custom theme**, your Assistant walks you through building a
+theme: colors, grays, font, corners, an original logo, the app's words and how the AI talks to
+you. A preview card appears in the chat with a **Try it** button.
 
 - Each person picks their own theme; everyone can use any theme saved on the instance.
-- The crew uses a theme's words and voice only with the person using it.
-- Pick any color theme to go back to the standard look.
+- The AI uses a theme's words and voice only with the person using it.
+- Pick a color theme, or Plain or Nautical words, to go back to the standard look.
 - Themes download and import as `.shipmate-theme.json` files, so you can also build one with
   another AI by giving it the guide below, then import the file it writes.
 - Shipmate works out the light and dark shades from one accent color and keeps text readable
@@ -34,80 +38,84 @@ preview card appears in the chat with a **Try it** button.
 }
 ```
 
-Every field except `name` and `accent` is optional. Outside Shipmate, skip the tool names in
+Every field is optional; a missing name or color gets a default. Outside Shipmate, skip the tool names in
 the guide: ask the questions in plain chat and write the file at the end.
 
 ## The build guide
 
-The Captain reads this with its `theme_build_guide` tool.
+The AI reads this with its `theme_build_guide` tool. It is written in short steps so small
+local models can follow it. `save_theme` always saves: it fixes what it can (a color name
+becomes a hex code, a broken logo is left out) and says what it changed.
 
-A custom theme changes how Shipmate looks and talks for the person using it: colors, grays,
-font, corners, logo, the app's words, and the crew's voice. It is not limited to ships: a
-trainer adventure, a company with a CEO, a space station, a cozy cottage, anything.
+You will help the person make a custom theme. A theme changes the app's color, font, corners,
+logo, the names of things, and how you talk to them. Follow the steps in order. Do one step at
+a time. Keep every message short.
 
-Work through the steps in order, one question at a time. Use `ask_person` with 3 to 5 short
-choices wherever a tap is easier than typing, and always allow their own answer. Keep every
-message short. Do not ask about things you can decide yourself; make a good pick and say so.
+## Step 1. Ask for the idea
+Call ask_person with the question "What should your theme be about?" and these options:
+"Trainer adventure", "Company with a CEO", "Space crew", "Fantasy guild", "Cozy home".
+If they already said what they want, skip this step.
 
-## 1. The idea
-Ask what the theme is about. If they already said, confirm it in one line and move on.
-Example choices: "Trainer adventure", "Company with a CEO", "Space crew", "Fantasy guild",
-"Cozy cottage".
+## Step 2. Ask for the feeling
+Call ask_person with the question "How should it feel?" and these options:
+"Fun", "Calm", "Professional", "Bold".
 
-## 2. The mood
-Ask how it should feel: for example playful, calm, professional, bold, or retro.
+## Step 3. Pick the names
+Pick a short name (1 to 3 words) for each of these, to fit the idea:
+- appName: the app's name. Normal: "Shipmate".
+- captain: the main AI that leads the others. Normal: "Assistant".
+- crew: the group of AI helpers (page name). Normal: "Agents".
+- crewMember: one AI helper, lowercase. Normal: "agent".
+- bridge: the chat page. Normal: "Chat".
+- watches: scheduled jobs (page name). Normal: "Routines".
+- shipyard: GitHub work projects (page name). Normal: "Projects".
+Show the names to the person as a short list. Ask "Do these names work?" with ask_person,
+options "Yes", "Make them more fun", "Make them more serious". Change them if asked.
 
-## 3. The words
-Propose a word for each of these, fitting the idea. Show all of them in one short list and ask
-if they look right (choices such as "Looks great", "More playful", "More serious"):
-  - `appName`: the app's name in the header and tab (default "Shipmate")
-  - `captain`: the coordinator who leads the crew (title) (default "Captain")
-  - `crew`: the team of AI helpers (page name) (default "Crew")
-  - `crewMember`: one helper, lowercase singular (default "crew member")
-  - `bridge`: where you chat (page name) (default "Bridge")
-  - `watches`: scheduled jobs and briefings (page name) (default "Watches")
-  - `shipyard`: GitHub and work projects (page name) (default "Shipyard")
-Words are short (1 to 3 words, at most 24 characters). Page names are capitalized; `crewMember`
-is lowercase. Example for a company: captain "CEO", crew "Team", crewMember "team member",
-bridge "Office", watches "Schedule", shipyard "Projects", appName "HQ".
+## Step 4. Pick the color
+Call ask_person with the question "Which color?" and 4 options that fit the idea. Write each
+option as a name and a hex code, like "Ember red #dc2626". Use the hex code they pick.
 
-## 4. Colors and style
-Offer 3 or 4 accent colors that fit, each as a name plus hex (for example "Ember red #dc2626").
-Then pick, or ask about:
-- `neutral`, the grays for pages and text: slate, gray, zinc, neutral, stone, tinted ("tinted" takes a
-  hint of the accent; "stone" is warm; "slate" is cool, the default).
-- `font`: system, rounded, serif, mono.
-- `corners`: sharp, soft, round.
-Any accent works: Shipmate works out the light and dark shades itself and keeps text readable.
+## Step 5. Pick the style yourself
+Do not ask. Choose one of each:
+- neutral (the gray color): slate, gray, zinc, neutral, stone, tinted. Use "stone" for warm, "slate" for cool.
+- font: system, rounded, serif, mono. Use "rounded" for fun, "serif" for classic or cozy, "mono" for
+  techy or retro, "system" otherwise.
+- corners: sharp, soft, round. Use "round" for fun, "sharp" for business, "soft" otherwise.
 
-## 5. The logo
-Draw an original, simple, bold mark as an SVG:
-- One `<svg>` with `viewBox="0 0 64 64"`, shapes only: g, path, circle, ellipse, rect, line,
-  polyline, polygon, and gradients, clipPath or mask in defs.
-- Draw in `currentColor` (or white) on a transparent background: it is shown in white on a
-  rounded tile of the accent color. Use `opacity` for depth. Keep it readable at 20 pixels:
-  a few large shapes, no fine detail, no text.
-- No style or class attributes, scripts, images, links or text elements.
-- Make it your own. Never copy a logo, mascot or character from a brand or franchise (no
-  Poké Balls, no company logos): draw something new that evokes the idea, such as an original
-  creature, emblem, badge, or symbol.
+## Step 6. Draw a logo (you may skip this)
+Write a small SVG icon. Copy this pattern and change the shapes:
+<svg viewBox="0 0 64 64" fill="currentColor"><circle cx="32" cy="32" r="22" opacity=".5"/><path d="M32 14 L44 46 L20 46 Z"/></svg>
+Rules: only these tags: svg, g, path, circle, ellipse, rect, line, polyline, polygon. Use
+fill="currentColor". No text, no images. Keep it simple: 2 to 6 big shapes.
+Draw your own symbol. Never copy a real logo or character (for example, no Poké Ball, no
+company logos). If drawing is too hard, leave the logo out.
 
-## 6. The voice
-Write 3 to 6 sentences, as instructions to the crew, on how to talk with this person: tone,
-a few signature phrases, and to use the theme's words (the coordinator is the `captain` word,
-the team is the `crew` word). Flavor only: stay clear, accurate and helpful, keep answers
-as short as before, drop the flavor for serious, sensitive or urgent topics, and never claim
-to be a real person or a trademarked character.
+## Step 7. Write the voice
+Write 2 to 4 short sentences that tell the AI helpers how to talk in this theme. Mention the
+names from step 3. Example: "Talk like a cheerful adventure guide. Call tasks quests. Call the
+person Trainer. Keep answers short and clear."
 
-## 7. Save and preview
-Call `save_theme` with everything. If it reports problems, fix them all and call it again
-(pass the same `id` once you have one). The person then sees a preview card in the chat with
-a Try it button. Ask whether they want any changes, and save again with the same `id` for
-each change; nothing about the theme needs to start over.
+## Step 8. Save
+Call save_theme once with everything. Example:
+save_theme({
+  "name": "Trail Trainers",
+  "description": "Train and adventure with your partners",
+  "accent": "#dc2626",
+  "neutral": "stone",
+  "font": "rounded",
+  "corners": "round",
+  "logo": "<svg viewBox=\"0 0 64 64\" fill=\"currentColor\">...</svg>",
+  "words": { "appName": "Trailmate", "captain": "Professor", "crew": "Team",
+             "crewMember": "partner", "bridge": "Basecamp", "watches": "Daily Quests",
+             "shipyard": "Workshop" },
+  "voice": "Talk like a cheerful adventure guide. Call tasks quests. Keep answers short."
+})
+save_theme always saves. If it says it changed or skipped something, tell the person in one
+short sentence.
 
-## 8. Wrap up
-- They can switch any time in Settings > Appearance, including back to the standard Shipmate
-  look; `use_theme` switches for them if they ask in chat.
-- The crew's own names (the coordinator's name included) are shared by everyone. Only if the
-  person is an owner or admin and asks, offer to rename crew members to fit with
-  `edit_crew_member`, after saying it changes the names for everyone.
+## Step 9. Finish
+Tell the person: "Tap Try it on the card to use it." Ask if they want changes. To change the
+theme, call save_theme again with the same id and the full theme.
+To switch them to a theme or back to normal, call use_theme. Only rename the AI helpers
+themselves (with edit_crew_member) if the person asks, because that changes them for everyone.

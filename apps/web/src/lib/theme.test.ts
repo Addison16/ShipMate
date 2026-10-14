@@ -27,6 +27,7 @@ describe("appearance", () => {
     expect(readCachedAppearance(store('{"themeMode":"dark","colorTheme":"admiral"}'))).toEqual({
       themeMode: "dark",
       colorTheme: "admiral",
+      style: "plain",
       customTheme: null,
     });
     expect(readCachedAppearance(store('{"themeMode":"neon","colorTheme":"plaid"}'))).toEqual(
@@ -60,12 +61,18 @@ describe("appearance", () => {
   });
 
   it("colors the browser bar with the theme in light mode and dark slate in dark mode", () => {
-    expect(barColor({ themeMode: "light", colorTheme: "open-sea", customTheme: null }, true)).toBe(
-      "#1d4ed8",
-    );
-    expect(barColor({ themeMode: "auto", colorTheme: "open-sea", customTheme: null }, true)).toBe(
-      "#0f172a",
-    );
+    expect(
+      barColor(
+        { themeMode: "light", colorTheme: "open-sea", customTheme: null, style: "plain" },
+        true,
+      ),
+    ).toBe("#1d4ed8");
+    expect(
+      barColor(
+        { themeMode: "auto", colorTheme: "open-sea", customTheme: null, style: "plain" },
+        true,
+      ),
+    ).toBe("#0f172a");
   });
 
   it("has a home-screen icon set and manifest in the theme's color for every color theme", () => {

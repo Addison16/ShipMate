@@ -1,6 +1,7 @@
 import type { ProfileDto } from "@shipmate/core";
 import { type ReactNode, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useThemeWords } from "../appearance.js";
 import { useAuth, useUser } from "../auth.js";
 import { AppearanceSettings } from "../components/AppearanceSettings.js";
 import { Logo } from "../components/Logo.js";
@@ -20,6 +21,7 @@ const STEPS: Step[] = ["profile", "notifications", "tour"];
  */
 export function WelcomePage() {
   const user = useUser();
+  const words = useThemeWords();
   const { setUser } = useAuth();
   const [step, setStep] = useState<Step>("profile");
   const [error, setError] = useState<string | null>(null);
@@ -99,8 +101,9 @@ export function WelcomePage() {
           )}
           {step === "tour" && (
             <>
-              <Heading title="Here's the ship">
-                Pick a place to start, or head to the Bridge and say hello to the Captain.
+              <Heading title="Here's where everything lives">
+                Pick a place to start, or go to {words.bridge} and say hello to your {words.captain}
+                .
               </Heading>
               <TourGrid onGo={(path) => void done(path)} />
               <Footer>

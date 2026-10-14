@@ -25,11 +25,11 @@ export async function themeRoutes(app: FastifyInstance, s: Services) {
   });
 
   /** Import a theme file (or any theme JSON, such as one another AI wrote). */
-  app.post("/api/themes", async (req) => ({ theme: await s.themes.save(req.user, req.body) }));
+  app.post("/api/themes", async (req) => s.themes.save(req.user, req.body));
 
-  app.put<{ Params: { id: string } }>("/api/themes/:id", async (req) => ({
-    theme: await s.themes.save(req.user, req.body, req.params.id),
-  }));
+  app.put<{ Params: { id: string } }>("/api/themes/:id", async (req) =>
+    s.themes.save(req.user, req.body, req.params.id),
+  );
 
   app.delete<{ Params: { id: string } }>("/api/themes/:id", async (req) => {
     await s.themes.remove(req.user, req.params.id);

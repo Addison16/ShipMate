@@ -2,6 +2,7 @@ import {
   type CustomThemeDto,
   type CustomThemeSpec,
   DEFAULT_THEME_WORDS,
+  STOCK_CAPTAIN_NAME,
   type ThemeWordMap,
   themeWords,
   type UserPreferences,
@@ -48,12 +49,12 @@ export const useThemeWords = () => useContext(ThemeContext).words;
 
 /**
  * A crew member's display name as this person sees it: a coordinator still on the stock name
- * "Captain" goes by the theme's word for it ("CEO", "Professor").
+ * "Captain" goes by the theme's word for it ("Assistant", "CEO", "Professor").
  */
 export function useCrewName(): (name: string) => string {
   const words = useThemeWords();
   return useCallback(
-    (name: string) => (name === DEFAULT_THEME_WORDS.captain ? words.captain : name),
+    (name: string) => (name === STOCK_CAPTAIN_NAME ? words.captain : name),
     [words],
   );
 }
@@ -67,7 +68,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   const { user, setUser } = useAuth();
   const [fallback] = useState(() => cached(readCachedAppearance));
   const prefs = user?.preferences ?? fallback;
-  const { themeMode, colorTheme, customTheme } = prefs;
+  const { themeMode, colorTheme, customTheme, style } = prefs;
   const [painted, setPainted] = useState<PaintedTheme | null>(() => cached(readCachedTheme));
   const [reloads, setReloads] = useState(0);
 
@@ -104,18 +105,18 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   const active = painted && painted.id === customTheme ? painted : null;
 
   useEffect(() => {
-    const appearance = { themeMode, colorTheme, customTheme };
+    const appearance = { themeMode, colorTheme, customTheme, style };
     applyAppearance(appearance, undefined, active);
     if (themeMode !== "auto") return;
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => applyAppearance(appearance, media.matches, active);
     media.addEventListener("change", onChange);
     return () => media.removeEventListener("change", onChange);
-  }, [themeMode, colorTheme, customTheme, active]);
+  }, [themeMode, colorTheme, customTheme, style, active]);
 
   const value = useMemo<ActiveTheme>(
-    () => ({ theme: active?.theme ?? null, words: themeWords(active?.theme) }),
-    [active],
+    () => ({ theme: active?.theme ?? null, words: themeWords(active?.theme, style) }),
+    [active, style],
   );
 
   useEffect(() => {

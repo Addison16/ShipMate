@@ -890,29 +890,42 @@ export class Bridge {
           )
           .join("\n");
       },
-      save: async (input, id) => {
+      save: async (input, rawId) => {
+        // A small model may send an id it made up; then it saves as a new theme.
+        const id = rawId && (await this.deps.themes.exists(rawId)) ? rawId : undefined;
         let saved: Awaited<ReturnType<ThemeService["save"]>>;
         try {
           saved = await this.deps.themes.save(user, input, id);
         } catch (err) {
           if (err instanceof ThemeProblems) {
             throw new Error(
-              `the theme was not saved. Fix all of these and call save_theme again:\n- ${err.problems.join("\n- ")}`,
+              `the theme was not saved. Fix these and call save_theme again:\n- ${err.problems.join("\n- ")}`,
             );
           }
           throw err;
         }
+        const { theme: t, notes } = saved;
         // The preview card sits after what the Captain said so far, like a question card.
         await this.#closeStream(conv, crewRow.id, stream);
         const message = await this.#store(conv, {
           role: "system",
-          content: `${crew.name} ${id ? "updated" : "made"} the theme "${saved.name}".`,
+          content: `${crew.name} ${id ? "updated" : "made"} the theme "${t.name}".`,
           authorName: "Shipmate",
-          meta: { theme: { id: saved.id, name: saved.name } },
+          meta: { theme: { id: t.id, name: t.name } },
         });
         this.emit(user.id, { type: "message", conversationId: conv.id, message });
         stream = this.#openStream(user.id, conv.id, crew);
-        return `Saved "${saved.name}" (id ${saved.id}). ${user.displayName} now sees a preview card with a Try it button. Ask if they want changes; save again with this id for each one.`;
+        return [
+          `Saved the theme "${t.name}". Its id is ${t.id}.`,
+          ...(rawId && !id ? [`There was no theme with id ${rawId}, so this is a new theme.`] : []),
+          ...(notes.length
+            ? [
+                `Shipmate fixed some things. Tell ${user.displayName} in one short sentence:`,
+                ...notes.map((n) => `- ${n}`),
+              ]
+            : []),
+          `Now tell ${user.displayName}: "Tap Try it on the card to use it." Then ask if they want changes. For a change, call save_theme again with id ${t.id} and the full theme.`,
+        ].join("\n");
       },
       use: async (id) => {
         const preferences = await this.deps.themes.use(user, id);

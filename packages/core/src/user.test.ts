@@ -6,11 +6,13 @@ describe("parseUserPreferences", () => {
     expect(parseUserPreferences({})).toEqual({
       themeMode: "auto",
       colorTheme: "harbor",
+      style: "plain",
       customTheme: null,
     });
     expect(parseUserPreferences(null)).toEqual({
       themeMode: "auto",
       colorTheme: "harbor",
+      style: "plain",
       customTheme: null,
     });
   });
@@ -19,6 +21,7 @@ describe("parseUserPreferences", () => {
     expect(parseUserPreferences({ themeMode: "dark", colorTheme: "admiral" })).toEqual({
       themeMode: "dark",
       colorTheme: "admiral",
+      style: "plain",
       customTheme: null,
     });
     expect(
@@ -26,6 +29,7 @@ describe("parseUserPreferences", () => {
     ).toEqual({
       themeMode: "auto",
       colorTheme: "harbor",
+      style: "plain",
       customTheme: null,
     });
     const id = "6f1c2a7e-8d3b-4c5a-9e0f-1a2b3c4d5e6f";

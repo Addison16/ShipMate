@@ -47,22 +47,41 @@ export type ThemeFont = (typeof THEME_FONTS)[number];
 export const THEME_CORNERS = ["sharp", "soft", "round"] as const;
 export type ThemeCorners = (typeof THEME_CORNERS)[number];
 
-/** The app's themed words and what each one names. */
+/** The app's themed words: what each one names, in plain AI words (the default) and nautical. */
 export const THEME_WORDS = {
-  appName: { default: "Shipmate", means: "the app's name in the header and tab" },
-  captain: { default: "Captain", means: "the coordinator who leads the crew (title)" },
-  crew: { default: "Crew", means: "the team of AI helpers (page name)" },
-  crewMember: { default: "crew member", means: "one helper, lowercase singular" },
-  bridge: { default: "Bridge", means: "where you chat (page name)" },
-  watches: { default: "Watches", means: "scheduled jobs and briefings (page name)" },
-  shipyard: { default: "Shipyard", means: "GitHub and work projects (page name)" },
+  appName: { default: "Shipmate", nautical: "Shipmate", means: "the app's name" },
+  captain: {
+    default: "Assistant",
+    nautical: "Captain",
+    means: "the main AI that leads the others",
+  },
+  crew: { default: "Agents", nautical: "Crew", means: "the group of AI helpers (page name)" },
+  crewMember: { default: "agent", nautical: "crew member", means: "one AI helper, lowercase" },
+  bridge: { default: "Chat", nautical: "Bridge", means: "the chat page" },
+  watches: { default: "Routines", nautical: "Watches", means: "scheduled jobs (page name)" },
+  shipyard: {
+    default: "Projects",
+    nautical: "Shipyard",
+    means: "GitHub work projects (page name)",
+  },
 } as const;
 export type ThemeWordKey = keyof typeof THEME_WORDS;
 export type ThemeWordMap = Record<ThemeWordKey, string>;
 
+/** The built-in word styles: plain AI words (default) or the original nautical ones. */
+export const THEME_STYLES = ["plain", "nautical"] as const;
+export type ThemeStyle = (typeof THEME_STYLES)[number];
+
 export const DEFAULT_THEME_WORDS: ThemeWordMap = Object.fromEntries(
   Object.entries(THEME_WORDS).map(([k, v]) => [k, v.default]),
 ) as ThemeWordMap;
+
+export const NAUTICAL_THEME_WORDS: ThemeWordMap = Object.fromEntries(
+  Object.entries(THEME_WORDS).map(([k, v]) => [k, v.nautical]),
+) as ThemeWordMap;
+
+/** The coordinator's name until someone renames it; shown as the active style's word for it. */
+export const STOCK_CAPTAIN_NAME = "Captain";
 
 export const MAX_LOGO_LENGTH = 20_000;
 
@@ -163,8 +182,12 @@ export function themeFile(theme: CustomThemeSpec): Record<string, unknown> {
   };
 }
 
-export function themeWords(theme: Pick<CustomThemeSpec, "words"> | null | undefined): ThemeWordMap {
-  const out = { ...DEFAULT_THEME_WORDS };
+/** The words to show: a custom theme's, filled in from the built-in style's. */
+export function themeWords(
+  theme: Pick<CustomThemeSpec, "words"> | null | undefined,
+  style: ThemeStyle = "plain",
+): ThemeWordMap {
+  const out = { ...(style === "nautical" && !theme ? NAUTICAL_THEME_WORDS : DEFAULT_THEME_WORDS) };
   for (const [key, value] of Object.entries(theme?.words ?? {})) {
     if (value) out[key as ThemeWordKey] = value;
   }
@@ -601,4 +624,345 @@ export function logoTileSvg(svg: string, accent: string): string {
     inner,
     "</svg>",
   ].join("");
+}
+
+// ---------- forgiving input ----------
+
+/** A small set of color names models reach for, so "red" or "navy" works as an accent. */
+const COLOR_NAMES: Record<string, string> = {
+  red: "#dc2626",
+  crimson: "#be123c",
+  orange: "#ea580c",
+  amber: "#d97706",
+  gold: "#ca8a04",
+  yellow: "#eab308",
+  lime: "#65a30d",
+  green: "#16a34a",
+  emerald: "#059669",
+  teal: "#0d9488",
+  cyan: "#0891b2",
+  sky: "#0284c7",
+  blue: "#2563eb",
+  navy: "#1e3a8a",
+  indigo: "#4f46e5",
+  violet: "#7c3aed",
+  purple: "#9333ea",
+  magenta: "#c026d3",
+  pink: "#db2777",
+  rose: "#e11d48",
+  brown: "#92400e",
+  gray: "#64748b",
+  grey: "#64748b",
+  black: "#18181b",
+  white: "#e2e8f0",
+};
+
+const NEUTRAL_WORDS: Record<string, ThemeNeutral> = {
+  cool: "slate",
+  blue: "slate",
+  grey: "gray",
+  plain: "neutral",
+  none: "neutral",
+  pure: "neutral",
+  warm: "stone",
+  brown: "stone",
+  beige: "stone",
+  tint: "tinted",
+  colored: "tinted",
+  coloured: "tinted",
+  accent: "tinted",
+};
+const FONT_WORDS: Record<string, ThemeFont> = {
+  default: "system",
+  sans: "system",
+  "sans-serif": "system",
+  normal: "system",
+  modern: "system",
+  round: "rounded",
+  friendly: "rounded",
+  playful: "rounded",
+  classic: "serif",
+  elegant: "serif",
+  monospace: "mono",
+  code: "mono",
+  retro: "mono",
+  terminal: "mono",
+};
+const CORNER_WORDS: Record<string, ThemeCorners> = {
+  square: "sharp",
+  none: "sharp",
+  straight: "sharp",
+  normal: "soft",
+  default: "soft",
+  medium: "soft",
+  rounded: "round",
+  pill: "round",
+  bubbly: "round",
+};
+const WORD_KEYS: Record<string, ThemeWordKey> = {
+  appname: "appName",
+  app: "appName",
+  name: "appName",
+  title: "appName",
+  captain: "captain",
+  coordinator: "captain",
+  leader: "captain",
+  lead: "captain",
+  boss: "captain",
+  assistant: "captain",
+  crew: "crew",
+  team: "crew",
+  agents: "crew",
+  helpers: "crew",
+  crewmember: "crewMember",
+  member: "crewMember",
+  agent: "crewMember",
+  helper: "crewMember",
+  bridge: "bridge",
+  chat: "bridge",
+  watches: "watches",
+  routines: "watches",
+  schedule: "watches",
+  jobs: "watches",
+  shipyard: "shipyard",
+  projects: "shipyard",
+  work: "shipyard",
+};
+
+const keyOf = (k: string) => k.toLowerCase().replace(/[^a-z]/g, "");
+
+function pickColor(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  let v = value.trim().toLowerCase();
+  if (COLOR_NAMES[v.replace(/\s+/g, "")]) return COLOR_NAMES[v.replace(/\s+/g, "")] as string;
+  const named = Object.keys(COLOR_NAMES).find((n) => new RegExp(`\\b${n}\\b`).test(v));
+  const hex = v.match(/#([0-9a-f]{6}|[0-9a-f]{3})\b|\b([0-9a-f]{6})\b/);
+  if (hex) return `#${hex[1] ?? hex[2]}`;
+  const rgb = v.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (rgb) {
+    v = rgbToHex(rgb.slice(1, 4).map((n) => Math.min(255, Number(n)) / 255) as Rgb);
+    return v;
+  }
+  return named ? (COLOR_NAMES[named] as string) : null;
+}
+
+function pickChoice<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+  synonyms: Record<string, T>,
+): T | null {
+  if (typeof value !== "string") return null;
+  const v = value.trim().toLowerCase();
+  if ((allowed as readonly string[]).includes(v)) return v as T;
+  if (synonyms[v]) return synonyms[v] as T;
+  const word = v
+    .split(/[^a-z-]+/)
+    .find((w) => (allowed as readonly string[]).includes(w) || synonyms[w]);
+  return word
+    ? (allowed as readonly string[]).includes(word)
+      ? (word as T)
+      : (synonyms[word] as T)
+    : null;
+}
+
+const clip = (v: unknown, max: number) =>
+  typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max).trim() : "";
+
+/** Elements dropped with everything in them. */
+const DROP_WITH_CONTENT =
+  /^(script|style|text|title|desc|metadata|foreignObject|image|filter|pattern|marker|font|animate\w*|set)$/i;
+
+/**
+ * Cleans up a logo the way a model is likely to get it wrong: wrapped in a code block or prose,
+ * with style or class attributes, titles, text or scripts, or with no viewBox. Whatever cannot
+ * be kept is dropped; the result still goes through sanitizeLogoSvg.
+ */
+export function tidyLogoSvg(input: string): string {
+  const found = input.match(/<svg[\s\S]*<\/svg>/i)?.[0] ?? input.match(/<svg[^>]*\/>/i)?.[0];
+  if (!found) return "";
+  let s = found
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, "")
+    .replace(/<![^>]*>/g, "")
+    .replace(/<\?[^>]*\?>/g, "");
+  // Drop unwanted elements with their content, innermost first.
+  for (let i = 0; i < 5; i++) {
+    s = s
+      .replace(/<([A-Za-z][\w:-]*)\b[^>]*\/>/g, (m, name: string) =>
+        DROP_WITH_CONTENT.test(name) ? "" : m,
+      )
+      .replace(/<([A-Za-z][\w:-]*)\b[^>]*>[^<]*<\/\1\s*>/g, (m, name: string) =>
+        DROP_WITH_CONTENT.test(name) ? "" : m,
+      );
+  }
+  // Stray text between tags.
+  s = s.replace(/>([^<]*)</g, (_m, between: string) => (between.trim() ? "><" : `>${between}<`));
+  // Rebuild each tag from what is allowed; unknown wrappers (a, symbol, switch) are unwrapped.
+  let root = true;
+  s = s.replace(
+    /<(\/?)([A-Za-z][\w:-]*)([^>]*?)(\/?)>/g,
+    (_m, close: string, rawName: string, rest: string, self: string) => {
+      const name = [...SVG_ELEMENTS].find((e) => e.toLowerCase() === rawName.toLowerCase());
+      if (!name) return "";
+      if (close) return `</${name}>`;
+      const attrs: Array<[string, string]> = [];
+      const re = /([^\s="'/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
+      for (let m = re.exec(rest); m; m = re.exec(rest)) {
+        const key = m[1] as string;
+        const value = (m[2] ?? m[3] ?? m[4] ?? "").trim();
+        if (key === "style") {
+          for (const decl of value.split(";")) {
+            const [k, v] = decl.split(":").map((x) => x?.trim() ?? "");
+            if (k && v && SVG_ATTRIBUTES.has(k) && !checkValue(k, v)) attrs.push([k, v]);
+          }
+          continue;
+        }
+        if (SVG_ATTRIBUTES.has(key) && !checkValue(key, value)) attrs.push([key, value]);
+      }
+      if (name === "svg" && root) {
+        root = false;
+        if (!attrs.some(([k]) => k === "viewBox")) {
+          const w = Number.parseFloat(attrs.find(([k]) => k === "width")?.[1] ?? "");
+          const h = Number.parseFloat(attrs.find(([k]) => k === "height")?.[1] ?? "");
+          attrs.push(["viewBox", w > 0 && h > 0 ? `0 0 ${w} ${h}` : "0 0 64 64"]);
+        }
+      }
+      const seen = new Set<string>();
+      const kept = attrs.filter(([k]) => !seen.has(k) && seen.add(k));
+      return `<${name}${kept.map(([k, v]) => ` ${k}="${v.replace(/"/g, "'")}"`).join("")}${self ? "/" : ""}>`;
+    },
+  );
+  return s;
+}
+
+export interface RepairedTheme {
+  theme: CustomThemeSpec;
+  /** What was changed or filled in, in plain words, to pass back to the model. */
+  notes: string[];
+}
+
+/**
+ * Turns whatever a model (even a small local one) sends into a valid theme: color names become
+ * hex, near-miss choices map to the allowed ones, unknown words and fields are dropped, and a
+ * logo that cannot be cleaned is left out. Only a missing name and accent are filled with
+ * defaults. Every change is noted so the model can tell the person.
+ */
+export function repairTheme(input: unknown): RepairedTheme {
+  const notes: string[] = [];
+  const raw =
+    input && typeof input === "object" && !Array.isArray(input)
+      ? (input as Record<string, unknown>)
+      : {};
+  const get = (...keys: string[]) => {
+    for (const [k, v] of Object.entries(raw)) if (keys.includes(keyOf(k))) return v;
+    return undefined;
+  };
+  const known = new Set([
+    "shipmate",
+    "version",
+    "id",
+    "name",
+    "themename",
+    "description",
+    "accent",
+    "color",
+    "accentcolor",
+    "maincolor",
+    "neutral",
+    "gray",
+    "grey",
+    "grays",
+    "font",
+    "corners",
+    "corner",
+    "logo",
+    "logosvg",
+    "svg",
+    "words",
+    "voice",
+    "personality",
+    "tone",
+  ]);
+  const extra = Object.keys(raw).filter((k) => !known.has(keyOf(k)));
+  if (extra.length)
+    notes.push(`ignored unknown field${extra.length > 1 ? "s" : ""}: ${extra.join(", ")}`);
+
+  let name = clip(get("name", "themename"), 40);
+  if (!name) {
+    name = "My theme";
+    notes.push('no name was given, so it is called "My theme"');
+  }
+  let accent = pickColor(get("accent", "color", "accentcolor", "maincolor"));
+  if (!accent) {
+    accent = "#0d9488";
+    notes.push(
+      "no usable accent color, so it uses teal #0d9488; send a hex color like #7c3aed to change it",
+    );
+  }
+  const choice = <T extends string>(
+    field: string,
+    value: unknown,
+    allowed: readonly T[],
+    synonyms: Record<string, T>,
+    fallback: T,
+  ): T => {
+    if (value === undefined || value === null || value === "") return fallback;
+    const picked = pickChoice(value, allowed, synonyms);
+    if (picked) return picked;
+    notes.push(
+      `${field} "${String(value)}" is not one of ${allowed.join(", ")}, so it uses ${fallback}`,
+    );
+    return fallback;
+  };
+  const neutral = choice(
+    "neutral",
+    get("neutral", "gray", "grey", "grays"),
+    THEME_NEUTRALS,
+    NEUTRAL_WORDS,
+    "slate",
+  );
+  const font = choice("font", get("font"), THEME_FONTS, FONT_WORDS, "system");
+  const corners = choice("corners", get("corners", "corner"), THEME_CORNERS, CORNER_WORDS, "soft");
+
+  const words: Partial<ThemeWordMap> = {};
+  const rawWords = get("words");
+  if (rawWords && typeof rawWords === "object" && !Array.isArray(rawWords)) {
+    const dropped: string[] = [];
+    for (const [k, v] of Object.entries(rawWords as Record<string, unknown>)) {
+      const key = WORD_KEYS[keyOf(k)];
+      const value = clip(v, 24);
+      if (key && value) words[key] = key === "crewMember" ? value.toLowerCase() : value;
+      else dropped.push(k);
+    }
+    if (dropped.length) {
+      notes.push(
+        `ignored words: ${dropped.join(", ")} (use ${Object.keys(THEME_WORDS).join(", ")})`,
+      );
+    }
+  }
+
+  let logo = "";
+  const rawLogo = get("logo", "logosvg", "svg");
+  if (typeof rawLogo === "string" && rawLogo.trim()) {
+    const tidy = tidyLogoSvg(rawLogo);
+    const clean = tidy ? sanitizeLogoSvg(tidy) : { error: "no <svg> element found" };
+    if ("svg" in clean) logo = clean.svg;
+    else notes.push(`the logo could not be used (${clean.error}), so it keeps the standard logo`);
+  }
+
+  const theme: CustomThemeSpec = {
+    name,
+    description: clip(get("description"), 160),
+    accent,
+    neutral,
+    font,
+    corners,
+    logo,
+    words,
+    voice:
+      typeof get("voice", "personality", "tone") === "string"
+        ? (get("voice", "personality", "tone") as string).trim().slice(0, 1500)
+        : "",
+  };
+  return { theme, notes };
 }

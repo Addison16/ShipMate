@@ -1,13 +1,15 @@
-import type {
-  CaptainSetupDto,
-  ClaudeCliStatusDto,
-  InstallStartersResponse,
-  OnboardingStep,
-  ProjectDto,
-  ShipmateUse,
+import {
+  type CaptainSetupDto,
+  type ClaudeCliStatusDto,
+  type InstallStartersResponse,
+  type OnboardingStep,
+  type ProjectDto,
+  type ShipmateUse,
+  STOCK_CAPTAIN_NAME,
 } from "@shipmate/core";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useCrewName, useThemeWords, useUpdateAppearance } from "../appearance.js";
 import { useAuth } from "../auth.js";
 import { AppearanceSettings } from "../components/AppearanceSettings.js";
 import { Avatar } from "../components/Avatar.js";
@@ -19,6 +21,7 @@ import { Logo } from "../components/Logo.js";
 import { ModelSelect } from "../components/ModelSelect.js";
 import { PushSettings } from "../components/PushSettings.js";
 import { StarterCrewPicker } from "../components/StarterCrewPicker.js";
+import { startThemeChat } from "../components/ThemeCard.js";
 import {
   Badge,
   Button,
@@ -46,9 +49,10 @@ import {
   GUIDE_STEPS,
   nextStep,
   previousStep,
+  stepLabel,
   stepPosition,
   stepState,
-  TOUR_STOPS,
+  tourStops,
   USE_CHOICES,
 } from "../lib/onboarding.js";
 import { browserTimeZone } from "../lib/starters.js";
@@ -107,7 +111,10 @@ export function OnboardingPage() {
   async function finish(path = "/bridge") {
     setError(null);
     try {
-      navigate(path);
+      const idea = takeThemeIdea();
+      // Picked "Make my own" at the style step: open the theme chat instead.
+      if (idea !== null && path === "/bridge") await startThemeChat(idea);
+      else navigate(path);
       const { onboarding: next } = await api.updateOnboarding({ finish: true });
       setOnboarding(next);
     } catch (err) {
@@ -141,6 +148,7 @@ export function OnboardingPage() {
       <ErrorText>{error}</ErrorText>
       {step === "account" && <AccountStep onCreated={refresh} />}
       {step === "purpose" && <PurposeStep nav={nav} />}
+      {step === "style" && <StyleStep nav={nav} />}
       {step === "model" && <ModelStep nav={nav} />}
       {step === "captain" && <CaptainStep nav={nav} />}
       {step === "household" && <HouseholdStep nav={nav} />}
@@ -170,6 +178,8 @@ function GuideLayout({
   children: ReactNode;
 }) {
   const { onboarding } = useAuth();
+  const words = useThemeWords();
+  const current = GUIDE_STEPS.find((s) => s.id === step);
   const { n, of } = stepPosition(step);
   const tour = step === "finish";
   return (
@@ -219,7 +229,7 @@ function GuideLayout({
                     >
                       {state === "done" ? <NavIcon name="check" size={14} /> : i + 1}
                     </span>
-                    <span>{s.label}</span>
+                    <span>{stepLabel(s, words)}</span>
                     {state === "skipped" && <span className="sr-only">(skipped)</span>}
                   </li>
                 );
@@ -234,7 +244,7 @@ function GuideLayout({
                   <span>
                     Step {n} of {of}
                   </span>
-                  <span>{GUIDE_STEPS.find((s) => s.id === step)?.label}</span>
+                  <span>{current && stepLabel(current, words)}</span>
                 </div>
                 <div
                   className="h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"
@@ -503,7 +513,99 @@ function PurposeForm({ initial, nav }: { initial: Use; nav: StepNav }) {
   );
 }
 
-// ---------- 3. model ----------
+// ---------- 3. style ----------
+
+/** Set at the style step when the owner wants their own theme; the tour opens that chat. */
+const THEME_IDEA_KEY = "shipmate-theme-idea";
+
+function takeThemeIdea(): string | null {
+  try {
+    const idea = sessionStorage.getItem(THEME_IDEA_KEY);
+    sessionStorage.removeItem(THEME_IDEA_KEY);
+    return idea;
+  } catch {
+    return null;
+  }
+}
+
+function hasThemeIdea(): boolean {
+  try {
+    return sessionStorage.getItem(THEME_IDEA_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+type StyleChoice = "plain" | "nautical" | "custom";
+
+function StyleStep({ nav }: { nav: StepNav }) {
+  const { user } = useAuth();
+  const { update } = useUpdateAppearance();
+  const prefs = user?.preferences;
+  const [choice, setChoice] = useState<StyleChoice>(() =>
+    hasThemeIdea() ? "custom" : prefs?.style === "nautical" ? "nautical" : "plain",
+  );
+  const [idea, setIdea] = useState("");
+
+  async function save() {
+    try {
+      if (choice === "custom") sessionStorage.setItem(THEME_IDEA_KEY, idea.trim());
+      else sessionStorage.removeItem(THEME_IDEA_KEY);
+    } catch {
+      // No session storage: the theme can still be made from Settings.
+    }
+    const style = choice === "nautical" ? "nautical" : "plain";
+    if (style !== prefs?.style) await update({ style });
+  }
+
+  return (
+    <>
+      <StepHeader eyebrow="Make it yours" title="Pick a style">
+        This sets the names you see, like what the main AI is called. Your AI can also build a whole
+        theme for you: colors, logo, names and how it talks. Change it any time in Settings.
+      </StepHeader>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <ChoiceCard
+          selected={choice === "plain"}
+          onSelect={() => setChoice("plain")}
+          title="Plain"
+          badge={<Badge tone="accent">Recommended</Badge>}
+        >
+          Assistant, Agents, Chat and Routines.
+        </ChoiceCard>
+        <ChoiceCard
+          selected={choice === "nautical"}
+          onSelect={() => setChoice("nautical")}
+          title="Nautical"
+        >
+          Captain, Crew, Bridge and Watches.
+        </ChoiceCard>
+        <ChoiceCard
+          selected={choice === "custom"}
+          onSelect={() => setChoice("custom")}
+          title="Make my own"
+        >
+          A company with a CEO, a trainer adventure, anything. Your AI builds it with you after
+          setup.
+        </ChoiceCard>
+      </div>
+      {choice === "custom" && (
+        <TextField
+          label="What should it be about? (optional)"
+          className="mt-4 max-w-md"
+          maxLength={200}
+          placeholder="e.g. a small business with a CEO"
+          hint="You'll need an AI model, set up in the next step."
+          value={idea}
+          onChange={(e) => setIdea(e.target.value)}
+        />
+      )}
+      <StepFooter nav={nav} onNext={save} />
+    </>
+  );
+}
+
+// ---------- 4. model ----------
 
 const CAPTAIN = "captain";
 
@@ -696,17 +798,18 @@ function ModelStep({ nav }: { nav: StepNav }) {
   );
 }
 
-// ---------- 4. captain ----------
+// ---------- 5. captain ----------
 
 function CaptainStep({ nav }: { nav: StepNav }) {
   const setup = useResource(() => api.captainSetup());
   const use = useShipmateUse();
+  const words = useThemeWords();
   const data = setup.data;
   return (
     <>
-      <StepHeader eyebrow="Meet your coordinator" title="Name your Captain">
-        The Captain is the one you talk to on the Bridge. It answers quick questions itself and
-        hands bigger jobs to the rest of the crew.
+      <StepHeader eyebrow="Meet your coordinator" title={`Name your ${words.captain}`}>
+        Your {words.captain} is the one you talk to in {words.bridge}. It answers quick questions
+        itself and hands bigger jobs to your {words.crew.toLowerCase()}.
       </StepHeader>
       <ErrorText>{setup.error}</ErrorText>
       {setup.loading && !data && <Loading />}
@@ -732,16 +835,24 @@ function CaptainForm({
   work: boolean;
   nav: StepNav;
 }) {
-  const [name, setName] = useState(initial.name);
+  const words = useThemeWords();
+  const crewName = useCrewName();
+  // The stock name shows as the style's word ("Assistant") and saves back as the stock name,
+  // so it keeps following the style.
+  const [name, setName] = useState(() => crewName(initial.name));
   const [voiceId, setVoiceId] = useState(initial.voiceId);
   const [custom, setCustom] = useState(initial.voiceId === "custom" ? initial.voice : "");
   const preset = initial.voices.find((v) => v.id === voiceId);
-  const shownName = name.trim() || "Captain";
+  const shownName = name.trim() || words.captain;
 
   async function save() {
     const voice = voiceId === "custom" ? custom.trim() : voiceId;
-    if (!voice) throw new Error("Describe how the Captain should talk, or pick a preset.");
-    await api.updateCaptainSetup({ name: name.trim() || "Captain", voice });
+    if (!voice) throw new Error(`Describe how your ${words.captain} should talk, or pick one.`);
+    const picked = name.trim();
+    await api.updateCaptainSetup({
+      name: !picked || picked === words.captain ? STOCK_CAPTAIN_NAME : picked,
+      voice,
+    });
   }
 
   return (
@@ -752,7 +863,7 @@ function CaptainForm({
             label="Name"
             maxLength={60}
             className="max-w-sm"
-            hint="Captain, Skipper, Jeeves, Hal… You can rename it any time in Settings."
+            hint="Assistant, Jarvis, Skipper, Hal… You can rename it any time in Settings."
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
@@ -780,7 +891,7 @@ function CaptainForm({
           </fieldset>
           {voiceId === "custom" && (
             <TextAreaField
-              label="How should the Captain talk?"
+              label={`How should your ${words.captain} talk?`}
               rows={4}
               maxLength={2000}
               placeholder="e.g. Friendly and brief. Use metric units. Reply in Spanish when I write in Spanish."
@@ -1288,20 +1399,25 @@ function FinishStep({
   onBack: (() => void) | null;
 }) {
   const { onboarding } = useAuth();
+  const words = useThemeWords();
+  const crewName = useCrewName();
   const settings = useResource(() => api.getSettings());
-  const captain = settings.data?.captainName ?? "your Captain";
+  const shown = settings.data?.captainName ? crewName(settings.data.captainName) : words.captain;
+  const captain = shown === words.captain ? `your ${shown}` : shown;
   const skipped = GUIDE_STEPS.filter((s) => onboarding?.skipped.includes(s.id));
+  const theme = hasThemeIdea();
   return (
     <>
-      <StepHeader eyebrow="All hands on deck" title="You're ready to sail">
-        Here's where everything lives. Pick a place to start, or head to the Bridge and say hello to
-        {captain}.
+      <StepHeader eyebrow="All set" title="You're ready">
+        {theme
+          ? `Next, ${captain} helps you build your theme. Or pick a place to start.`
+          : `Here's where everything lives. Pick a place to start, or go to ${words.bridge} and say hello to ${captain}.`}
       </StepHeader>
       {skipped.length > 0 && (
         <div className="mb-5">
           <Notice>
-            Skipped for now: {skipped.map((s) => s.label).join(", ")}. Run this guide again any time
-            from Settings.
+            Skipped for now: {skipped.map((s) => stepLabel(s, words)).join(", ")}. Run this guide
+            again any time from Settings.
           </Notice>
         </div>
       )}
@@ -1313,7 +1429,7 @@ function FinishStep({
           </Button>
         )}
         <Button variant="primary" className="ml-auto" onClick={() => onGo("/bridge")}>
-          Go to the Bridge
+          {theme ? "Build my theme" : `Go to ${words.bridge}`}
         </Button>
       </div>
     </>
@@ -1321,9 +1437,10 @@ function FinishStep({
 }
 
 export function TourGrid({ onGo }: { onGo: (path: string) => void }) {
+  const words = useThemeWords();
   return (
     <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {TOUR_STOPS.map((stop) => (
+      {tourStops(words).map((stop) => (
         <li key={stop.path}>
           <button
             type="button"

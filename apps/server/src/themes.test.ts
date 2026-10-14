@@ -84,9 +84,14 @@ describe.skipIf(!db)("custom themes", () => {
   }
 
   it("imports, lists, exports and protects themes", async () => {
-    const bad = await api("POST", "/api/themes", { ...THEME, accent: "blue", logo: "<svg/>" });
-    expect(bad.statusCode).toBe(400);
-    expect(bad.json().error).toMatch(/accent must be a hex color/);
+    // Sloppy input is fixed rather than refused, and the notes say what changed.
+    const sloppy = await api("POST", "/api/themes", { ...THEME, accent: "blue", logo: "<svg/>" });
+    expect(sloppy.statusCode).toBe(200);
+    expect(sloppy.json().theme.accent).toBe("#2563eb");
+    expect(sloppy.json().theme.logo).toBe("");
+    expect(sloppy.json().notes.length).toBeGreaterThan(0);
+    await api("DELETE", `/api/themes/${sloppy.json().theme.id}`);
+    expect((await api("POST", "/api/themes", ["not", "a", "theme"])).statusCode).toBe(400);
 
     const res = await api("POST", "/api/themes", { shipmate: "theme", version: 1, ...THEME });
     expect(res.statusCode).toBe(200);
@@ -127,17 +132,21 @@ describe.skipIf(!db)("custom themes", () => {
       fauxAssistantMessage([fauxToolCall("theme_build_guide", {})]),
       (context) => {
         afterGuide = JSON.stringify(context.messages);
-        return fauxAssistantMessage([fauxToolCall("save_theme", { ...THEME, accent: "navy" })]);
+        return fauxAssistantMessage([
+          fauxToolCall("save_theme", { ...THEME, accent: "navy", logo: "a cute logo" }),
+        ]);
       },
       (context) => {
         afterBadSave = JSON.stringify(context.messages.at(-1));
-        return fauxAssistantMessage([fauxToolCall("save_theme", THEME)]);
+        const id = /id ([0-9a-f-]{36})/.exec(afterBadSave)?.[1] ?? "";
+        return fauxAssistantMessage([fauxToolCall("save_theme", { ...THEME, id })]);
       },
       fauxAssistantMessage("Tap Try it to see it."),
     ]);
     const { events, messages } = await turn("Make me a custom theme: a company with a CEO");
     expect(afterGuide).toContain("Building a custom theme");
-    expect(afterBadSave).toContain("accent must be a hex color");
+    expect(afterBadSave).toContain("Shipmate fixed some things");
+    expect(afterBadSave).toContain("Tap Try it on the card");
     expect(events).toContainEqual({ type: "themes_changed" });
 
     const card = messages.find((m: { meta: unknown }) => m.meta && "theme" in (m.meta as object));
@@ -178,5 +187,24 @@ describe.skipIf(!db)("custom themes", () => {
     ]);
     await turn("switch back");
     expect((await api("GET", "/api/auth/me")).json().user.preferences.customTheme).toBeNull();
+
+    // With no custom theme the crew uses plain AI words, unless the person picked nautical.
+    t.faux.setResponses([
+      (context) => {
+        prompt = JSON.stringify(context);
+        return fauxAssistantMessage("Hi.");
+      },
+    ]);
+    await turn("hello again");
+    expect(prompt).toContain('the coordinator is the \\"Assistant\\"');
+    await api("PATCH", "/api/auth/preferences", { style: "nautical" });
+    t.faux.setResponses([
+      (context) => {
+        prompt = JSON.stringify(context);
+        return fauxAssistantMessage("Ahoy.");
+      },
+    ]);
+    await turn("hello once more");
+    expect(prompt).not.toContain("plain AI words");
   });
 });

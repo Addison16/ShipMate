@@ -160,7 +160,7 @@ describe("checkTheme", () => {
     if (!r.ok) throw new Error(r.errors.join("; "));
     expect(r.theme.description).toBe("");
     expect(r.theme.logo).toContain('xmlns="http://www.w3.org/2000/svg"');
-    expect(themeWords(r.theme)).toMatchObject({ captain: "CEO", watches: "Watches" });
+    expect(themeWords(r.theme)).toMatchObject({ captain: "CEO", watches: "Routines" });
   });
 
   it("reads its own export file back", () => {
@@ -200,5 +200,65 @@ describe("THEME_BUILD_GUIDE", () => {
     for (const tool of ["ask_person", "save_theme", "use_theme"]) {
       expect(THEME_BUILD_GUIDE).toContain(tool);
     }
+  });
+});
+
+describe("repairTheme (for small models)", () => {
+  it("turns sloppy input into a valid theme and says what it changed", async () => {
+    const { repairTheme } = await import("./theme.js");
+    const { theme, notes } = repairTheme({
+      Name: "  Trainer Camp  ",
+      color: "bright red please",
+      neutral: "warm",
+      font: "Friendly",
+      corners: "pill",
+      words: { Leader: "Professor", team: "Team", "app name": "Trailmate", sidekick: "x" },
+      logo: '```svg\n<svg width="48" height="48" class="logo"><title>Hi</title><circle cx="24" cy="24" r="20" style="fill:currentColor;opacity:.5" onclick="x()"/><text x="1">A</text><script>alert(1)</script></svg>\n```',
+      mood: "fun",
+    });
+    expect(theme).toMatchObject({
+      name: "Trainer Camp",
+      accent: "#dc2626",
+      neutral: "stone",
+      font: "rounded",
+      corners: "round",
+      words: { captain: "Professor", crew: "Team", appName: "Trailmate" },
+    });
+    expect(theme.logo).toBe(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20" fill="currentColor" opacity=".5"/></svg>'.replace(
+        ' width="48" height="48"',
+        "",
+      ),
+    );
+    expect(notes.join("\n")).toMatch(/ignored unknown field: mood/);
+    expect(notes.join("\n")).toMatch(/ignored words: sidekick/);
+    expect(checkTheme(theme).ok).toBe(true);
+  });
+
+  it("fills a name and accent, and leaves out a logo it cannot use", async () => {
+    const { repairTheme } = await import("./theme.js");
+    const { theme, notes } = repairTheme({ accent: "a bad color", logo: "a cute dragon" });
+    expect(theme.name).toBe("My theme");
+    expect(theme.accent).toBe("#0d9488");
+    expect(theme.logo).toBe("");
+    expect(notes).toHaveLength(3);
+    expect(repairTheme({ accent: "1E3A8A" }).theme.accent).toBe("#1e3a8a");
+    expect(repairTheme({ accent: "rgb(255, 0, 0)" }).theme.accent).toBe("#ff0000");
+    expect(repairTheme(null).theme.name).toBe("My theme");
+  });
+});
+
+describe("theme words", () => {
+  it("uses plain AI words by default, nautical on request, and fills custom themes from plain", () => {
+    expect(themeWords(null)).toMatchObject({
+      captain: "Assistant",
+      crew: "Agents",
+      bridge: "Chat",
+    });
+    expect(themeWords(null, "nautical")).toMatchObject({ captain: "Captain", bridge: "Bridge" });
+    expect(themeWords({ words: { captain: "CEO" } }, "nautical")).toMatchObject({
+      captain: "CEO",
+      bridge: "Chat",
+    });
   });
 });

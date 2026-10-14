@@ -706,13 +706,6 @@ export interface ThemeHost {
   use(id: string | null): Promise<string>;
 }
 
-const THEME_WORD_PARAMS = Object.fromEntries(
-  Object.entries(THEME_WORDS).map(([key, w]) => [
-    key,
-    Type.Optional(Type.String({ description: `${w.means}; default "${w.default}"` })),
-  ]),
-);
-
 /**
  * Building custom themes with the person (Settings > Appearance > Make a custom theme opens a
  * chat for it). The Captain reads the build guide and follows it step by step.
@@ -723,7 +716,7 @@ export function themeTools(host: ThemeHost): ToolDefinition[] {
       name: "theme_build_guide",
       label: "Theme build guide",
       description:
-        "Read the step-by-step guide for building a custom theme (colors, logo, the app's words and the crew's voice) with the person. Read it before starting, whenever someone wants a custom theme or to change one.",
+        "Read this first whenever someone wants a custom theme (new look, logo, names or voice for the app). It gives the steps to follow, one by one.",
       promptSnippet: "theme_build_guide: read this before building a custom theme with someone",
       parameters: Type.Object({}),
       async execute() {
@@ -743,24 +736,29 @@ export function themeTools(host: ThemeHost): ToolDefinition[] {
       name: "save_theme",
       label: "Save theme",
       description:
-        "Save a custom theme built by following theme_build_guide, and show the person a preview card with a Try it button. Pass id to change a theme you already saved. If something needs fixing you get every problem at once; fix them all and save again.",
+        "Save a custom theme (step 8 of theme_build_guide) and show the person a preview card with a Try it button. It always saves: anything it cannot use is fixed or left out, and it tells you what. To change a saved theme, pass its id and the full theme again.",
       parameters: Type.Object({
-        id: Type.Optional(Type.String({ description: "a saved theme's id, to change it" })),
-        name: Type.String({ description: "the theme's name, up to 40 characters" }),
+        id: Type.Optional(Type.String({ description: "only when changing a saved theme" })),
+        name: Type.Optional(Type.String({ description: "the theme's name, 1 to 4 words" })),
         description: Type.Optional(Type.String({ description: "one short line about it" })),
-        accent: Type.String({ description: "accent color as hex, e.g. #7c3aed" }),
-        neutral: Type.Optional(Type.String({ description: THEME_NEUTRALS.join(", ") })),
-        font: Type.Optional(Type.String({ description: THEME_FONTS.join(", ") })),
-        corners: Type.Optional(Type.String({ description: THEME_CORNERS.join(", ") })),
+        accent: Type.Optional(Type.String({ description: "the main color as hex, like #dc2626" })),
+        neutral: Type.Optional(
+          Type.String({ description: `one of: ${THEME_NEUTRALS.join(", ")}` }),
+        ),
+        font: Type.Optional(Type.String({ description: `one of: ${THEME_FONTS.join(", ")}` })),
+        corners: Type.Optional(Type.String({ description: `one of: ${THEME_CORNERS.join(", ")}` })),
         logo: Type.Optional(
           Type.String({
-            description:
-              'an original SVG mark, viewBox="0 0 64 64", shapes only, drawn in currentColor',
+            description: 'an SVG icon: <svg viewBox="0 0 64 64" fill="currentColor">...</svg>',
           }),
         ),
-        words: Type.Optional(Type.Object(THEME_WORD_PARAMS)),
+        words: Type.Optional(
+          Type.Record(Type.String(), Type.String(), {
+            description: `names for: ${Object.keys(THEME_WORDS).join(", ")}`,
+          }),
+        ),
         voice: Type.Optional(
-          Type.String({ description: "3 to 6 sentences to the crew on how to talk in this theme" }),
+          Type.String({ description: "2 to 4 sentences on how the AI helpers talk in this theme" }),
         ),
       }),
       executionMode: "sequential",

@@ -13,22 +13,24 @@ describe("setup guide steps", () => {
   it("walks forward to the tour and stops there", () => {
     expect(GUIDE_STEPS[0]?.id).toBe("account");
     expect(nextStep("account")).toBe("purpose");
-    expect(nextStep("purpose")).toBe("model");
+    expect(nextStep("purpose")).toBe("style");
+    expect(nextStep("style")).toBe("model");
     expect(nextStep("shipyard")).toBe("finish");
     expect(nextStep("finish")).toBe("finish");
   });
 
   it("never goes back to the account step", () => {
     expect(previousStep("purpose")).toBeNull();
-    expect(previousStep("model")).toBe("purpose");
+    expect(previousStep("style")).toBe("purpose");
+    expect(previousStep("model")).toBe("style");
     expect(previousStep("captain")).toBe("model");
     expect(previousStep("finish")).toBe("shipyard");
   });
 
-  it("numbers steps with the account as step 1 of 8", () => {
-    expect(stepPosition("account")).toEqual({ n: 1, of: 8 });
-    expect(stepPosition("purpose")).toEqual({ n: 2, of: 8 });
-    expect(stepPosition("shipyard")).toEqual({ n: 8, of: 8 });
+  it("numbers steps with the account as step 1 of 9", () => {
+    expect(stepPosition("account")).toEqual({ n: 1, of: 9 });
+    expect(stepPosition("purpose")).toEqual({ n: 2, of: 9 });
+    expect(stepPosition("shipyard")).toEqual({ n: 9, of: 9 });
   });
 
   it("shows done, skipped, current and todo", () => {

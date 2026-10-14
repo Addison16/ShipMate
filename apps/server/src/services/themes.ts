@@ -3,6 +3,7 @@ import {
   type CustomThemeSpec,
   checkTheme,
   parseUserPreferences,
+  repairTheme,
   themeWords,
   type UserPreferences,
 } from "@shipmate/core";
@@ -73,10 +74,23 @@ export class ThemeService {
   }
 
   /** Checks and stores a theme; with `id`, replaces that theme (if `user` may edit it). */
-  async save(user: UserRow, input: unknown, id?: string): Promise<CustomThemeDto> {
-    const check = checkTheme(input);
+  /**
+   * Saves a theme; with `id`, replaces that theme (if `user` may edit it). Input is repaired
+   * rather than refused (small local models get details wrong), and `notes` says what changed.
+   */
+  async save(
+    user: UserRow,
+    input: unknown,
+    id?: string,
+  ): Promise<{ theme: CustomThemeDto; notes: string[] }> {
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      throw new HttpError(400, "That is not a theme file.");
+    }
+    const { theme: repaired, notes } = repairTheme(input);
+    const check = checkTheme(repaired);
     if (!check.ok) throw new ThemeProblems(check.errors);
     const spec = check.theme;
+    const done = async (themeId: string) => ({ theme: await this.get(user, themeId), notes });
     if (id) {
       const found = await this.#row(id);
       if (!found)
@@ -88,7 +102,7 @@ export class ThemeService {
         .where(eq(themes.id, id))
         .returning();
       this.#changed();
-      return this.get(user, (row as ThemeRow).id);
+      return done((row as ThemeRow).id);
     }
     const [{ count } = { count: 0 }] = await this.db
       .select({ count: sql<number>`count(*)::int` })
@@ -101,7 +115,7 @@ export class ThemeService {
       .values({ name: spec.name, spec, createdById: user.id })
       .returning();
     this.#changed();
-    return this.get(user, (row as ThemeRow).id);
+    return done((row as ThemeRow).id);
   }
 
   async remove(user: UserRow, id: string): Promise<void> {
@@ -138,12 +152,17 @@ export class ThemeService {
    */
   async promptFor(user: UserRow): Promise<string> {
     const theme = await this.activeFor(user);
-    if (!theme) return "";
+    const { style } = parseUserPreferences(user.preferences);
+    if (!theme) {
+      if (style === "nautical") return "";
+      const w = themeWords(null);
+      return `## Words\n\n${user.displayName} sees plain AI words in this app: the coordinator is the "${w.captain}", the helpers are "${w.crew}" (one is an "${w.crewMember}"), the chat is "${w.bridge}", scheduled jobs are "${w.watches}", work projects are "${w.shipyard}". Use these words with ${user.displayName}, not ship words like Captain, Crew, Bridge, Watches or Shipyard.`;
+    }
     const w = themeWords(theme);
     const lines = [
       `## ${user.displayName}'s theme: ${theme.name}`,
       "",
-      `${user.displayName} uses a custom theme, so in this app (for them) the coordinator is called "${w.captain}", the team is "${w.crew}" (one of them is a "${w.crewMember}"), the chat is "${w.bridge}", scheduled jobs are "${w.watches}", work projects are "${w.shipyard}", and the app is "${w.appName}". Use these words with ${user.displayName} instead of the nautical ones.`,
+      `${user.displayName} uses a custom theme, so in this app (for them) the coordinator is called "${w.captain}", the team is "${w.crew}" (one of them is a "${w.crewMember}"), the chat is "${w.bridge}", scheduled jobs are "${w.watches}", work projects are "${w.shipyard}", and the app is "${w.appName}". Use these words with ${user.displayName}.`,
     ];
     if (theme.voice) {
       lines.push(

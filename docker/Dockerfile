@@ -18,7 +18,13 @@ FROM base AS runtime
 # elsewhere (docker/entrypoint.sh).
 # The bundled Postgres major is pinned: a new major can't open an older one's files.
 ENV PG_MAJOR=17
-RUN mkdir -p /etc/postgresql-common/createcluster.d \
+# The postgres account's IDs are pinned (created before any package can claim them): the
+# database files in /data/postgres belong to them, and they shifted between releases when a
+# package added its own account first. 101:103 is what v0.3.1 got.
+RUN groupadd --system --gid 103 postgres \
+    && useradd --system --uid 101 --gid postgres --home-dir /var/lib/postgresql \
+      --shell /bin/bash --comment "PostgreSQL administrator" postgres \
+    && mkdir -p /etc/postgresql-common/createcluster.d \
     && echo "create_main_cluster = false" > /etc/postgresql-common/createcluster.d/shipmate.conf \
     && apt-get update && apt-get install -y --no-install-recommends \
       git ca-certificates curl gnupg python3 pipx chromium fonts-liberation \
@@ -28,7 +34,8 @@ RUN mkdir -p /etc/postgresql-common/createcluster.d \
     && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /etc/apt/keyrings/postgresql.asc \
     && echo "deb [signed-by=/etc/apt/keyrings/postgresql.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update && apt-get install -y --no-install-recommends docker-ce-cli postgresql-$PG_MAJOR \
-    && pipx install uv && rm -rf /var/lib/apt/lists/*
+    && pipx install uv && rm -rf /var/lib/apt/lists/* \
+    && test "$(id -u postgres):$(id -g postgres)" = "101:103"
 ENV PATH=/root/.local/bin:$PATH
 # Official Claude Code and Codex CLIs, unmodified, for the subscription routes (users sign in
 # themselves).

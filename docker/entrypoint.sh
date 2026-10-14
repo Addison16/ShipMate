@@ -53,6 +53,14 @@ if [ -z "$server" ] && [ -e "$PGDATA/postmaster.pid" ]; then
   exit 1
 fi
 
+# An image whose postgres account had other IDs (0.3.0 used 100:102) leaves files Postgres can't
+# open. Hand the whole folder over once, after the in-use check so a one-off command never
+# touches a live database.
+if [ -n "$(find "$PGDATA" \( ! -user postgres -o ! -group postgres \) -print -quit)" ]; then
+  echo "shipmate: giving the bundled database files in $PGDATA to this image's postgres user"
+  chown -R postgres:postgres "$PGDATA"
+fi
+
 # Started fresh each time, so the log only holds this run (warnings and errors).
 as_postgres sh -c ': > "$1"' sh "$PGDATA/server.log"
 if ! as_postgres "$PGBIN/pg_ctl" -D "$PGDATA" -w -t 120 -l "$PGDATA/server.log" start \

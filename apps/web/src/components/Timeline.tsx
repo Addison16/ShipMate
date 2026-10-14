@@ -269,7 +269,8 @@ export function TimelineView({ items, selfId }: { items: TimelineItem[]; selfId:
             name={crewName(it.crew.name)}
             mine={false}
             tools={it.tools}
-            live={!it.done}
+            // Before any text the bubble itself shows the dots, so the name row doesn't too.
+            live={!it.done && it.text !== ""}
           >
             {it.text ? (
               <Markdown text={it.text} />

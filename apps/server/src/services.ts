@@ -15,6 +15,7 @@ import { AttachmentService } from "./files/service.js";
 import { ReleaseChecker } from "./health/releases.js";
 import { HealthService } from "./health/service.js";
 import { Updater } from "./health/updater.js";
+import { type PetFetch, PetService } from "./pets/service.js";
 import { PushService } from "./push/service.js";
 import type { PushFetch } from "./push/webpush.js";
 import { ApprovalService } from "./services/approvals.js";
@@ -75,6 +76,7 @@ export interface Services {
   voice: VoiceService;
   localAi: LocalAiService;
   health: HealthService;
+  pets: PetService;
   themes: ThemeService;
 }
 
@@ -103,6 +105,8 @@ export async function createServices(
     voiceFetch?: VoiceFetch;
     /** Stand-in for Google's OAuth endpoints (tests). */
     googleFetch?: GoogleFetch;
+    /** Stand-in for image models (tests). */
+    petFetch?: PetFetch;
   } = {},
 ): Promise<Services> {
   const vault = new SecretVault(config.SHIPMATE_SECRET);
@@ -153,6 +157,8 @@ export async function createServices(
   });
   const watches = new WatchService(db, db.$client, crew, bridge, audit, emit, config.SHIPMATE_URL);
   bridge.attachWatches(watches);
+  const pets = new PetService(db, vault, settings, options.petFetch);
+  bridge.attachPets(pets);
   const profiles = new ProfileService(db, settings);
   bridge.attachEveryday(
     new EverydayTools({ db, lists, profiles, weather: options.weather ?? new WeatherService() }),
@@ -294,6 +300,7 @@ export async function createServices(
     voice: new VoiceService(db, vault, settings, options.voiceFetch),
     backups,
     health,
+    pets,
     themes,
     localAi: new LocalAiService(providers, settings, config.SHIPMATE_OLLAMA_URL),
     oidc: new OidcService({

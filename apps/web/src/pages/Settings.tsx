@@ -6,6 +6,7 @@ import { BackupSettings } from "../components/BackupSettings.js";
 import { NavIcon } from "../components/icons.js";
 import { ModelSelect } from "../components/ModelSelect.js";
 import { OidcSettings } from "../components/OidcSettings.js";
+import { PetSettings } from "../components/PetSettings.js";
 import { PhotoSettings } from "../components/PhotoSettings.js";
 import { ProfileSettings } from "../components/ProfileSettings.js";
 import { PushSettings } from "../components/PushSettings.js";
@@ -80,6 +81,7 @@ export function SettingsPage({ section }: { section: string }) {
         <SettingsSectionPage title="Photos and voice">
           <PhotoSettings />
           <VoiceSettings />
+          <PetSettings />
         </SettingsSectionPage>
       );
     case "sandbox":

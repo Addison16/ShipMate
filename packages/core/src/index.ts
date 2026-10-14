@@ -3,6 +3,7 @@ export * from "./color.js";
 export * from "./crew.js";
 export * from "./memory.js";
 export * from "./onboarding.js";
+export type * from "./pets.js";
 export type * from "./phone.js";
 export * from "./routine.js";
 export * from "./search.js";

@@ -50,6 +50,26 @@ export const ClaudeCliSettings = z.object({
 });
 export type ClaudeCliSettings = z.infer<typeof ClaudeCliSettings>;
 
+/** Picture files a pet can be, in the crew member's `pet/` folder. */
+export const PET_IMAGE_FILE = /^pet\.(png|webp|jpg|svg)$/;
+
+/**
+ * An optional pet: a small creature that hangs out next to the crew member in chat and dances
+ * while they work. Off until someone makes one with the Captain (or turns it back on).
+ */
+export const CrewPet = z.object({
+  enabled: z.boolean().default(false),
+  name: z.string().min(1).max(40).optional(),
+  /** One sentence describing it, kept so the Captain can redraw it. */
+  look: z.string().max(400).optional(),
+  /** The picture in `pet/`, e.g. pet.png or pet.svg. */
+  image: z
+    .string()
+    .regex(PET_IMAGE_FILE, "pet.image must be pet.png, pet.webp, pet.jpg or pet.svg")
+    .optional(),
+});
+export type CrewPet = z.infer<typeof CrewPet>;
+
 /**
  * `crew.yaml` — the manifest of one crew member. The folder it lives in is the
  * crew member's working directory for its pi session.
@@ -85,6 +105,7 @@ export const CrewManifest = z.object({
   /** Only the coordinator (the Captain by default) has this set. */
   captain: z.boolean().default(false),
   avatar: z.string().optional(),
+  pet: CrewPet.optional(),
 });
 export type CrewManifest = z.infer<typeof CrewManifest>;
 export type CrewManifestInput = z.input<typeof CrewManifest>;
@@ -99,6 +120,8 @@ export const CREW_FILES = {
   memoryDir: "memory",
   promptsDir: "prompts",
   sessionsDir: "sessions",
+  /** The pet picture and the drafts made while building it. */
+  petDir: "pet",
 } as const;
 
 export const CrewSlug = z

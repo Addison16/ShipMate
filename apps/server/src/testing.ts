@@ -45,6 +45,7 @@ export async function testApp(
     pushFetch?: PushFetch;
     voiceFetch?: VoiceFetch;
     googleFetch?: typeof fetch;
+    petFetch?: typeof fetch;
     /** Extra config variables (e.g. SHIPMATE_UPDATE_CHECK). */
     env?: Record<string, string>;
   } = {},
@@ -82,6 +83,7 @@ export async function testApp(
     ...(options.pushFetch ? { pushFetch: options.pushFetch } : {}),
     ...(options.voiceFetch ? { voiceFetch: options.voiceFetch } : {}),
     ...(options.googleFetch ? { googleFetch: options.googleFetch } : {}),
+    ...(options.petFetch ? { petFetch: options.petFetch } : {}),
   });
   await app.ready();
   return { app, faux, config };

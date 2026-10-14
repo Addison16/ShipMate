@@ -21,6 +21,7 @@ import {
 import { crewMembers, type Db } from "@shipmate/db";
 import { eq } from "drizzle-orm";
 import { atLeast, HttpError, type UserRow } from "../auth.js";
+import { petDto } from "../pets/files.js";
 
 type CrewRow = typeof crewMembers.$inferSelect;
 
@@ -296,5 +297,6 @@ function toDto(folder: CrewFolder, row: CrewRow): CrewDto {
     mcp: m.mcp,
     skills: m.skills,
     avatar: m.avatar ?? null,
+    pet: petDto(folder),
   };
 }

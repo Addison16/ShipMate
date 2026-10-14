@@ -73,7 +73,8 @@ export function redactSecrets(text: string): { text: string; count: number } {
 
 /**
  * The shareable form of a manifest: what the crew member is, without anything that belongs to
- * this instance (approvals already granted, spend caps, skill auto-approval, the captain flag).
+ * this instance (approvals already granted, spend caps, skill auto-approval, the captain flag,
+ * the pet).
  */
 export function shareableManifest(m: CrewManifest): Record<string, unknown> {
   const {
@@ -82,6 +83,8 @@ export function shareableManifest(m: CrewManifest): Record<string, unknown> {
     autoApproveSkills: _auto,
     captain: _captain,
     avatar: _avatar,
+    // The pet's picture stays on this instance, so its settings would point at nothing.
+    pet: _pet,
     visibility: _visibility,
     ...rest
   } = m;

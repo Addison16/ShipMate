@@ -6,6 +6,12 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Crew pets (optional)**: any crew member can have a little creature that hangs out on the
+  message box, dances while that crew member works and hops when the reply lands. Off until you
+  make one: tap "Make a pet" on a crew member's Settings tab (or just ask the Captain), answer a
+  few tap questions, and keep or redo the result. Pictures come from the image model picked
+  under Settings → Photos and voice (an OpenAI or OpenAI-compatible provider, a local image
+  server); without one, the Captain draws the pet as an SVG, so it always works. See [docs/pets.md](docs/pets.md).
 - **The crew keep working when you close the app**: a reply carries on on the server when you
   close the tab or the phone app, as it always did, and now a chat you open again mid-reply
   shows everything written so far and the Stop button, then keeps streaming. Coming back to

@@ -19,7 +19,14 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   `npm install` gets dev packages, nor Shipmate's own secrets. Long hand-offs to Claude Code
   crew no longer drop after a few minutes, and a hand-off that fails partway gives the Captain
   what was done so far. `crew_settings` explains that `tools: []` means all built-in tools.
+  Every Captain now gets a short "Setting up crew" guide in its instructions (which tools to
+  check for model names and server ids), whatever its standing orders say, and every crew
+  member is told to ask the Captain when a tool or server is missing. The Health Log starter is
+  now private (only the person who adds it, and admins, see it).
 
+- **Tidier Usage and cost page on phones**: Month and Show (Mine / Everyone) sit side by side
+  and line up, money shows as cents ($0.00, not $0.0000), the subscription note is one line
+  with "More details", and the chart buttons and table names no longer wrap.
 - **Crew pets (optional)**: any crew member can have a little creature that hangs out on the
   message box, dances while that crew member works and hops when the reply lands. Off until you
   make one: tap "Make a pet" on a crew member's Settings tab (or just ask the Captain), answer a
@@ -47,6 +54,15 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   with exact questions and an example to copy, and `save_theme` fixes sloppy input instead of
   refusing it (color names, missing fields, a logo wrapped in code fences) and says what it
   changed.
+- **Codex engine**: a third Engine choice, Codex (your ChatGPT plan). Shipmate runs the
+  official, unmodified `codex` CLI (included in the image) for that crew member, signed in once
+  with `docker exec -it shipmate codex login --device-auth`; Shipmate never sees the login. Pick
+  a `codex/<model>` model and how much Codex may do (read only, edit its folder, or anything).
+  Shipmate's own tools (memory, lists, the Captain's crew tools) reach it under the usual
+  approvals; its own MCP servers and Shipyard projects stay on the other engines. Pictures it
+  makes with Codex's built-in image tool show under its reply. In read only and edit modes Codex
+  only sees its own folder (plus system folders), not the rest of `/data`. Signed in with an API
+  key instead of ChatGPT, its use counts as API spend and towards caps.
 - **Helper agents (sub agents)**: tick "Let it start helper agents" in a crew member's
   settings (`helpers: true` in crew.yaml). On Shipmate (pi) it gets a `helper` tool that runs
   short-lived copies of itself side by side, with its tools and approvals, up to 8 per message;

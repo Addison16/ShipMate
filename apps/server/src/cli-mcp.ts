@@ -66,7 +66,15 @@ export class CliToolServer {
   open(
     grant: CliToolGrant,
     servers: Record<string, McpServerConfig> = {},
-  ): { mcpConfig: string; settingsJson: string | undefined; revoke: () => void } | undefined {
+  ):
+    | {
+        mcpConfig: string;
+        settingsJson: string | undefined;
+        /** The server's address and token, for CLIs configured another way (Codex). */
+        http: { url: string; token: string };
+        revoke: () => void;
+      }
+    | undefined {
     if (!this.#baseUrl || !grant.tools.length) return undefined;
     const token = randomBytes(24).toString("base64url");
     this.#grants.set(token, { ...grant, controller: new AbortController() });
@@ -107,6 +115,7 @@ export class CliToolServer {
     return {
       mcpConfig,
       settingsJson,
+      http: { url: `${this.#baseUrl}${CLI_MCP_PATH}`, token },
       revoke: () => {
         this.#grants.get(token)?.controller.abort();
         this.#grants.delete(token);

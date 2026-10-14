@@ -88,7 +88,9 @@ export function IconButton({
 }
 
 const fieldBase =
-  "w-full rounded-md border border-control bg-white px-3 py-2 text-sm text-slate-900 shadow-xs transition-[border-color,box-shadow] duration-150 placeholder:text-slate-500 disabled:bg-slate-100 disabled:text-slate-500 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-400 dark:disabled:bg-slate-800 " +
+  // min-w-0 and the left-aligned value stop iOS date and month inputs from spilling out of
+  // narrow columns (they size to their content and center it by default).
+  "w-full min-w-0 rounded-md border border-control bg-white px-3 py-2 text-sm text-slate-900 shadow-xs transition-[border-color,box-shadow] duration-150 placeholder:text-slate-500 [&::-webkit-date-and-time-value]:text-left disabled:bg-slate-100 disabled:text-slate-500 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-400 dark:disabled:bg-slate-800 " +
   focusRing;
 
 interface FieldProps {

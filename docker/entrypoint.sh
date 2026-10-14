@@ -12,6 +12,9 @@ PGDATA="$DATA_DIR/postgres"
 PGBIN="/usr/lib/postgresql/$PG_MAJOR/bin"
 SOCKET_DIR=/run/postgresql
 
+# The Codex CLI refuses to start when CODEX_HOME does not exist yet.
+if [ -n "$CODEX_HOME" ]; then mkdir -p "$CODEX_HOME"; fi
+
 if [ "$#" -eq 0 ] || [ "$*" = "node dist/main.js" ]; then
   set -- node dist/main.js
   server=1

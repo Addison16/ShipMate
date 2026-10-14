@@ -30,8 +30,9 @@ RUN mkdir -p /etc/postgresql-common/createcluster.d \
     && apt-get update && apt-get install -y --no-install-recommends docker-ce-cli postgresql-$PG_MAJOR \
     && pipx install uv && rm -rf /var/lib/apt/lists/*
 ENV PATH=/root/.local/bin:$PATH
-# Official Claude Code CLI, unmodified, for the subscription route (users sign in themselves).
-RUN npm install -g @anthropic-ai/claude-code
+# Official Claude Code and Codex CLIs, unmodified, for the subscription routes (users sign in
+# themselves).
+RUN npm install -g @anthropic-ai/claude-code @openai/codex
 COPY --from=build /out/server /app
 COPY --from=build /app/apps/web/dist /app/web
 # The shipmate CLI (backup, restore, doctor) reuses the server's node_modules.
@@ -39,7 +40,7 @@ COPY --from=build /app/packages/cli/dist /app/cli
 # Inside a running container (docker exec) it finds the bundled database by its socket.
 RUN printf '#!/bin/sh\nif [ -z "$DATABASE_URL" ] && [ -S /run/postgresql/.s.PGSQL.5432 ]; then\n  export DATABASE_URL="postgres://shipmate@%%2Frun%%2Fpostgresql/shipmate"\nfi\nexec node /app/cli/index.js "$@"\n' > /usr/local/bin/shipmate && chmod +x /usr/local/bin/shipmate
 COPY templates /app/templates
-ENV NODE_ENV=production PORT=3000 SHIPMATE_DATA_DIR=/data WEB_DIST=/app/web TEMPLATES_DIR=/app/templates CLAUDE_CONFIG_DIR=/data/claude \
+ENV NODE_ENV=production PORT=3000 SHIPMATE_DATA_DIR=/data WEB_DIST=/app/web TEMPLATES_DIR=/app/templates CLAUDE_CONFIG_DIR=/data/claude CODEX_HOME=/data/codex \
     SHIPMATE_BROWSER_PATH=/usr/bin/chromium
 VOLUME /data
 EXPOSE 3000

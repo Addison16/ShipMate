@@ -86,6 +86,8 @@ can also pick a sandbox host in **Settings → Shipyard sandbox**, which overrid
 | `SHIPMATE_CLAUDE_BIN` | `claude` | Path of the Claude Code CLI, for the Claude subscription backend. The image ships it. |
 | `CLAUDE_CONFIG_DIR` | `/data/claude` | Where the Claude Code CLI keeps its sign-in. Set by the image so it survives updates. |
 | `SHIPMATE_BROWSER_PATH` | `/usr/bin/chromium` | The Chromium the browser MCP server drives. The image ships it; outside Docker, leave it unset and Playwright uses its own download. |
+| `SHIPMATE_CODEX_BIN` | `codex` | Path of the Codex CLI, for the Codex engine (ChatGPT plan). The image ships it. |
+| `CODEX_HOME` | `/data/codex` | Where the Codex CLI keeps its sign-in. Set by the image so it survives updates. |
 
 ## Updates, backups and offline installs
 
@@ -120,6 +122,7 @@ Shipmate needs one writable folder, `/data`. Map it to a host folder you back up
 | `/data/files/` | Photos and files people attach in chat. |
 | `/data/pi/` | The agent harness's own files: model sign-ins, model lists, MCP logs. |
 | `/data/claude/` | The Claude Code CLI's sign-in. |
+| `/data/codex/` | The Codex CLI's sign-in and threads. |
 | `/data/mcp/` | Sign-ins MCP servers read, such as Google Workspace's credentials file. |
 | `/data/backups/` | Backups (unless `SHIPMATE_BACKUP_DIR` points elsewhere). |
 | `/data/postgres/` | The built-in database's files (accounts, conversations, settings, encrypted keys), when `DATABASE_URL` is not set. Owned by the container's `postgres` user. Back it up with Shipmate's backups rather than by copying it while Shipmate runs. |

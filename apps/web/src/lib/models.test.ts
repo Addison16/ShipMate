@@ -49,6 +49,8 @@ describe("provider grouping", () => {
     });
     expect(defaultModelStatus("openai-codex/gpt-5", models, false).usable).toBe(true);
     expect(defaultModelStatus("claude-code/sonnet", models, true).usable).toBe(true);
+    expect(defaultModelStatus("codex/gpt-6.1-sol", models, false, true).usable).toBe(true);
+    expect(defaultModelStatus("codex/gpt-6.1-sol", models, false, false).usable).toBe(false);
     // A model its provider dropped falls back to that provider's first (newest) one.
     const plan = [
       { ref: "ollama/llama", name: "Llama", available: true },

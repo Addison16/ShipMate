@@ -24,6 +24,7 @@ export function modelPrice(ref: string, available: Model<Api>[]): string {
   if (r.provider === "claude-code") {
     return CLAUDE_SIZES.find(([re]) => re.test(r.id))?.[1] ?? "Claude subscription";
   }
+  if (r.provider === "codex") return "ChatGPT plan through Codex";
   const m = available.find((x) => x.provider === r.provider && x.id === r.id);
   if (!m) return "not set up";
   const { input, output } = m.cost;
@@ -36,9 +37,13 @@ const MAX_LISTED = 40;
 
 /**
  * list_models: usable models cheapest first, then the Claude subscription's models when it is in
- * use (`withClaudeCode`), one `- ref: name, price` line each.
+ * use (`withClaudeCode`) and the Codex models given, one `- ref: name, price` line each.
  */
-export function modelList(available: Model<Api>[], withClaudeCode: boolean): string {
+export function modelList(
+  available: Model<Api>[],
+  withClaudeCode: boolean,
+  codex: ReadonlyArray<{ ref: string; name: string }> = [],
+): string {
   const priced = [...available].sort(
     (a, b) => a.cost.input + a.cost.output - (b.cost.input + b.cost.output),
   );
@@ -53,5 +58,6 @@ export function modelList(available: Model<Api>[], withClaudeCode: boolean): str
   if (withClaudeCode) {
     lines.push(...CLAUDE_CODE_REFS.map((ref) => `- ${ref}: ${modelPrice(ref, available)}`));
   }
+  lines.push(...codex.map((m) => `- ${m.ref}: ${m.name}, ${modelPrice(m.ref, available)}`));
   return lines.join("\n");
 }

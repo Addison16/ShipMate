@@ -36,7 +36,7 @@ export function accessSummary(
     case "edit_crew_member": {
       const changes = [
         input.backend !== undefined &&
-          `runs on ${input.backend === "claude-code-cli" ? "Claude Code" : "Shipmate"}`,
+          `runs on ${input.backend === "claude-code-cli" ? "Claude Code" : input.backend === "codex-cli" ? "Codex" : "Shipmate"}`,
         input.mcp !== undefined && `servers: ${list("mcp", names.server).join(", ") || "none"}`,
         input.tools !== undefined && `tools: ${list("tools").join(", ") || "all built-in"}`,
         input.skills !== undefined && `skills: ${list("skills").join(", ") || "none"}`,

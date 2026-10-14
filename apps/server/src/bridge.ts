@@ -42,7 +42,7 @@ import { conversations, crewMembers, type Db, messages, users, watches } from "@
 import { and, asc, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { accessSummary } from "./access-summary.js";
 import { HttpError, type UserRow } from "./auth.js";
-import { ClaudeCliTurns, onCrewDefault } from "./claude-cli-turn.js";
+import { ClaudeCliTurns, cliModelFromRef, onCrewDefault } from "./claude-cli-turn.js";
 import { CliToolServer } from "./cli-mcp.js";
 import type { EverydayTools } from "./everyday.js";
 import type { AttachmentService } from "./files/service.js";
@@ -150,8 +150,8 @@ interface Run {
   /** Usage rows being written; a turn is not over until they are stored. */
   writes: Set<Promise<void>>;
   idleTimer?: NodeJS.Timeout;
-  /** The crew's version when these sessions were made; their system prompts list the crew. */
-  crewVersion: number;
+  /** #promptKey() when these sessions were made; their system prompts list the crew. */
+  promptKey?: string | undefined;
 }
 
 /**
@@ -548,12 +548,13 @@ export class Bridge {
 
     run.aborted = false;
     clearTimeout(run.idleTimer);
-    if (run.crewVersion !== this.#crewVersion) {
-      // The crew changed since these sessions started: reopen them from their files so the
-      // Captain's crew list (in its system prompt) shows who is aboard now, with their models.
+    const promptKey = await this.#promptKey().catch(() => run.promptKey);
+    if (run.promptKey !== promptKey) {
+      // The crew, the crew default or the models changed since these sessions started: reopen
+      // them from their files so the Captain's crew list (in its system prompt) is current.
       for (const s of run.sessions.values()) s.dispose();
       run.sessions.clear();
-      run.crewVersion = this.#crewVersion;
+      run.promptKey = promptKey;
     }
     this.emit(user.id, { type: "status", conversationId, busy: true });
     try {
@@ -1566,7 +1567,7 @@ export class Bridge {
     ].join(" ");
   }
 
-  /** The roster with each model resolved (`default` → the crew default) and priced. */
+  /** The roster with each model resolved to what it runs on (see #effectiveModel) and priced. */
   async #pricedRoster(user: UserRow): Promise<Array<CrewSummary & { price: string }>> {
     const [crew, available, settings] = await Promise.all([
       this.#roster(user),
@@ -1574,13 +1575,32 @@ export class Bridge {
       this.deps.settings.get(),
     ]);
     return crew.map((c) => {
-      const ref = c.model === DEFAULT_MODEL ? settings.defaultModel : c.model;
+      const ref = this.#effectiveModel(c.slug, settings.defaultModel);
       return {
         ...c,
         model: c.model === DEFAULT_MODEL ? `${ref} (crew default)` : ref,
         price: modelPrice(ref, available),
       };
     });
+  }
+
+  /**
+   * The model a crew member's turns actually use: the crew default for `default`, and for crew on
+   * the Claude Code CLI the subscription model it passes as --model (`claude-code/<model>`).
+   */
+  #effectiveModel(slug: string, defaultModel: string): string {
+    let folder: CrewFolder;
+    try {
+      folder = onCrewDefault(this.deps.crew.folder(slug), defaultModel);
+    } catch {
+      return defaultModel;
+    }
+    const m = folder.manifest;
+    if (m.backend === "claude-code-cli") {
+      const id = m.cli?.model ?? cliModelFromRef(m.model);
+      return id ? `claude-code/${id}` : "claude-code/default";
+    }
+    return m.model === DEFAULT_MODEL ? defaultModel : m.model;
   }
 
   /** list_models: what crew can run on, cheapest first. */
@@ -1591,11 +1611,27 @@ export class Bridge {
       this.#roster(user),
     ]);
     // The Claude subscription is not a pi provider; list its models once something uses it.
-    const refs = [settings.defaultModel, ...crew.map((c) => c.model)];
+    const refs = [
+      settings.defaultModel,
+      ...crew.map((c) => this.#effectiveModel(c.slug, settings.defaultModel)),
+    ];
     return modelList(
       available,
       refs.some((r) => r.startsWith("claude-code/")),
     );
+  }
+
+  /**
+   * What the Captain's crew list in its system prompt depends on: the crew, the crew default and
+   * the models set up. A cached session made under another key has a stale list.
+   */
+  async #promptKey(): Promise<string> {
+    const [available, settings] = await Promise.all([
+      this.deps.providers.available(),
+      this.deps.settings.get(),
+    ]);
+    const models = available.map((m) => `${m.provider}/${m.id}:${m.cost.input}/${m.cost.output}`);
+    return [this.#crewVersion, settings.defaultModel, ...models].join("|");
   }
 
   async #roster(user: UserRow): Promise<CrewSummary[]> {
@@ -1686,7 +1722,6 @@ export class Bridge {
       busy: false,
       aborted: false,
       writes: new Set(),
-      crewVersion: this.#crewVersion,
     };
     this.#runs.set(conversationId, run);
     return run;

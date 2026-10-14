@@ -475,11 +475,20 @@ describe.skipIf(!db)("claude-code-cli backend through the Bridge", () => {
 
   it("lets the Captain delegate to a CLI crew member", async () => {
     const conv = (await api("POST", "/api/conversations", {})).json().conversation;
+    let captainContext = "";
+    let models = "";
     t.faux.setResponses([
-      fauxAssistantMessage([
-        fauxText("Asking Scribe."),
-        fauxToolCall("delegate", { crew: "scribe", task: "note the date" }),
-      ]),
+      (context) => {
+        captainContext = JSON.stringify(context.messages);
+        return fauxAssistantMessage([fauxToolCall("list_models", {})]);
+      },
+      (context) => {
+        models = JSON.stringify(context.messages.at(-1));
+        return fauxAssistantMessage([
+          fauxText("Asking Scribe."),
+          fauxToolCall("delegate", { crew: "scribe", task: "note the date" }),
+        ]);
+      },
       fauxAssistantMessage("Scribe has it."),
     ]);
     const { events, ws } = await turn(conv.id, "Write down the date");
@@ -494,6 +503,11 @@ describe.skipIf(!db)("claude-code-cli backend through the Bridge", () => {
       "captain",
     ]);
     expect(msgs[2].content).toContain("Done: note the date");
+    // Scribe runs on the Claude subscription, so that is what the Captain sees and can pick from.
+    expect(captainContext).toContain(
+      "scribe: Scribe, writing (model claude-code/sonnet, Claude subscription, mid-size model)",
+    );
+    expect(models).toContain("claude-code/haiku: Claude subscription, smallest model");
   });
 
   it("lets a Captain on the CLI route a message to a crew member", async () => {

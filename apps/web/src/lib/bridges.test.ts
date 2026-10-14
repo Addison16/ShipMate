@@ -78,7 +78,13 @@ describe("ids and manifest", () => {
 
   it("asks for Socket Mode and the scopes the bridge uses", () => {
     expect(SLACK_MANIFEST).toContain("socket_mode_enabled: true");
-    for (const scope of ["chat:write.customize", "commands", "im:history", "reactions:write"]) {
+    for (const scope of [
+      "chat:write.customize",
+      "commands",
+      "files:write",
+      "im:history",
+      "reactions:write",
+    ]) {
       expect(SLACK_MANIFEST).toContain(`- ${scope}`);
     }
   });

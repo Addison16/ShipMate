@@ -1,4 +1,12 @@
-import type { SlackChannelInfo, SlackEvent, SlackIdentity, SlackPort, SlackPost } from "./port.js";
+import type {
+  SlackChannelInfo,
+  SlackEvent,
+  SlackFile,
+  SlackIdentity,
+  SlackPort,
+  SlackPost,
+  SlackUpload,
+} from "./port.js";
 import { SlackError } from "./port.js";
 
 /**
@@ -15,6 +23,7 @@ export class FakeSlackPort implements SlackPort {
   posts: (SlackPost & { channelId: string; ts: string })[] = [];
   updates: (SlackPost & { channelId: string; ts: string })[] = [];
   ephemerals: { channelId: string; userId: string; text: string }[] = [];
+  uploads: (SlackUpload & { channelId: string; files: SlackFile[] })[] = [];
   reactions: { channelId: string; ts: string; emoji: string }[] = [];
   #handler: (event: SlackEvent) => void = () => {};
   #seq = 1000;
@@ -47,6 +56,9 @@ export class FakeSlackPort implements SlackPort {
   }
   async updateMessage(channelId: string, ts: string, post: SlackPost) {
     this.updates.push({ ...post, channelId, ts });
+  }
+  async uploadFiles(channelId: string, files: SlackFile[], options: SlackUpload = {}) {
+    this.uploads.push({ ...options, channelId, files });
   }
   async postEphemeral(channelId: string, userId: string, text: string) {
     this.ephemerals.push({ channelId, userId, text });

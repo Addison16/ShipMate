@@ -22,12 +22,24 @@ export interface DiscordWebhook {
   token: string;
 }
 
+/** A file sent with a message (multipart `files[n]`). */
+export interface DiscordFile {
+  name: string;
+  data: Buffer;
+}
+
+/** Uploads servers take without boosts, per message; and files per message. */
+export const DISCORD_FILE_LIMIT = 10 * 1024 * 1024;
+export const DISCORD_FILES_PER_MESSAGE = 10;
+
 export interface WebhookMessage {
+  /** May be empty when files are sent. */
   content: string;
   username: string;
   avatarURL?: string;
   /** The only accounts that may be pinged; @everyone, @here and roles never are. */
   mentionUserIds: string[];
+  files?: DiscordFile[];
 }
 
 export interface BotButton {
@@ -41,6 +53,8 @@ export interface BotMessage {
   mentionUserIds: string[];
   /** Omit or empty to show (or leave) no buttons. */
   buttons?: BotButton[];
+  /** Only when sending. */
+  files?: DiscordFile[];
 }
 
 export interface ChannelSpec {

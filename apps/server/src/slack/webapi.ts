@@ -2,9 +2,11 @@ import {
   type SlackChannelInfo,
   SlackError,
   type SlackEvent,
+  type SlackFile,
   type SlackIdentity,
   type SlackPort,
   type SlackPost,
+  type SlackUpload,
 } from "./port.js";
 import { type Envelope, SocketAuthError, type SocketLike, SocketModeClient } from "./socket.js";
 
@@ -108,6 +110,38 @@ export class SlackWebApi implements SlackPort {
 
   async updateMessage(channelId: string, ts: string, post: SlackPost) {
     await this.#call("chat.update", { channel: channelId, ts, ...postParams(post) });
+  }
+
+  async uploadFiles(channelId: string, files: SlackFile[], options: SlackUpload = {}) {
+    if (!files.length) return;
+    const uploaded: { id: string; title: string }[] = [];
+    for (const file of files) {
+      const { upload_url: url, file_id: id } = await this.#call<{
+        upload_url: string;
+        file_id: string;
+      }>("files.getUploadURLExternal", { filename: file.name, length: String(file.data.length) });
+      if (!url.startsWith("https://")) throw new SlackError("Slack gave a bad upload address.");
+      let res: Response;
+      try {
+        res = await this.#fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/octet-stream" },
+          body: new Uint8Array(file.data),
+        });
+      } catch (err) {
+        throw new SlackError(
+          `Could not reach Slack: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      if (!res.ok) throw new SlackApiError(`upload_http_${res.status}`);
+      uploaded.push({ id, title: file.name });
+    }
+    await this.#call("files.completeUploadExternal", {
+      files: uploaded,
+      channel_id: channelId,
+      thread_ts: options.threadTs,
+      initial_comment: options.initialComment,
+    });
   }
 
   async postEphemeral(channelId: string, userId: string, text: string) {

@@ -3,6 +3,8 @@ import {
   type TelegramChatKind,
   TelegramError,
   type TelegramEvent,
+  type TelegramFile,
+  type TelegramFileOptions,
   type TelegramIdentity,
   type TelegramOutgoing,
   type TelegramPort,
@@ -132,6 +134,33 @@ export class TelegramBotApi implements TelegramPort {
     return sent.message_id;
   }
 
+  async sendFile(chatId: string, file: TelegramFile, options: TelegramFileOptions) {
+    const form = new FormData();
+    form.set("chat_id", chatId);
+    if (options.captionHtml) {
+      form.set("caption", options.captionHtml);
+      form.set("parse_mode", "HTML");
+    }
+    if (options.replyTo) {
+      form.set(
+        "reply_parameters",
+        JSON.stringify({ message_id: options.replyTo, allow_sending_without_reply: true }),
+      );
+    }
+    const blob = new Blob([new Uint8Array(file.data)], { type: file.mimeType });
+    if (options.as === "photo") {
+      form.set("photo", blob, file.name);
+      try {
+        return (await this.#send<{ message_id: number }>("sendPhoto", form)).message_id;
+      } catch (err) {
+        if (!(err instanceof TelegramApiError && err.code === 400)) throw err;
+        form.delete("photo");
+      }
+    }
+    form.set("document", blob, file.name);
+    return (await this.#send<{ message_id: number }>("sendDocument", form)).message_id;
+  }
+
   async editMessage(chatId: string, messageId: number, message: TelegramOutgoing) {
     await this.#send("editMessageText", {
       chat_id: chatId,
@@ -214,7 +243,7 @@ export class TelegramBotApi implements TelegramPort {
   // ---------- HTTP ----------
 
   /** A call that waits out flood control (429) once. */
-  async #send<T>(method: string, params: Record<string, unknown>): Promise<T> {
+  async #send<T>(method: string, params: Record<string, unknown> | FormData): Promise<T> {
     try {
       return await this.#call<T>(method, params);
     } catch (err) {
@@ -231,13 +260,19 @@ export class TelegramBotApi implements TelegramPort {
     }
   }
 
-  async #call<T>(method: string, params: Record<string, unknown> = {}, signal?: AbortSignal) {
+  async #call<T>(
+    method: string,
+    params: Record<string, unknown> | FormData = {},
+    signal?: AbortSignal,
+  ) {
     let res: Response;
+    // FormData sets its own multipart content type.
+    const form = params instanceof FormData;
     try {
       res = await this.#fetch(`${this.#base}/bot${this.#token}/${method}`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(params),
+        ...(form ? {} : { headers: { "content-type": "application/json" } }),
+        body: form ? params : JSON.stringify(params),
         ...(signal ? { signal } : {}),
       });
     } catch (err) {

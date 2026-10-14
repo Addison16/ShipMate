@@ -1,12 +1,13 @@
 import type { ApprovalDecision, MessageDto, ServerEvent } from "@shipmate/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FakeDiscordPort } from "./fake.js";
+import { DISCORD_FILE_LIMIT } from "./port.js";
 import { DiscordRelay, type RelayLookup, TYPING_REFRESH_MS } from "./relay.js";
 
 const PERSON = "100000000000000001";
 const STRANGER = "100000000000000002";
 
-function setup(options: { webhook?: boolean } = {}) {
+function setup(options: { webhook?: boolean; files?: Map<string, Buffer> } = {}) {
   const port = new FakeDiscordPort();
   const channelId = port.addChannel("captain");
   const webhook = { id: "w1", token: "t1" };
@@ -16,6 +17,11 @@ function setup(options: { webhook?: boolean } = {}) {
     webhook: async () => (options.webhook === false ? null : webhook),
     userByDiscordId: async (id) => (id === PERSON ? { id: "u1" } : null),
     userName: async () => "Addison",
+    readFile: async (_userId, id) => {
+      const data = options.files?.get(id);
+      if (!data) throw new Error("file not found");
+      return data;
+    },
   };
   const decided: { userId: string; id: string; decision: ApprovalDecision }[] = [];
   const relay = new DiscordRelay(port, lookup, {
@@ -106,6 +112,35 @@ describe("DiscordRelay", () => {
     relay.handle("u1", crewMessage("conv-d", "Aye"));
     await relay.idle();
     expect(port.botMessages[0]?.content).toBe(`<@${PERSON}> **Captain:** Aye`);
+  });
+
+  it("posts only the readable pictures of a picture-only reply, at most eight", async () => {
+    const files = new Map<string, Buffer>([["big", Buffer.alloc(DISCORD_FILE_LIMIT + 1)]]);
+    const list = [{ id: "big", name: "big.png", kind: "image", mimeType: "image/png", size: 1 }];
+    list.push({ id: "gone", name: "gone.png", kind: "image", mimeType: "image/png", size: 1 });
+    for (let i = 0; i < 9; i++) {
+      files.set(`p${i}`, Buffer.from([i]));
+      list.push({ id: `p${i}`, name: `p${i}.png`, kind: "image", mimeType: "image/png", size: 1 });
+    }
+    const { port, relay } = setup({ webhook: false, files });
+    const event = crewMessage("conv-d", " ");
+    if (event.type === "message") event.message.meta = { attachments: list };
+    relay.handle("u1", event);
+    await relay.idle();
+    expect(port.botMessages).toHaveLength(1);
+    expect(port.botMessages[0]).toMatchObject({
+      content: `<@${PERSON}> **Captain:**`,
+      mentionUserIds: [PERSON],
+    });
+    // The first eight are taken; the too-big and missing ones are skipped.
+    expect(port.botMessages[0]?.files?.map((f) => f.name)).toEqual([
+      "p0.png",
+      "p1.png",
+      "p2.png",
+      "p3.png",
+      "p4.png",
+      "p5.png",
+    ]);
   });
 
   it("posts hand-offs and errors, in order", async () => {

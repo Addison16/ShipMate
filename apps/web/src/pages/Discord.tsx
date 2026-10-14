@@ -141,7 +141,10 @@ function SetupSteps() {
         Under Privileged Gateway Intents, turn on <strong>Message Content Intent</strong>.
       </li>
       <li>Reset and copy the bot token, paste it below and save.</li>
-      <li>Use “Add the bot to your server” to invite it.</li>
+      <li>
+        Use “Add the bot to your server” to invite it. Added it before? Invite it again, so the crew
+        can post pictures.
+      </li>
       <li>
         In Discord, turn on Developer Mode (Settings → Advanced), right-click your server, Copy
         Server ID, paste it below as the guild id and save.

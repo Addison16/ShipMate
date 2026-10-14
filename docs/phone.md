@@ -66,8 +66,10 @@ conversation.
   removed after a day.
 - iPhones may save photos as HEIC, which models do not accept. The camera button and most
   share sheets hand over JPEG; otherwise set Settings → Camera → Formats → Most Compatible.
-- Discord, Telegram and Slack bridges take text only for now; send photos and files in the web
-  app.
+- Discord, Telegram and Slack bridges take only text from you; send photos and files in the web
+  app. Pictures the crew make are posted there too, after the reply's text (up to eight a reply).
+  Slack needs the `files:write` scope for this: if you set Slack up before, add it (or paste the
+  new manifest) and reinstall the app. On Discord, invite the bot again with the invite link.
 
 ## Voice
 

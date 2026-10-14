@@ -215,6 +215,7 @@ export async function createServices(
     bridge,
     approvals,
     port: options.discordPort ?? new DiscordJsPort(),
+    readFile: (userId, id) => files.read(userId, id),
   });
   // Connects in the background when a bot token is stored; problems show on the Discord page.
   void discord.start();
@@ -226,6 +227,7 @@ export async function createServices(
     bridge,
     approvals,
     port: options.telegramPort ?? new TelegramBotApi(),
+    readFile: (userId, id) => files.read(userId, id),
   });
   const slack = new SlackService({
     db,
@@ -234,6 +236,7 @@ export async function createServices(
     bridge,
     approvals,
     port: options.slackPort ?? new SlackWebApi(),
+    readFile: (userId, id) => files.read(userId, id),
   });
   // Each successful watch run's result also goes to the chat apps its owner has linked.
   for (const app of [discord, telegram, slack]) watches.onReport((r) => app.report(r));

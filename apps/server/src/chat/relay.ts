@@ -1,4 +1,5 @@
 import type { ApprovalDecision, ApprovalDto, ServerEvent } from "@shipmate/core";
+import { loadPictures, type Picture, type ReadFile, replyPictures } from "./pictures.js";
 
 /** Where a Shipmate conversation lives in a chat app. */
 export interface ChatTarget {
@@ -36,6 +37,13 @@ export interface ApprovalCard {
 export interface ChatSink {
   /** A crew member's words; `mention` addresses the person on the first piece. */
   postCrew(t: ChatTarget, crew: CrewRef, text: string, mention: boolean): Promise<void>;
+  /**
+   * A crew reply's pictures, after its text. `alone` when the reply had no text, so the post
+   * should say who it is from and address the person. Omit when the app takes no files.
+   */
+  postPictures?(t: ChatTarget, crew: CrewRef, pictures: Picture[], alone: boolean): Promise<void>;
+  /** The largest file the app takes, in bytes. */
+  readonly pictureMaxBytes?: number;
   postHandoff(t: ChatTarget, from: CrewRef, to: CrewRef, task: string): Promise<void>;
   postError(t: ChatTarget, message: string): Promise<void>;
   /** Returns a reference to the posted card (a message id), for editing it later. */
@@ -57,6 +65,8 @@ export interface ChatRelayLookup {
   /** The Shipmate user linked to this account, reloaded each time. */
   userByExternalId(externalUserId: string): Promise<{ id: string } | null>;
   userName(userId: string): Promise<string>;
+  /** A stored file's bytes, for the reply's pictures; omit to post text only. */
+  readFile?: ReadFile;
 }
 
 export interface RelayApprovals {
@@ -111,11 +121,23 @@ export class ChatRelay {
     switch (event.type) {
       case "message": {
         const author = event.message.author;
-        if (author.kind !== "crew" || !event.message.content.trim()) return;
+        if (author.kind !== "crew") return;
+        const text = event.message.content.trim() ? event.message.content : "";
+        const read = this.lookup.readFile;
+        const post = this.sink.postPictures?.bind(this.sink);
+        const pictures = read && post ? replyPictures(event.message) : [];
+        if (!text && !pictures.length) return;
         const crew = { slug: author.slug, name: author.name };
-        this.#withTarget(event.conversationId, (t) =>
-          this.sink.postCrew(t, crew, event.message.content, true),
-        );
+        this.#withTarget(event.conversationId, async (t) => {
+          if (text) await this.sink.postCrew(t, crew, text, true);
+          if (!pictures.length || !read || !post) return;
+          const loaded = await loadPictures(userId, pictures, {
+            read,
+            maxBytes: this.sink.pictureMaxBytes ?? Number.POSITIVE_INFINITY,
+            ...(this.options.log ? { log: this.options.log } : {}),
+          });
+          if (loaded.length) await post(t, crew, loaded, !text);
+        });
         return;
       }
       case "handoff":

@@ -34,6 +34,22 @@ export interface SlackPost {
   blocks?: unknown[];
 }
 
+/** A file to upload. */
+export interface SlackFile {
+  name: string;
+  data: Buffer;
+}
+
+export interface SlackUpload {
+  /** Reply in this thread instead of the channel. */
+  threadTs?: string;
+  /** mrkdwn posted with the files. */
+  initialComment?: string;
+}
+
+/** Slack takes files up to 1 GB. */
+export const SLACK_FILE_LIMIT = 1024 * 1024 * 1024;
+
 export type SlackEvent =
   | {
       type: "message";
@@ -84,6 +100,11 @@ export interface SlackPort {
   /** Returns the message's ts. */
   postMessage(channelId: string, post: SlackPost): Promise<string>;
   updateMessage(channelId: string, ts: string, post: SlackPost): Promise<void>;
+  /**
+   * Upload files and share them in the channel as one message (files.getUploadURLExternal,
+   * then files.completeUploadExternal). Needs the files:write scope. Posts as the app.
+   */
+  uploadFiles(channelId: string, files: SlackFile[], options?: SlackUpload): Promise<void>;
   postEphemeral(channelId: string, userId: string, text: string): Promise<void>;
   react(channelId: string, ts: string, emoji: string): Promise<void>;
   /** Null when the app cannot see the channel. */

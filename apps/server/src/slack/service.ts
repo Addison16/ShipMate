@@ -14,13 +14,20 @@ import {
   outcomeText,
   watchReportText,
 } from "../chat/core.js";
+import type { ReadFile } from "../chat/pictures.js";
 import { ChatRelay, type ChatSink, type ChatTarget } from "../chat/relay.js";
 import { splitMessage } from "../chat/split.js";
 import type { ApprovalService } from "../services/approvals.js";
 import type { CrewService } from "../services/crew.js";
 import type { WatchReport } from "../services/watches.js";
 import { escapeMrkdwn, SLACK_LIMIT, slackIcon, toMrkdwn } from "./format.js";
-import { SlackError, type SlackEvent, type SlackIdentity, type SlackPort } from "./port.js";
+import {
+  SLACK_FILE_LIMIT,
+  SlackError,
+  type SlackEvent,
+  type SlackIdentity,
+  type SlackPort,
+} from "./port.js";
 
 const BOT_REF = "slack:bot";
 const APP_REF = "slack:app";
@@ -36,6 +43,8 @@ export interface SlackServiceDeps {
   bridge: Bridge;
   approvals: ApprovalService;
   port: SlackPort;
+  /** A stored file's bytes, to post crew pictures; omit to post text only. */
+  readFile?: ReadFile;
   log?: (message: string, err?: unknown) => void;
 }
 
@@ -72,6 +81,7 @@ export class SlackService {
         target: (id) => this.#target(id),
         userByExternalId: (id) => this.accounts.user(id),
         userName: (id) => this.#userName(id),
+        ...(deps.readFile ? { readFile: deps.readFile } : {}),
       },
       deps.approvals,
       { log: this.#log },
@@ -381,6 +391,16 @@ export class SlackService {
             ...icon,
           });
         }
+      },
+      pictureMaxBytes: SLACK_FILE_LIMIT,
+      postPictures: async (t, crew, pictures, alone) => {
+        // Files post as the app, so a picture-only reply says who it is from.
+        const mention = isIm(t.chatId) ? "" : `<@${t.externalUserId}> `;
+        await port.uploadFiles(
+          t.chatId,
+          pictures.map((p) => ({ name: p.name, data: p.data })),
+          alone ? { initialComment: `${mention}*${escapeMrkdwn(crew.name)}*` } : {},
+        );
       },
       postHandoff: async (t, from, to, task) => {
         await port.postMessage(t.chatId, {

@@ -91,6 +91,10 @@ function SetupSteps() {
           the app to private ones first with <code>/invite @Shipmate</code>.
         </li>
       </ol>
+      <p className="text-sm text-slate-700 dark:text-slate-300">
+        Set up before? Add the <code>files:write</code> scope and reinstall the app, so the crew can
+        post pictures.
+      </p>
       <CopyBlock label="App manifest (YAML)" value={SLACK_MANIFEST} />
     </div>
   );

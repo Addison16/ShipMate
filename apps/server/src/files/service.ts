@@ -257,6 +257,12 @@ export class AttachmentService {
     return { row, stream: () => createReadStream(this.#path(row.id)) };
   }
 
+  /** A file's bytes, if it is this person's (crew pictures are stored under the person). */
+  async read(userId: string, id: string): Promise<Buffer> {
+    const { row } = await this.open(userId, id);
+    return readFile(this.#path(row.id));
+  }
+
   /** Remove an upload that was not sent (the × on the composer chip). */
   async discard(userId: string, id: string): Promise<void> {
     const [row] = await this.db

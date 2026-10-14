@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxProvider } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { runMigrations } from "@shipmate/db";
+import { conversations, runMigrations } from "@shipmate/db";
+import { desc, eq } from "drizzle-orm";
 import postgres from "postgres";
 import { buildApp } from "./app.js";
 import { loadConfig } from "./config.js";
@@ -87,4 +89,50 @@ export async function testApp(
   });
   await app.ready();
   return { app, faux, config };
+}
+
+/** A 1×1 PNG. */
+export const TINY_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+/**
+ * A crew reply with a stored picture, in the newest conversation on `surface`, as the Bridge
+ * sends it. It also lists a PDF (not a picture) and a picture whose file is gone; the relays
+ * skip both.
+ */
+export async function emitCrewPicture(
+  app: Awaited<ReturnType<typeof testApp>>["app"],
+  surface: string,
+  content: string,
+) {
+  const [conv] = await app.db
+    .select()
+    .from(conversations)
+    .where(eq(conversations.surface, surface))
+    .orderBy(desc(conversations.createdAt))
+    .limit(1);
+  if (!conv) throw new Error(`no ${surface} conversation`);
+  const picture = await app.services.files.upload(conv.userId, conv.id, {
+    name: "chart.png",
+    type: "image/png",
+    data: TINY_PNG,
+  });
+  const gone = { ...picture, id: randomUUID(), name: "gone.png" };
+  const pdf = { ...picture, id: randomUUID(), name: "notes.pdf", kind: "pdf" as const };
+  app.services.bridge.emit(conv.userId, {
+    type: "message",
+    conversationId: conv.id,
+    message: {
+      id: randomUUID(),
+      conversationId: conv.id,
+      role: "assistant",
+      content,
+      author: { kind: "crew", slug: "captain", name: "Captain" },
+      meta: { attachments: [picture, pdf, gone] },
+      createdAt: new Date().toISOString(),
+    },
+  });
+  return picture;
 }

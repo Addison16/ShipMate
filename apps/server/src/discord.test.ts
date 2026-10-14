@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FakeDiscordPort } from "./discord/fake.js";
 import { LINK_HINT } from "./discord/service.js";
-import { testApp } from "./testing.js";
+import { emitCrewPicture, TINY_PNG, testApp } from "./testing.js";
 
 /** Its own database: the tests wipe it, and other suites run on theirs at the same time. */
 const db = process.env.TEST_DATABASE_URL_DISCORD ?? process.env.TEST_DATABASE_URL;
@@ -175,6 +175,34 @@ describe.skipIf(!db)("Discord bridge", () => {
     expect(
       await t.app.db.select().from(conversations).where(eq(conversations.surface, "discord")),
     ).toHaveLength(1);
+  });
+
+  it("posts a reply's pictures through the webhook after its text, and a picture-only reply", async () => {
+    await emitCrewPicture(t.app, "discord", "Here is the chart.");
+    await until(() => port.webhookPosts.some((p) => p.files?.length));
+    const [text, pictures] = port.webhookPosts.slice(-2);
+    expect(text).toMatchObject({
+      username: "Captain",
+      content: `<@${PERSON}> Here is the chart.`,
+    });
+    expect(pictures).toMatchObject({
+      channelId: captainChannel,
+      username: "Captain",
+      content: "",
+      mentionUserIds: [],
+    });
+    expect(pictures?.files?.map((f) => f.name)).toEqual(["chart.png"]);
+    expect(pictures?.files?.[0]?.data.equals(TINY_PNG)).toBe(true);
+
+    const posts = port.webhookPosts.length;
+    await emitCrewPicture(t.app, "discord", "");
+    await until(() => port.webhookPosts.length > posts);
+    expect(port.webhookPosts.at(-1)).toMatchObject({
+      username: "Captain",
+      content: `<@${PERSON}>`,
+      mentionUserIds: [PERSON],
+    });
+    expect(port.webhookPosts.at(-1)?.files).toHaveLength(1);
   });
 
   it("hints once to unlinked accounts and ignores bots", async () => {

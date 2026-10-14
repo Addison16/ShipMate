@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FakeSlackPort } from "./slack/fake.js";
 import { SLACK_LINK_HINT } from "./slack/service.js";
-import { testApp } from "./testing.js";
+import { emitCrewPicture, TINY_PNG, testApp } from "./testing.js";
 
 /** Its own database: the tests wipe it, and other suites run on theirs at the same time. */
 const db = process.env.TEST_DATABASE_URL_SLACK ?? process.env.TEST_DATABASE_URL;
@@ -186,6 +186,24 @@ describe.skipIf(!db)("Slack bridge", () => {
       username: "Captain",
       text: "Hello from the bridge.",
     });
+  });
+
+  it("uploads a reply's pictures after its text, and posts a picture-only reply", async () => {
+    await emitCrewPicture(t.app, "slack", "Here is the chart.");
+    await until(() => port.uploads.length > 0);
+    expect(postsIn(DM).at(-1)).toMatchObject({ text: "Here is the chart.", username: "Captain" });
+    const first = port.uploads[0];
+    expect(first?.channelId).toBe(DM);
+    expect(first?.initialComment).toBeUndefined();
+    expect(first?.files.map((f) => f.name)).toEqual(["chart.png"]);
+    expect(first?.files[0]?.data.equals(TINY_PNG)).toBe(true);
+
+    const posts = port.posts.length;
+    await emitCrewPicture(t.app, "slack", "  ");
+    await until(() => port.uploads.length > 1);
+    expect(port.posts.length).toBe(posts);
+    expect(port.uploads[1]).toMatchObject({ channelId: DM, initialComment: "*Captain*" });
+    expect(port.uploads[1]?.files).toHaveLength(1);
   });
 
   it("hints once to unlinked people and ignores bots, edits and unbound channels", async () => {

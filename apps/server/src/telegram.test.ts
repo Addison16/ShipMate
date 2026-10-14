@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FakeTelegramPort } from "./telegram/fake.js";
 import { TELEGRAM_LINK_HINT, TELEGRAM_UNMAPPED } from "./telegram/service.js";
-import { testApp } from "./testing.js";
+import { emitCrewPicture, TINY_PNG, testApp } from "./testing.js";
 
 /** Its own database: the tests wipe it, and other suites run on theirs at the same time. */
 const db = process.env.TEST_DATABASE_URL_TELEGRAM ?? process.env.TEST_DATABASE_URL;
@@ -181,6 +181,29 @@ describe.skipIf(!db)("Telegram bridge", () => {
       replyTo: asked,
     });
     expect(parts[1]?.replyTo).toBeUndefined();
+  });
+
+  it("sends a reply's pictures as photos after its text, and a picture-only reply", async () => {
+    await emitCrewPicture(t.app, "telegram", "Here is the chart.");
+    await until(() => port.files.length > 0);
+    expect(sentTo(GROUP).at(-1)?.html).toBe("<b>Captain</b>\nHere is the chart.");
+    expect(port.files[0]).toMatchObject({ chatId: GROUP, as: "photo" });
+    expect(port.files[0]?.captionHtml).toBeUndefined();
+    expect(port.files[0]?.file).toMatchObject({ name: "chart.png", mimeType: "image/png" });
+    expect(port.files[0]?.file.data.equals(TINY_PNG)).toBe(true);
+
+    t.faux.setResponses([fauxAssistantMessage("On it.")]);
+    const asked = port.message(GROUP, PERSON, "just the picture please");
+    await until(() => sentTo(GROUP).some((m) => m.html.endsWith("On it.")));
+    await emitCrewPicture(t.app, "telegram", "");
+    await until(() => port.files.length > 1);
+    expect(port.files).toHaveLength(2);
+    expect(port.files[1]).toMatchObject({
+      chatId: GROUP,
+      as: "photo",
+      captionHtml: "<b>Captain</b>",
+      replyTo: asked,
+    });
   });
 
   it("hints once to unlinked accounts and ignores bots", async () => {

@@ -49,6 +49,15 @@ describe("provider grouping", () => {
     });
     expect(defaultModelStatus("openai-codex/gpt-5", models, false).usable).toBe(true);
     expect(defaultModelStatus("claude-code/sonnet", models, true).usable).toBe(true);
+    // A model its provider dropped falls back to that provider's first (newest) one.
+    const plan = [
+      { ref: "ollama/llama", name: "Llama", available: true },
+      { ref: "chatgpt/gpt-6.1-sol", name: "GPT-6.1 Sol", available: true },
+    ];
+    expect(defaultModelStatus("chatgpt/gpt-4", plan, false)).toEqual({
+      usable: false,
+      fallback: "GPT-6.1 Sol",
+    });
     expect(defaultModelStatus("claude-code/sonnet", [], false)).toEqual({
       usable: false,
       fallback: null,

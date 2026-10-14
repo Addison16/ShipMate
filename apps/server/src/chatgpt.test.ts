@@ -2,7 +2,7 @@ import { secrets } from "@shipmate/db";
 import { SecretVault } from "@shipmate/providers";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { CHATGPT_REDIRECT_URI, normalizeCallback } from "./services/chatgpt.js";
+import { CHATGPT_REDIRECT_URI, normalizeCallback, planModelIds } from "./services/chatgpt.js";
 import { TEST_DATABASE_URL, testApp } from "./testing.js";
 
 const db = TEST_DATABASE_URL;
@@ -207,6 +207,9 @@ describe.skipIf(!db)("Shipmate phase 5: Sign in with ChatGPT", () => {
   it("lists the plan's models for crew while signed in", async () => {
     const refs = await modelRefs();
     expect(refs.length).toBeGreaterThan(0);
+    // Only what a ChatGPT plan can run, newest first: no API-only models like gpt-4.
+    expect(refs.map((m) => m.ref)).toEqual(planModelIds().map((id) => `chatgpt/${id}`));
+    expect(refs.some((m) => m.ref === "chatgpt/gpt-4")).toBe(false);
     expect(refs.every((m) => m.available)).toBe(true);
     const available = await t.app.services.providers.available();
     const model = available.find((m) => m.provider === "chatgpt");

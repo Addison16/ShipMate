@@ -80,5 +80,9 @@ export function defaultModelStatus(
       ? claudeSignedIn
       : models.some((m) => m.ref === defaultModel && m.available);
   if (usable) return { usable, fallback: null };
-  return { usable, fallback: models.find((m) => m.available)?.name ?? null };
+  const provider = providerOf(defaultModel);
+  const fallback =
+    models.find((m) => m.available && providerOf(m.ref) === provider) ??
+    models.find((m) => m.available);
+  return { usable, fallback: fallback?.name ?? null };
 }

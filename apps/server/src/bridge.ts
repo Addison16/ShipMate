@@ -1622,9 +1622,18 @@ export class Bridge {
       const r = splitModelRef(ref);
       return r ? available.find((m) => m.provider === r.provider && m.id === r.id) : undefined;
     };
+    // A saved model its provider no longer offers falls back to that provider's newest one,
+    // before the instance default, so a crew member keeps the provider it was given.
+    const sameProvider = (ref: string) => {
+      const provider = splitModelRef(ref)?.provider;
+      return provider ? available.find((m) => m.provider === provider) : undefined;
+    };
+    const { defaultModel } = await this.deps.settings.get();
     const model =
       find(folder.manifest.model) ??
-      find((await this.deps.settings.get()).defaultModel) ??
+      sameProvider(folder.manifest.model) ??
+      find(defaultModel) ??
+      sameProvider(defaultModel) ??
       available[0];
     if (!model) {
       throw new HttpError(

@@ -185,7 +185,8 @@ export class PushService {
         kind: "watch",
         title: failed ? `Watch failed: ${event.watchName}` : event.watchName,
         body: preview(failed ? (run.error ?? "The run failed.") : (run.output ?? "Done.")),
-        url: "/#/watches",
+        // The run's chat holds the full reply, and the person can answer there.
+        url: run.conversationId && !failed ? `/#/bridge/${run.conversationId}` : "/#/watches",
         tag: `watch-${run.watchId}`,
       });
     } else if (event.type === "message") {

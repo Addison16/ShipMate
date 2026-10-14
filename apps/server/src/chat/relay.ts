@@ -190,6 +190,11 @@ export class ChatRelay {
     }
   }
 
+  /** A crew member's words outside any conversation (a finished watch's result). */
+  post(t: ChatTarget, crew: CrewRef, text: string): void {
+    this.#enqueue(`post:${t.chatId}`, () => this.sink.postCrew(t, crew, text, false));
+  }
+
   /**
    * A click on an approval card by `externalUserId`. Returns what to tell the clicker, or null
    * when the answer was taken (or the click was not on an approval card).

@@ -12,11 +12,13 @@ import {
   deliver,
   LinkedAccounts,
   outcomeText,
+  watchReportText,
 } from "../chat/core.js";
 import { ChatRelay, type ChatSink, type ChatTarget } from "../chat/relay.js";
 import { splitMessage } from "../chat/split.js";
 import type { ApprovalService } from "../services/approvals.js";
 import type { CrewService } from "../services/crew.js";
+import type { WatchReport } from "../services/watches.js";
 import { escapeMrkdwn, SLACK_LIMIT, slackIcon, toMrkdwn } from "./format.js";
 import { SlackError, type SlackEvent, type SlackIdentity, type SlackPort } from "./port.js";
 
@@ -129,6 +131,19 @@ export class SlackService {
     const next = this.#lock.then(run, run);
     this.#lock = next.catch(() => {});
     return next;
+  }
+
+  /** A finished watch's result, sent as a direct message from the app. */
+  async report(r: WatchReport): Promise<void> {
+    if (!this.deps.port.connected) return;
+    // Posting to a person's id lands in their direct messages with the app.
+    const id = await this.accounts.externalId(r.userId);
+    if (!id) return;
+    this.relay.post(
+      { chatId: id, externalUserId: id },
+      r.crew,
+      watchReportText(r.watchName, r.text),
+    );
   }
 
   // ---------- settings ----------

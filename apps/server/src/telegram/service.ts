@@ -17,6 +17,7 @@ import {
   deliver,
   LinkedAccounts,
   outcomeText,
+  watchReportText,
 } from "../chat/core.js";
 import {
   type ApprovalButton,
@@ -28,6 +29,7 @@ import {
 import { splitMessage } from "../chat/split.js";
 import type { ApprovalService } from "../services/approvals.js";
 import type { CrewService } from "../services/crew.js";
+import type { WatchReport } from "../services/watches.js";
 import { escapeHtml, TELEGRAM_LIMIT, toTelegramHtml } from "./format.js";
 import {
   TelegramError,
@@ -142,6 +144,19 @@ export class TelegramService {
     const next = this.#lock.then(run, run);
     this.#lock = next.catch(() => {});
     return next;
+  }
+
+  /** A finished watch's result, sent to the owner's own chat with the bot. */
+  async report(r: WatchReport): Promise<void> {
+    if (!this.deps.port.connected) return;
+    // A Telegram DM's chat id is the person's account id.
+    const id = await this.accounts.externalId(r.userId);
+    if (!id) return;
+    this.relay.post(
+      { chatId: id, externalUserId: id },
+      r.crew,
+      watchReportText(r.watchName, r.text),
+    );
   }
 
   // ---------- settings ----------

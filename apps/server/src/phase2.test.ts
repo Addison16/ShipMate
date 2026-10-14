@@ -191,6 +191,13 @@ describe.skipIf(!db)("Shipmate phase 2: approvals, skills, watches, MCP, audit",
       await api("GET", `/api/conversations/${run.conversationId}/messages`)
     ).json().messages;
     expect(transcript.at(-1).content).toBe("Sunny, three meetings.");
+    // The run's reply shows in the chat list under the watch's name, like any other reply.
+    const chats = (await api("GET", "/api/conversations")).json().conversations;
+    expect(chats.find((c: { id: string }) => c.id === run.conversationId)).toMatchObject({
+      surface: "watch",
+      title: "Morning brief",
+      preview: "Sunny, three meetings.",
+    });
 
     const hook = (
       await api("POST", "/api/watches", {

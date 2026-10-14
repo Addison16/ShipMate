@@ -290,6 +290,24 @@ describe.skipIf(!db)("Telegram bridge", () => {
     await until(() => sentTo(PERSON).some((m) => m.html.includes("Noon then.")));
   });
 
+  it("sends a finished watch's result to the owner's chat with the bot", async () => {
+    const watch = (
+      await api("POST", "/api/watches", {
+        name: "Weather check",
+        crewSlug: "captain",
+        prompt: "Check today's weather.",
+        trigger: { kind: "cron", expression: "0 7 * * *" },
+      })
+    ).json().watch;
+    t.faux.setResponses([fauxAssistantMessage("Sunny and 21°C.")]);
+    const before = port.sent.length;
+    expect((await api("POST", `/api/watches/${watch.id}/run`)).statusCode).toBe(200);
+    await until(() => sentTo(PERSON).some((m) => m.html.includes("Sunny and 21°C.")));
+    const posted = port.sent.slice(before);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]?.html).toContain("<b>Weather check</b>");
+  });
+
   it("shows a dropped connection, unlinks and disconnects", async () => {
     port.drop("Telegram rejected the bot token.");
     await until(async () => {

@@ -153,6 +153,11 @@ export class DiscordRelay {
     }
   }
 
+  /** A crew member's words outside any conversation (a finished watch's result). */
+  post(t: RelayTarget, username: string, text: string): void {
+    this.#enqueue(`post:${t.channelId}`, () => this.#post(t, username, text, true));
+  }
+
   /** A click on an approval card. Only the person the request belongs to may answer it. */
   async button(event: ButtonEvent): Promise<void> {
     if (!event.customId.startsWith(BUTTON_PREFIX)) return;

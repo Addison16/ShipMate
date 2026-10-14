@@ -85,8 +85,12 @@ export class PetService {
       await this.#provider(next.providerId);
     }
     if (next.source === "custom") {
-      const url = next.baseUrl ?? "";
-      if (!/^https?:\/\/[^\s/]+/.test(url)) {
+      const url = (next.baseUrl ?? "").trim();
+      let parsed: URL | null = null;
+      try {
+        parsed = new URL(url);
+      } catch {}
+      if (!parsed || !/^https?:$/.test(parsed.protocol)) {
         throw new HttpError(400, "the server address must start with http:// or https://");
       }
       next.baseUrl = url.replace(/\/+$/, "");
@@ -173,7 +177,13 @@ export class PetService {
       data?: Array<{ b64_json?: unknown; url?: unknown }>;
     } | null;
     const first = data?.data?.[0];
-    if (typeof first?.b64_json === "string") return Buffer.from(first.b64_json, "base64");
+    if (typeof first?.b64_json === "string") {
+      // base64 is 4 characters per 3 bytes; check before decoding.
+      if (first.b64_json.length > (MAX_PICTURE_BYTES / 3) * 4 + 4) {
+        throw new Error("the picture is too large");
+      }
+      return Buffer.from(first.b64_json, "base64");
+    }
     if (typeof first?.url === "string" && /^https?:\/\//.test(first.url)) {
       const pic = await this.#call(first.url, null, signal, { method: "GET" });
       return readCapped(pic);

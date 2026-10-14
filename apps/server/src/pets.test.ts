@@ -216,6 +216,10 @@ describe.skipIf(!db)("building a pet with the Captain", () => {
   });
 
   it("makes the picture with an image server when one is set up, and asks again on Try again", async () => {
+    for (const baseUrl of ["http://%", "http://[x", "ftp://images.local"]) {
+      const bad = await api("PUT", "/api/pets/settings", { source: "custom", baseUrl });
+      expect(bad.statusCode).toBe(400);
+    }
     const saved = await api("PUT", "/api/pets/settings", {
       source: "custom",
       baseUrl: "http://images.local/v1/",

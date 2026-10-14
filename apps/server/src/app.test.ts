@@ -247,17 +247,28 @@ describe.skipIf(!db)("Shipmate server", () => {
     // Delegating to a crew member awaiting review fails inside the tool; approve and retry.
     expect((await api("POST", "/api/crew/galley/approve")).json().crew.status).toBe("active");
     events.length = 0;
+    let captainContext = "";
     t.faux.setResponses([
-      fauxAssistantMessage([
-        fauxText("Asking Galley."),
-        fauxToolCall("delegate", { crew: "galley", task: "Plan Tuesday dinner, vegetarian" }),
-      ]),
+      (context) => {
+        captainContext = JSON.stringify(context.messages);
+        return fauxAssistantMessage([
+          fauxText("Asking Galley."),
+          fauxToolCall("delegate", { crew: "galley", task: "Plan Tuesday dinner, vegetarian" }),
+        ]);
+      },
       fauxAssistantMessage("Tuesday: lentil curry."),
       fauxAssistantMessage("Galley suggests lentil curry."),
     ]);
     ws.send(JSON.stringify({ type: "send", conversationId: conv.id, text: "What's for Tuesday?" }));
     await waitIdle();
     ws.terminate();
+
+    // The Captain sees who is aboard, on which model at what price, and to delegate by default.
+    expect(captainContext).toMatch(
+      /galley: Galley, meal planning \(model faux\/m \(crew default\), /,
+    );
+    expect(captainContext).toContain("## Coordinating");
+    expect(captainContext).toContain("Then supervise");
 
     const handoff = events.find((e) => e.type === "handoff");
     expect(handoff).toMatchObject({ from: { slug: "captain" }, to: { slug: "galley" } });

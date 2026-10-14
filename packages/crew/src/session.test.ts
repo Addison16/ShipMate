@@ -33,6 +33,7 @@ describe("createCrewSession", () => {
     const delegated: string[] = [];
     const host: CaptainHost = {
       listCrew: async () => [],
+      listModels: async () => "",
       recruit: async () => {
         throw new Error("unused");
       },

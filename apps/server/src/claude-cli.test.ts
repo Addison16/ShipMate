@@ -535,7 +535,7 @@ describe.skipIf(!db)("claude-code-cli backend through the Bridge", () => {
         [
           "captain",
           expect.stringMatching(
-            /^Wrapped up \(shipmate: .*delegate.*list_crew.*\): Deck swabbed\.$/,
+            /^Wrapped up \(shipmate: .*delegate.*list_crew.*\): Deck swabbed\.\n\n\(Check this against what was asked\./,
           ),
         ],
       ]);
@@ -543,7 +543,7 @@ describe.skipIf(!db)("claude-code-cli backend through the Bridge", () => {
       const args = calls()[before]?.args ?? [];
       expect(args[args.indexOf("--allowedTools") + 1]).toContain("mcp__shipmate");
       expect(args[args.indexOf("--append-system-prompt") + 1]).toMatch(
-        /deckhand: Deckhand, odd jobs[\s\S]*`delegate`/,
+        /deckhand: Deckhand, odd jobs \(model .*, .*\)[\s\S]*`delegate`[\s\S]*supervise/,
       );
       // The turn's token stops working once the turn ends.
       const config = JSON.parse(args[args.indexOf("--mcp-config") + 1] ?? "{}");

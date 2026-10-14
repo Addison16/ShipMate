@@ -8,6 +8,8 @@
  * message; there is no keep-alive of any kind.
  */
 import { type ChildProcess, spawn } from "node:child_process";
+import { realpathSync } from "node:fs";
+import { delimiter, dirname, isAbsolute, join, sep } from "node:path";
 import type { CodexCliSettings } from "@shipmate/core";
 import { type ClaudeCliEvent, childEnv } from "./claude-cli.js";
 
@@ -83,17 +85,47 @@ export interface CodexCliRunOptions {
 /** A TOML string value for `-c key=value` (JSON strings are valid TOML basic strings). */
 const toml = (s: string) => JSON.stringify(s);
 
-/** The command line for one turn. The prompt goes to stdin (`-`), never into argv. */
+/** The permission profile Shipmate gives Codex (see codexCliArgs). */
+export const CODEX_PERMISSION_PROFILE = "shipmate";
+
+/**
+ * The command line for one turn. The prompt goes to stdin (`-`), never into argv.
+ *
+ * Codex's plain `read-only` and `workspace-write` sandboxes still read any file on disk, which
+ * here includes Shipmate's data (other people's chats, files and sign-ins). So those two run
+ * on a permission profile instead: system folders (`:minimal`) and Node's install read-only, and
+ * only the crew member's own folder readable (or writable). `danger-full-access` is as named.
+ */
 export function codexCliArgs(
-  options: Pick<CodexCliRunOptions, "instructions" | "resume" | "model" | "settings" | "mcp">,
+  options: Pick<
+    CodexCliRunOptions,
+    "cwd" | "instructions" | "resume" | "model" | "settings" | "mcp"
+  > & {
+    /** More folders Codex may read, e.g. where the codex binary is installed. */
+    readable?: string[];
+  },
 ): string[] {
-  const args = [
-    "exec",
-    "--json",
-    "--skip-git-repo-check",
-    "--sandbox",
-    options.settings?.sandbox ?? "read-only",
-  ];
+  const args = ["exec", "--json", "--skip-git-repo-check"];
+  const sandbox = options.settings?.sandbox ?? "read-only";
+  if (sandbox === "danger-full-access") args.push("--sandbox", sandbox);
+  else {
+    const folders: Record<string, string> = {
+      ":minimal": "read",
+      // Node (and the codex package installed with it), e.g. /usr/local.
+      [dirname(dirname(process.execPath))]: "read",
+      ...Object.fromEntries((options.readable ?? []).map((dir) => [dir, "read"])),
+      [options.cwd]: sandbox === "workspace-write" ? "write" : "read",
+    };
+    const table = Object.entries(folders)
+      .map(([path, access]) => `${toml(path)}=${toml(access)}`)
+      .join(",");
+    args.push(
+      "-c",
+      `default_permissions=${toml(CODEX_PERMISSION_PROFILE)}`,
+      "-c",
+      `permissions.${CODEX_PERMISSION_PROFILE}.filesystem={${table}}`,
+    );
+  }
   if (options.model) args.push("--model", options.model);
   if (options.instructions) {
     args.push("-c", `developer_instructions=${toml(options.instructions)}`);
@@ -112,6 +144,30 @@ export function codexCliArgs(
   if (options.resume) args.push("resume", options.resume);
   args.push("-");
   return args;
+}
+
+/**
+ * The node_modules folder the codex binary lives in (its native build is a sibling package), or
+ * the binary's own folder; null when it is not found.
+ */
+export function codexInstallDir(bin: string, env: NodeJS.ProcessEnv = process.env): string | null {
+  const candidates = isAbsolute(bin)
+    ? [bin]
+    : (env.PATH ?? "")
+        .split(delimiter)
+        .filter(Boolean)
+        .map((dir) => join(dir, bin));
+  for (const candidate of candidates) {
+    let real: string;
+    try {
+      real = realpathSync(candidate);
+    } catch {
+      continue;
+    }
+    const at = real.lastIndexOf(`${sep}node_modules${sep}`);
+    return at >= 0 ? real.slice(0, at + "/node_modules".length) : dirname(real);
+  }
+  return null;
 }
 
 /** Run one turn. Resolves with the result; rejects only when the CLI cannot be started at all. */
@@ -152,7 +208,9 @@ function runOnce(options: CodexCliRunOptions): Promise<CodexCliResult> {
     try {
       const env = { ...(options.env ?? childEnv()) };
       if (options.mcp) env[CODEX_MCP_TOKEN_ENV] = options.mcp.token;
-      child = spawn(bin, codexCliArgs(options), {
+      // Codex's sandbox starts the codex binary again inside it, so its install must be readable.
+      const readable = [codexInstallDir(bin, env)].filter((d): d is string => !!d);
+      child = spawn(bin, codexCliArgs({ ...options, readable }), {
         cwd: options.cwd,
         env,
         stdio: ["pipe", "pipe", "pipe"],

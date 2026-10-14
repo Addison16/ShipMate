@@ -39,7 +39,9 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   a `codex/<model>` model and how much Codex may do (read only, edit its folder, or anything).
   Shipmate's own tools (memory, lists, the Captain's crew tools) reach it under the usual
   approvals; its own MCP servers and Shipyard projects stay on the other engines. Pictures it
-  makes with Codex's built-in image tool show under its reply.
+  makes with Codex's built-in image tool show under its reply. In read only and edit modes Codex
+  only sees its own folder (plus system folders), not the rest of `/data`. Signed in with an API
+  key instead of ChatGPT, its use counts as API spend and towards caps.
 - **Helper agents (sub agents)**: tick "Let it start helper agents" in a crew member's
   settings (`helpers: true` in crew.yaml). On Shipmate (pi) it gets a `helper` tool that runs
   short-lived copies of itself side by side, with its tools and approvals, up to 8 per message;

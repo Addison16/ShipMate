@@ -33,7 +33,7 @@ const log = (o) => process.env.FAKE_CODEX_LOG && fs.appendFileSync(process.env.F
 if (args[0] === "--version") { console.log("codex-cli 9.9.9"); process.exit(0); }
 if (args[0] === "login") {
   if (process.env.FAKE_CODEX_SIGNED_IN === "0") { console.error("Not logged in"); process.exit(1); }
-  console.error("Logged in using ChatGPT");
+  console.error(process.env.FAKE_CODEX_API_KEY === "1" ? "Logged in using an API key - sk-***" : "Logged in using ChatGPT");
   process.exit(0);
 }
 let prompt = "";
@@ -41,7 +41,7 @@ process.stdin.setEncoding("utf8");
 process.stdin.on("data", (c) => (prompt += c));
 process.stdin.on("end", () => {
   const configs = {};
-  args.forEach((a, i) => { if (a === "-c") { const [k, ...v] = args[i + 1].split("="); configs[k] = JSON.parse(v.join("=")); } });
+  args.forEach((a, i) => { if (a === "-c") { const [k, ...v] = args[i + 1].split("="); const raw = v.join("="); try { configs[k] = JSON.parse(raw); } catch { configs[k] = raw; } } });
   const r = args.indexOf("resume");
   const resume = r >= 0 ? args[r + 1] : undefined;
   log({ args, configs, cwd: process.cwd(), prompt, leaked: Object.keys(process.env).filter((k) => k.startsWith("SHIPMATE_")) });
@@ -159,18 +159,25 @@ describe("codex-cli backend: manifest and runner", () => {
 
   it("builds an exec command line with the prompt on stdin", () => {
     const args = codexCliArgs({
+      cwd: "/data/crew/coder/cli-workspace",
       model: "gpt-6.1-sol",
       instructions: 'Be "brief".\nThanks',
       mcp: { url: "http://127.0.0.1:3000/api/cli-mcp", token: "secret-token" },
       resume: "thread-1",
     });
-    expect(args.slice(0, 5)).toEqual([
-      "exec",
-      "--json",
-      "--skip-git-repo-check",
-      "--sandbox",
-      "read-only",
-    ]);
+    expect(args.slice(0, 3)).toEqual(["exec", "--json", "--skip-git-repo-check"]);
+    // Not Codex's plain read-only sandbox, which can read all of /data: only its own folder.
+    expect(args).not.toContain("--sandbox");
+    expect(args).toContain('default_permissions="shipmate"');
+    const profile = args.find((a) => a.startsWith("permissions.shipmate.filesystem="));
+    expect(profile).toContain('":minimal"="read"');
+    expect(profile).toContain('"/data/crew/coder/cli-workspace"="read"');
+    expect(profile).not.toContain('"/data"');
+    const write = codexCliArgs({ cwd: "/w", settings: { sandbox: "workspace-write" } });
+    expect(write.find((a) => a.startsWith("permissions."))).toContain('"/w"="write"');
+    const full = codexCliArgs({ cwd: "/w", settings: { sandbox: "danger-full-access" } });
+    expect(full.slice(3, 5)).toEqual(["--sandbox", "danger-full-access"]);
+    expect(full.join(" ")).not.toContain("permissions.");
     expect(args[args.indexOf("--model") + 1]).toBe("gpt-6.1-sol");
     expect(args).toContain('developer_instructions="Be \\"brief\\".\\nThanks"');
     // The token itself never goes on the command line.
@@ -376,9 +383,26 @@ describe.skipIf(!db)("codex-cli backend through the Bridge", () => {
     expect(call?.leaked).toEqual([]);
     const args = call?.args ?? [];
     expect(args[args.indexOf("--model") + 1]).toBe("gpt-6.1-sol");
-    expect(args[args.indexOf("--sandbox") + 1]).toBe("workspace-write");
+    expect(args.find((a) => a.startsWith("permissions.shipmate."))).toMatch(
+      /cli-workspace"="write"/,
+    );
     expect(call?.configs.developer_instructions).toContain("You write code.");
     expect(args).not.toContain("resume");
+  });
+
+  it("bills a Codex run signed in with an API key as API spend", async () => {
+    process.env.FAKE_CODEX_API_KEY = "1";
+    try {
+      const conv = (
+        await api("POST", "/api/conversations", { kind: "direct", crewSlug: "coder" })
+      ).json().conversation;
+      await turn(conv.id, "fix the bug");
+      const [usage] = await sql`select * from usage_events where conversation_id = ${conv.id}`;
+      expect(usage).toMatchObject({ model: "codex/gpt-6.1-sol", billing: "api" });
+      expect(Number(usage?.cost_micro_usd)).toBeGreaterThan(0);
+    } finally {
+      delete process.env.FAKE_CODEX_API_KEY;
+    }
   });
 
   it("resumes the Codex thread on the next message", async () => {

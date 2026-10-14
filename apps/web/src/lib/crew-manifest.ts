@@ -237,7 +237,7 @@ export const CODEX_SANDBOXES: ReadonlyArray<{ id: CodexSandbox; label: string; h
   {
     id: "danger-full-access",
     label: "Anything",
-    hint: "Runs any command without a sandbox, inside the Shipmate container.",
+    hint: "Runs any command with no sandbox. It can read all of Shipmate's data, including other people's chats.",
   },
 ];
 

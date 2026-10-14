@@ -6,6 +6,7 @@ import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { CODEX_PROVIDER } from "@shipmate/core";
 import {
   type CodexCliEvent,
+  codexCliStatus,
   codexHome,
   MemoryStore,
   runCodexCli,
@@ -17,6 +18,7 @@ import { HttpError } from "./auth.js";
 import { CLI_WORKDIR, type CliTurnInput, shipmateToolName } from "./claude-cli-turn.js";
 import { CLI_MCP_SERVER } from "./cli-mcp.js";
 import { planModelIds } from "./services/chatgpt.js";
+import type { Billing } from "./services/usage.js";
 import { summarize } from "./summarize.js";
 
 /** Key under conversations.session_files that holds a crew member's Codex thread id. */
@@ -181,6 +183,10 @@ export class CodexCliTurns {
     const since = Date.now() - 1000;
     try {
       const startedAt = performance.now();
+      // A ChatGPT sign-in runs on the plan; an API key is billed per token like any API call.
+      const billing = codexCliStatus()
+        .then((s): Billing => (s.authMethod === "chatgpt" ? "subscription" : "api"))
+        .catch((): Billing => "api");
       const result = await runCodexCli({
         cwd,
         prompt: input.prompt,
@@ -215,6 +221,7 @@ export class CodexCliTurns {
           },
           // One Codex run can make several model calls; its wall time is the closest measure.
           performance.now() - startedAt,
+          await billing,
         );
       }
       if (!result.aborted && result.isError) {

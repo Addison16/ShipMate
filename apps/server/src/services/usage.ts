@@ -70,7 +70,12 @@ export function callCost(
   billing: Billing = defaultBilling(model),
 ): { billing: Billing; costMicroUsd: number; apiEquivalentMicroUsd: number } {
   if (billing === "api") {
-    return { billing, costMicroUsd: costMicroUsd(model, usage), apiEquivalentMicroUsd: 0 };
+    // Codex signed in with an API key: its models carry no prices of their own.
+    return {
+      billing,
+      costMicroUsd: costMicroUsd(apiPriced(model), usage),
+      apiEquivalentMicroUsd: 0,
+    };
   }
   return { billing, costMicroUsd: 0, apiEquivalentMicroUsd: costMicroUsd(apiPriced(model), usage) };
 }

@@ -1,3 +1,4 @@
+import { basename, join } from "node:path";
 import type { McpServerConfig } from "@earendil-works/pi-coding-agent";
 import type { CreateCustomMcpRequest, McpGoogleDto, McpServerDto } from "@shipmate/core";
 import type { CrewFolder } from "@shipmate/crew";
@@ -184,6 +185,10 @@ export class McpService {
         skipped.push(`${id} (needs ${entry.secrets.map((s) => s.label).join(", ")})`);
         continue;
       }
+      if (entry.needsOneSecret && !Object.keys(env).length) {
+        skipped.push(`${id} (needs ${entry.secrets.map((s) => s.label).join(" or ")})`);
+        continue;
+      }
       if (entry.oauth === "google") {
         const signedIn = await this.google?.serverEnv(await this.googleClient());
         if (!signedIn) {
@@ -233,9 +238,11 @@ export class McpService {
       url: e.url ?? null,
       installed: isInstalled,
       secrets: secretDtos,
+      needsOneSecret: e.needsOneSecret,
       ready:
         isInstalled &&
         secretDtos.every((s) => s.set || !s.required) &&
+        (!e.needsOneSecret || secretDtos.some((s) => s.set)) &&
         (e.oauth !== "google" || Boolean(google?.signedIn && !google.stale)),
       crews: folders.filter((f) => f.manifest.mcp.includes(e.id)).map((f) => f.slug),
       tags: e.tags,
@@ -260,6 +267,21 @@ export class McpService {
 
 const tierOrder = { core: 0, catalog: 1, custom: 2 } as const;
 
+/**
+ * The browser server's extra arguments: the Chromium the image ships (docker/Dockerfile sets
+ * SHIPMATE_BROWSER_PATH; elsewhere Playwright uses its own download), and a profile per crew
+ * member under the data folder, so sites people signed in to stay signed in after an update.
+ * The profile sits outside the crew folder, which crew bundles export.
+ */
+export function browserArgs(crewDir: string, env: NodeJS.ProcessEnv = process.env): string[] {
+  const out: string[] = [];
+  const browser = env.SHIPMATE_BROWSER_PATH?.trim();
+  if (browser) out.push("--executable-path", browser);
+  const data = env.SHIPMATE_DATA_DIR?.trim();
+  if (data) out.push("--user-data-dir", join(data, "browser", basename(crewDir)));
+  return out;
+}
+
 export function toConfig(
   entry: CatalogEntry,
   env: Record<string, string>,
@@ -276,7 +298,8 @@ export function toConfig(
     };
   }
   // The filesystem server only sees the crew member's own folder.
-  const args = entry.id === "filesystem" ? [...entry.args, crewDir] : entry.args;
+  const args = entry.id === "filesystem" ? [...entry.args, crewDir] : [...entry.args];
+  if (entry.id === "browser") args.push(...browserArgs(crewDir));
   return {
     command: entry.command ?? "npx",
     args,

@@ -13,6 +13,7 @@ import {
   DEFAULT_MODEL,
   type LiveItemDto,
   type LiveToolDto,
+  type McpServerDto,
   type MessageDto,
   SEARCH_MARK,
   type ServerEvent,
@@ -797,18 +798,38 @@ export class Bridge {
     const host: CaptainHost = {
       listCrew: () => this.#pricedRoster(user),
       listModels: () => this.#listModels(user),
-      recruit: (spec) => this.#recruit(user, spec),
+      recruit: async (spec) => {
+        if (spec.model) await this.#checkModel(spec.model);
+        return this.#recruit(user, spec);
+      },
       edit: async (target, spec) => {
         const { persona, cli, ...changes } = spec;
         const clean: Partial<CrewManifest> = Object.fromEntries(
           Object.entries(changes).filter(([, v]) => v !== undefined),
         );
-        if (cli) {
-          const now = this.deps.crew.folder(target).manifest.cli;
+        const now = this.deps.crew.folder(target).manifest;
+        // `model` is the one place a crew member's model lives: a Claude Code model given as
+        // cliModel becomes `claude-code/<model>`, and cli.model is cleared so the two can't disagree.
+        if (cli?.model) clean.model ??= `claude-code/${cli.model}`;
+        if (clean.model !== undefined) {
+          await this.#checkModel(clean.model);
+          const provider = splitModelRef(clean.model)?.provider;
+          if (!clean.backend && provider === "claude-code") clean.backend = "claude-code-cli";
+          if (
+            !clean.backend &&
+            now.backend === "claude-code-cli" &&
+            provider &&
+            provider !== "claude-code" &&
+            provider !== "anthropic"
+          ) {
+            clean.backend = "pi";
+          }
+        }
+        if (cli || (clean.model !== undefined && now.cli?.model)) {
           clean.cli = ClaudeCliSettings.parse({
-            ...now,
-            ...Object.fromEntries(Object.entries(cli).filter(([, v]) => v !== undefined)),
-            ...(cli.model === "" ? { model: undefined } : {}),
+            ...now.cli,
+            ...Object.fromEntries(Object.entries(cli ?? {}).filter(([, v]) => v !== undefined)),
+            ...(clean.model !== undefined || cli?.model === "" ? { model: undefined } : {}),
           });
         }
         const d = await this.deps.crew.patch(target, clean, persona);
@@ -818,7 +839,12 @@ export class Bridge {
         if (!(await this.#roster(user)).some((c) => c.slug === target)) {
           throw new Error(`no crew member "${target}"; check list_crew`);
         }
-        return (await this.deps.crew.detail(target)).manifestYaml;
+        const yaml = (await this.deps.crew.detail(target)).manifestYaml;
+        const m = this.deps.crew.folder(target).manifest;
+        // An empty list reads like "none" but means every built-in tool.
+        return m.tools.length
+          ? yaml
+          : `${yaml.trimEnd()}\n\n(tools: [] means all built-in tools: read, write, edit, bash and the rest. It is not "none".)`;
       },
       listPeople: () => this.#people().list(user),
       updatePerson: (person, changes) => this.#people().update(user, person, changes),
@@ -853,6 +879,7 @@ export class Bridge {
         return { id: w.id, name: w.name };
       },
       equip: (target, grant) => this.#equip(user, target, grant),
+      listMcpCatalog: async () => mcpCatalogList(await this.deps.mcp.list()),
       installMcp: async (id, crews) => {
         const server = await this.deps.mcp.install(id);
         if (crews.length) await this.deps.mcp.assign(id, [...new Set([...server.crews, ...crews])]);
@@ -878,6 +905,20 @@ export class Bridge {
           // Only the Captain's main session can delegate, so options carry no consult here. The
           // person's photos stay with the Captain; it describes what the delegate needs.
           return await this.#turn(user, conv, run, target, task, withoutImages(options));
+        } catch (err) {
+          // A long task that dies partway (a dropped connection, a provider timeout) still did
+          // work; hand the Captain what there is rather than nothing.
+          const partial = (err as { partial?: unknown }).partial;
+          if (run.aborted || typeof partial !== "string" || !partial) throw err;
+          return [
+            `${to.manifest.name} stopped before finishing: ${(err as Error).message}`,
+            "",
+            "What they had so far:",
+            "",
+            partial,
+            "",
+            "Check what is already done, then delegate the rest again with notes on where to pick up.",
+          ].join("\n");
         } finally {
           stream = this.#openStream(user.id, conv.id, crew);
         }
@@ -1156,9 +1197,12 @@ export class Bridge {
           record: (...args) => this.#recordUsage(run, ...args),
           ...(grant ? { mcpConfig: grant.mcpConfig } : {}),
           ...(grant?.settingsJson ? { settingsJson: grant.settingsJson } : {}),
+          ...(grant ? { mcpServers: Object.keys(mcp.servers) } : {}),
           context,
           oneOff: options.consultFor !== undefined,
         });
+      } catch (err) {
+        throw withPartial(err, stream.text);
       } finally {
         grant?.revoke();
         await this.#closeStream(conv, crewRow.id, stream);
@@ -1238,6 +1282,8 @@ export class Bridge {
       await session.prompt(prompt, images);
       const failure = lastError(session);
       if (failure && !run.aborted) throw new Error(failure);
+    } catch (err) {
+      throw withPartial(err, stream.text || final);
     } finally {
       unsubscribe();
       if (restore) await session.session.setModel(restore).catch(() => {});
@@ -1439,6 +1485,7 @@ export class Bridge {
       delegate: (slug, task, signal) => current().captain.delegate(slug, task, signal),
       createWatch: (spec) => current().captain.createWatch(spec),
       installMcp: (id, crews) => current().captain.installMcp(id, crews),
+      listMcpCatalog: () => current().captain.listMcpCatalog(),
       equip: (slug, grant) => current().captain.equip(slug, grant),
       crewSettings: (slug) => current().captain.crewSettings(slug),
       listPeople: () => current().captain.listPeople(),
@@ -1462,7 +1509,14 @@ export class Bridge {
     };
     const skills = this.deps.skills;
     const { servers, skipped } = await this.deps.mcp.serversFor(folder);
-    const model = await this.#model(folder);
+    const { model, missing } = await this.#model(folder);
+    if (missing && !helperId) {
+      // Say so instead of quietly answering on another model (a plan that rejects it, say).
+      await this.#note(
+        conv,
+        `${folder.manifest.name}'s model ${missing} isn't set up, so ${model.name} (${model.provider}/${model.id}) answers instead. Pick another model on their Settings tab, or ask the Captain.`,
+      );
+    }
     if (conv.projectId && !this.#workspaces) {
       throw new HttpError(503, "the Shipyard is not available on this instance");
     }
@@ -1615,8 +1669,11 @@ export class Bridge {
     this.emit(conv.userId, { type: "message", conversationId: conv.id, message });
   }
 
-  /** The crew member's model, or the instance default when it has no credentials yet. */
-  async #model(folder: CrewFolder): Promise<Model<Api>> {
+  /**
+   * The crew member's model, or the instance default when it has no credentials yet. `missing`
+   * names the model it asked for when another one stands in.
+   */
+  async #model(folder: CrewFolder): Promise<{ model: Model<Api>; missing?: string }> {
     const available = await this.deps.providers.available();
     const find = (ref: string) => {
       const r = splitModelRef(ref);
@@ -1629,19 +1686,18 @@ export class Bridge {
       return provider ? available.find((m) => m.provider === provider) : undefined;
     };
     const { defaultModel } = await this.deps.settings.get();
+    const wanted = folder.manifest.model === DEFAULT_MODEL ? defaultModel : folder.manifest.model;
+    const exact = find(wanted);
+    if (exact) return { model: exact };
     const model =
-      find(folder.manifest.model) ??
-      sameProvider(folder.manifest.model) ??
-      find(defaultModel) ??
-      sameProvider(defaultModel) ??
-      available[0];
+      sameProvider(wanted) ?? find(defaultModel) ?? sameProvider(defaultModel) ?? available[0];
     if (!model) {
       throw new HttpError(
         503,
         "No model provider is set up yet. An owner can add one on the Providers page.",
       );
     }
-    return model;
+    return wanted ? { model, missing: wanted } : { model };
   }
 
   async #context(
@@ -1845,10 +1901,34 @@ export class Bridge {
     }
     const m = folder.manifest;
     if (m.backend === "claude-code-cli") {
-      const id = m.cli?.model ?? cliModelFromRef(m.model);
+      const id = cliModelFromRef(m.model) ?? m.cli?.model;
       return id ? `claude-code/${id}` : "claude-code/default";
     }
     return m.model === DEFAULT_MODEL ? defaultModel : m.model;
+  }
+
+  /**
+   * Refuse a model Shipmate can't run, naming the ones it can, so a typo or a made-up name
+   * doesn't quietly fall back to another model at the next message.
+   */
+  async #checkModel(ref: string) {
+    if (ref === DEFAULT_MODEL) return;
+    const r = splitModelRef(ref);
+    if (r?.provider === "claude-code" && ClaudeCliSettings.shape.model.safeParse(r.id).success) {
+      return;
+    }
+    const available = await this.deps.providers.available();
+    if (r && available.some((m) => m.provider === r.provider && m.id === r.id)) return;
+    const some = available.slice(0, 12).map((m) => `${m.provider}/${m.id}`);
+    throw new Error(
+      [
+        `"${ref}" is not a model Shipmate can run.`,
+        'Models are written provider/model-id, or "default" for the crew default.',
+        some.length
+          ? `Some that work: ${some.join(", ")}, claude-code/sonnet (Claude subscription). list_models shows them all with prices.`
+          : "No model provider is set up yet; an owner adds one on the Providers page.",
+      ].join(" "),
+    );
   }
 
   /** list_models: what crew can run on, cheapest first. */
@@ -1863,10 +1943,16 @@ export class Bridge {
       settings.defaultModel,
       ...crew.map((c) => this.#effectiveModel(c.slug, settings.defaultModel)),
     ];
-    return modelList(
+    const list = modelList(
       available,
       refs.some((r) => r.startsWith("claude-code/")),
     );
+    return [
+      `Crew default (Settings, used by crew on model "default"): ${settings.defaultModel || "not set"}`,
+      'Give crew a model as provider/model-id from this list, or "default".',
+      "",
+      list,
+    ].join("\n");
   }
 
   /**
@@ -1984,6 +2070,32 @@ export class Bridge {
     for (const s of run.sessions.values()) s.dispose();
     this.#runs.delete(conversationId);
   }
+}
+
+/** Keep what a crew member wrote before its turn failed on the error, for the Captain. */
+function withPartial(err: unknown, text: string): unknown {
+  const partial = text.trim();
+  if (!partial || !(err instanceof Error)) return err;
+  return Object.assign(err, { partial });
+}
+
+/** list_mcp_catalog: one line per server, so the Captain uses real ids instead of guessing. */
+export function mcpCatalogList(servers: McpServerDto[]): string {
+  if (!servers.length) return "MCP servers are turned off on this instance.";
+  return servers
+    .map((s) => {
+      const missing = s.secrets.filter((x) => !x.set && (x.required || s.needsOneSecret));
+      const status = !s.installed
+        ? "not installed"
+        : s.ready
+          ? "ready"
+          : s.google
+            ? "needs Sign in with Google on the MCP page"
+            : `needs ${missing.map((x) => x.label).join(s.needsOneSecret ? " or " : ", ")} on the MCP page`;
+      const who = s.crews.length ? `; used by ${s.crews.join(", ")}` : "";
+      return `- ${s.id}: ${s.name}. ${s.description} (${status}${who})`;
+    })
+    .join("\n");
 }
 
 type LiveStream = Omit<Extract<LiveItemDto, { kind: "stream" }>, "tools"> & {

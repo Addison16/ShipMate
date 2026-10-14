@@ -14,13 +14,14 @@ RUN pnpm --filter @shipmate/server --prod deploy --legacy /out/server
 
 FROM base AS runtime
 # git for the Shipyard, python3/pipx for uvx-based MCP servers, docker CLI (no daemon) for sandboxes,
-# and Postgres for installs that don't point DATABASE_URL elsewhere (docker/entrypoint.sh).
+# Chromium for the browser MCP server, and Postgres for installs that don't point DATABASE_URL
+# elsewhere (docker/entrypoint.sh).
 # The bundled Postgres major is pinned: a new major can't open an older one's files.
 ENV PG_MAJOR=17
 RUN mkdir -p /etc/postgresql-common/createcluster.d \
     && echo "create_main_cluster = false" > /etc/postgresql-common/createcluster.d/shipmate.conf \
     && apt-get update && apt-get install -y --no-install-recommends \
-      git ca-certificates curl gnupg python3 pipx \
+      git ca-certificates curl gnupg python3 pipx chromium fonts-liberation \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
     && echo "deb [signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list \
@@ -38,7 +39,8 @@ COPY --from=build /app/packages/cli/dist /app/cli
 # Inside a running container (docker exec) it finds the bundled database by its socket.
 RUN printf '#!/bin/sh\nif [ -z "$DATABASE_URL" ] && [ -S /run/postgresql/.s.PGSQL.5432 ]; then\n  export DATABASE_URL="postgres://shipmate@%%2Frun%%2Fpostgresql/shipmate"\nfi\nexec node /app/cli/index.js "$@"\n' > /usr/local/bin/shipmate && chmod +x /usr/local/bin/shipmate
 COPY templates /app/templates
-ENV NODE_ENV=production PORT=3000 SHIPMATE_DATA_DIR=/data WEB_DIST=/app/web TEMPLATES_DIR=/app/templates CLAUDE_CONFIG_DIR=/data/claude
+ENV NODE_ENV=production PORT=3000 SHIPMATE_DATA_DIR=/data WEB_DIST=/app/web TEMPLATES_DIR=/app/templates CLAUDE_CONFIG_DIR=/data/claude \
+    SHIPMATE_BROWSER_PATH=/usr/bin/chromium
 VOLUME /data
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s CMD curl -fsS http://localhost:3000/healthz || exit 1

@@ -6,6 +6,20 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Fixes from the Captain's own scan**: a crew member whose model isn't set up now gets a note
+  in the chat naming it, instead of quietly answering on another model. The Captain can no
+  longer save a model name that doesn't exist (it is told which ones work), `list_models` shows
+  the crew default, and a crew member's model lives in one place (picking a model drops an old
+  Claude Code model that overrode it). New `list_mcp_catalog` tool, so the Captain stops
+  guessing server ids. Crew on Claude Code can use the MCP servers they are given (each call
+  still goes through approvals). The image now ships Chromium, so the browser server starts,
+  with a profile per crew member kept in `/data/browser`. Web search shows "needs secrets"
+  until it has a SearXNG URL or a Brave key. The Weather, Docker and SQLite servers start again
+  (a new MCP library broke them). Crew shell commands no longer see `NODE_ENV=production`, so
+  `npm install` gets dev packages, nor Shipmate's own secrets. Long hand-offs to Claude Code
+  crew no longer drop after a few minutes, and a hand-off that fails partway gives the Captain
+  what was done so far. `crew_settings` explains that `tools: []` means all built-in tools.
+
 - **Crew pets (optional)**: any crew member can have a little creature that hangs out on the
   message box, dances while that crew member works and hops when the reply lands. Off until you
   make one: tap "Make a pet" on a crew member's Settings tab (or just ask the Captain), answer a

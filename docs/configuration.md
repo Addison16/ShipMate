@@ -85,6 +85,7 @@ can also pick a sandbox host in **Settings → Shipyard sandbox**, which overrid
 | `SHIPMATE_PUSH_HOSTS` | unset | Extra Web Push service hosts to accept, comma-separated, besides the browser makers' own. |
 | `SHIPMATE_CLAUDE_BIN` | `claude` | Path of the Claude Code CLI, for the Claude subscription backend. The image ships it. |
 | `CLAUDE_CONFIG_DIR` | `/data/claude` | Where the Claude Code CLI keeps its sign-in. Set by the image so it survives updates. |
+| `SHIPMATE_BROWSER_PATH` | `/usr/bin/chromium` | The Chromium the browser MCP server drives. The image ships it; outside Docker, leave it unset and Playwright uses its own download. |
 
 ## Updates, backups and offline installs
 
@@ -120,6 +121,7 @@ Shipmate needs one writable folder, `/data`. Map it to a host folder you back up
 | `/data/pi/` | The agent harness's own files: model sign-ins, model lists, MCP logs. |
 | `/data/claude/` | The Claude Code CLI's sign-in. |
 | `/data/mcp/` | Sign-ins MCP servers read, such as Google Workspace's credentials file. |
+| `/data/browser/` | One browser profile per crew member for the browser MCP server, so sites you signed in to stay signed in after an update. |
 | `/data/backups/` | Backups (unless `SHIPMATE_BACKUP_DIR` points elsewhere). |
 | `/data/postgres/` | The built-in database's files (accounts, conversations, settings, encrypted keys), when `DATABASE_URL` is not set. Owned by the container's `postgres` user. Back it up with Shipmate's backups rather than by copying it while Shipmate runs. |
 | `/var/run/docker.sock` | Optional: the Docker socket, for Shipyard sandboxes and one-click updates. Whatever holds it controls Docker on the host. |

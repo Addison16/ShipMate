@@ -51,6 +51,7 @@ describe("createCrewSession", () => {
       createWatch: async () => ({ id: "w", name: "w" }),
       equip: async () => "",
       installMcp: async () => "ok",
+      listMcpCatalog: async () => "",
       crewSettings: async () => "",
       listPeople: async () => "",
       updatePerson: async () => "",

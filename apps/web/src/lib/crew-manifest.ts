@@ -166,7 +166,10 @@ export function applyManifestForm(yaml: string, form: ManifestForm): string {
   scalar("model", form.model, old.model);
   scalar("backend", form.backend, old.backend);
 
-  optional(["cli", "model"], form.cliModel, old.cliModel);
+  // `model` is the one model setting: picking a new one drops an old cli.model that would
+  // otherwise override it on Claude Code.
+  const cliModel = form.model !== old.model && form.cliModel === old.cliModel ? "" : form.cliModel;
+  optional(["cli", "model"], cliModel, old.cliModel);
   if (!same(form.cliAllowedTools, old.cliAllowedTools))
     doc.setIn(["cli", "allowedTools"], doc.createNode(form.cliAllowedTools, { flow: true }));
   if (form.cliPermissionMode !== old.cliPermissionMode)

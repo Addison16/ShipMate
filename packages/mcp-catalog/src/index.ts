@@ -16,6 +16,8 @@ export const CatalogEntry = z.object({
   secrets: z
     .array(z.object({ env: z.string(), label: z.string(), required: z.boolean().default(true) }))
     .default([]),
+  /** None of the secrets is required on its own, but the server needs at least one of them. */
+  needsOneSecret: z.boolean().default(false),
   homepage: z.string().optional(),
   /** Signs in through Shipmate with the owner's own OAuth client (Sign in with Google). */
   oauth: z.enum(["google"]).optional(),

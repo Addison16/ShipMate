@@ -572,6 +572,8 @@ function Thread({
     try {
       const { messages } = await api.listMessages(conversationId);
       dispatch({ type: "loaded", conversationId, messages });
+      // The crew may still be working (they carry on while the page is closed): catch up.
+      socket.send({ type: "watch", conversationId });
     } catch (err) {
       setLoadError(errorMessage(err));
     }
@@ -587,12 +589,14 @@ function Thread({
   useEffect(() => {
     if (socketState === "open") {
       if (dropped.current) void load();
+      // The chat may have loaded before the socket opened; its `watch` was not sent then.
+      else socket.send({ type: "watch", conversationId });
       dropped.current = false;
       seenOpen.current = true;
     } else if (seenOpen.current) {
       dropped.current = true;
     }
-  }, [socketState, load]);
+  }, [socketState, load, conversationId]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll whenever the items change
   useLayoutEffect(() => {

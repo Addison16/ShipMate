@@ -6,6 +6,10 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **The crew keep working when you close the app**: a reply carries on on the server when you
+  close the tab or the phone app, as it always did, and now a chat you open again mid-reply
+  shows everything written so far and the Stop button, then keeps streaming. Coming back to
+  the phone app after a while reconnects at once instead of waiting on a dead connection.
 - **Helper agents (sub agents)**: tick "Let it start helper agents" in a crew member's
   settings (`helpers: true` in crew.yaml). On Shipmate (pi) it gets a `helper` tool that runs
   short-lived copies of itself side by side, with its tools and approvals, up to 8 per message;

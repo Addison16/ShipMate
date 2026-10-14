@@ -282,12 +282,22 @@ export class Bridge {
         break;
       }
       case "stream_end":
-        if (!live) break;
-        // Its saved message follows; a page that opens now loads that instead.
-        live.items = live.items.filter(
-          (it) => it.kind !== "stream" || it.streamId !== event.streamId,
-        );
-        if (!live.items.length && !this.isBusy(id)) this.#live.delete(id);
+        {
+          if (!live) break;
+          const ended = streamOf(event.streamId);
+          // Its saved message follows; a page that opens now loads that instead. The hand-off
+          // line to its writer goes too: a page loads saved messages first and adds live items
+          // after them, so the line would land below the reply it introduced.
+          const handoff = ended
+            ? live.items.findLastIndex(
+                (it) => it.kind === "handoff" && it.to.slug === ended.crew.slug,
+              )
+            : -1;
+          live.items = live.items.filter(
+            (it, i) => i !== handoff && (it.kind !== "stream" || it.streamId !== event.streamId),
+          );
+          if (!live.items.length && !this.isBusy(id)) this.#live.delete(id);
+        }
         break;
       case "handoff":
         live?.items.push({ kind: "handoff", from: event.from, to: event.to, task: event.task });

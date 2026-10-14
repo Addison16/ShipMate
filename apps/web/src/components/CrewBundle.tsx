@@ -192,6 +192,7 @@ export function ImportCrewPage() {
                 <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">
                   {preview.model}
                   {preview.backend === "claude-code-cli" && " · Claude Code CLI"}
+                  {preview.backend === "codex-cli" && " · Codex CLI"}
                 </p>
                 {preview.modelReplaced && (
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">

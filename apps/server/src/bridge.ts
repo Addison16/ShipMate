@@ -6,7 +6,9 @@ import type {
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import {
+  type AttachmentDto,
   ClaudeCliSettings,
+  CODEX_PROVIDER,
   type ConversationDto,
   type ConversationSearchResultDto,
   type CrewManifest,
@@ -50,6 +52,7 @@ import { accessSummary } from "./access-summary.js";
 import { HttpError, type UserRow } from "./auth.js";
 import { ClaudeCliTurns, cliModelFromRef, onCrewDefault } from "./claude-cli-turn.js";
 import { CliToolServer } from "./cli-mcp.js";
+import { CodexCliTurns, codexModels } from "./codex-cli-turn.js";
 import type { EverydayTools } from "./everyday.js";
 import type { AttachmentService } from "./files/service.js";
 import { toDto as toAttachmentDto } from "./files/service.js";
@@ -192,6 +195,8 @@ export class Bridge {
   #pets: PetService | undefined;
   /** Turns of `backend: claude-code-cli` crew members (the official `claude` binary). */
   #cli: ClaudeCliTurns;
+  /** Turns of `backend: codex-cli` crew members (the official `codex` binary). */
+  #codex: CodexCliTurns;
   /** Shipmate's tools for those turns, served over loopback MCP. */
   readonly cliTools = new CliToolServer();
   /** Bumped on every crew change, so idle sessions pick up the new crew list (see send). */
@@ -199,6 +204,7 @@ export class Bridge {
 
   constructor(private readonly deps: BridgeDeps) {
     this.#cli = new ClaudeCliTurns(deps.db);
+    this.#codex = new CodexCliTurns(deps.db);
     deps.crew.onChange(() => {
       this.#crewVersion++;
       this.broadcast({ type: "crew_changed" });
@@ -731,6 +737,7 @@ export class Bridge {
     run.aborted = true;
     this.deps.approvals.cancelConversation(conversationId);
     this.#cli.abort(conversationId);
+    this.#codex.abort(conversationId);
     await Promise.all([...run.sessions.values()].map((s) => s.abort()));
   }
 
@@ -803,6 +810,10 @@ export class Bridge {
         const clean: Partial<CrewManifest> = Object.fromEntries(
           Object.entries(changes).filter(([, v]) => v !== undefined),
         );
+        // A Codex model only runs on the Codex engine.
+        if (clean.model?.startsWith(`${CODEX_PROVIDER}/`) && !clean.backend) {
+          clean.backend = "codex-cli";
+        }
         if (cli) {
           const now = this.deps.crew.folder(target).manifest.cli;
           clean.cli = ClaudeCliSettings.parse({
@@ -1098,21 +1109,25 @@ export class Bridge {
       theme,
     };
 
-    if (folder.manifest.backend === "claude-code-cli") {
+    const backend = folder.manifest.backend;
+    if (backend === "claude-code-cli" || backend === "codex-cli") {
+      const codex = backend === "codex-cli";
       if (options.images?.length) {
         await this.#note(
           conv,
-          `${crew.name} runs on the Claude Code CLI, which Shipmate cannot pass photos to, so ${crew.name} only gets their names. Ask the ${this.deps.crew.captain().manifest.name} on the Bridge to look at them instead.`,
+          `${crew.name} runs on ${codex ? "Codex" : "the Claude Code CLI"}, which Shipmate cannot pass photos to, so ${crew.name} only gets their names. Ask the ${this.deps.crew.captain().manifest.name} on the Bridge to look at them instead.`,
         );
         prompt = `${prompt}\n\n(${user.displayName} attached photos you cannot see: ${(options.imageNames ?? []).join(", ")}.)`;
       }
       const isCaptain = folder.manifest.captain && conv.kind === "bridge" && !options.consultFor;
       // A consult is a one-off answer without tools, like the pi Captain's consult session.
       const allowed = new Set(folder.manifest.allow);
-      // The crew member's installed MCP servers run inside the CLI, behind the same approvals.
-      const mcp = options.consultFor
-        ? { servers: {}, skipped: [] }
-        : await this.deps.mcp.serversFor(folder);
+      // The crew member's installed MCP servers run inside Claude Code, behind the same
+      // approvals. Codex has no hook to ask Shipmate first, so it gets only Shipmate's tools.
+      const mcp =
+        options.consultFor || codex
+          ? { servers: {}, skipped: [] as string[] }
+          : await this.deps.mcp.serversFor(folder);
       const grant = options.consultFor
         ? undefined
         : this.cliTools.open(
@@ -1138,20 +1153,48 @@ export class Bridge {
             ...(mcp.skipped.length
               ? [`MCP servers not started (missing setup): ${mcp.skipped.join(", ")}.`]
               : []),
+            ...(codex && folder.manifest.mcp.length
+              ? [
+                  `Its MCP servers (${folder.manifest.mcp.join(", ")}) are not available on Codex; switch to the Shipmate or Claude Code engine to use them.`,
+                ]
+              : []),
           ];
+      const usage = {
+        userId: user.id,
+        crewMemberId: crewRow.id,
+        conversationId: conv.id,
+        routineId: options.watchId ?? null,
+      };
       try {
+        if (codex) {
+          return await this.#codex.turn({
+            user,
+            conv,
+            folder,
+            prompt,
+            stream: () => stream,
+            usage,
+            emit: (event) => this.emit(user.id, event),
+            record: (...args) => this.#recordUsage(run, ...args),
+            ...(grant ? { mcp: grant.http } : {}),
+            addImage: async (file) => {
+              const dto = await this.deps.files.upload(user.id, conv.id, {
+                ...file,
+                type: "",
+              });
+              if (dto.kind === "image") stream.files.push(dto);
+            },
+            context,
+            oneOff: options.consultFor !== undefined,
+          });
+        }
         return await this.#cli.turn({
           user,
           conv,
           folder,
           prompt,
           stream: () => stream,
-          usage: {
-            userId: user.id,
-            crewMemberId: crewRow.id,
-            conversationId: conv.id,
-            routineId: options.watchId ?? null,
-          },
+          usage,
           emit: (event) => this.emit(user.id, event),
           record: (...args) => this.#recordUsage(run, ...args),
           ...(grant ? { mcpConfig: grant.mcpConfig } : {}),
@@ -1382,7 +1425,15 @@ export class Bridge {
   }
 
   #openStream(userId: string, conversationId: string, crew: { slug: string; name: string }) {
-    const stream: Stream = { id: randomUUID(), userId, crew, text: "", tools: [], closed: false };
+    const stream: Stream = {
+      id: randomUUID(),
+      userId,
+      crew,
+      text: "",
+      tools: [],
+      files: [],
+      closed: false,
+    };
     this.emit(userId, { type: "stream_start", conversationId, streamId: stream.id, crew });
     return stream;
   }
@@ -1392,15 +1443,23 @@ export class Bridge {
     stream.closed = true;
     this.emit(stream.userId, { type: "stream_end", conversationId: conv.id, streamId: stream.id });
     const content = stream.text.trim();
-    if (!content) return;
+    if (!content && !stream.files.length) return;
+    const meta = {
+      ...(stream.tools.length ? { tools: stream.tools } : {}),
+      ...(stream.files.length ? { attachments: stream.files } : {}),
+    };
     const message = await this.#store(conv, {
       role: "assistant",
       content,
       crewMemberId,
       authorName: stream.crew.name,
       crewSlug: stream.crew.slug,
-      meta: stream.tools.length ? { tools: stream.tools } : null,
+      meta: Object.keys(meta).length ? meta : null,
     });
+    await this.deps.files.attach(
+      stream.files.map((f) => f.id),
+      message.id,
+    );
     this.emit(stream.userId, { type: "message", conversationId: conv.id, message });
   }
 
@@ -1834,7 +1893,8 @@ export class Bridge {
 
   /**
    * The model a crew member's turns actually use: the crew default for `default`, and for crew on
-   * the Claude Code CLI the subscription model it passes as --model (`claude-code/<model>`).
+   * the Claude Code or Codex CLI the model it passes as --model (`claude-code/<model>`,
+   * `codex/<model>`).
    */
   #effectiveModel(slug: string, defaultModel: string): string {
     let folder: CrewFolder;
@@ -1847,6 +1907,9 @@ export class Bridge {
     if (m.backend === "claude-code-cli") {
       const id = m.cli?.model ?? cliModelFromRef(m.model);
       return id ? `claude-code/${id}` : "claude-code/default";
+    }
+    if (m.backend === "codex-cli") {
+      return m.model.startsWith(`${CODEX_PROVIDER}/`) ? m.model : `${CODEX_PROVIDER}/default`;
     }
     return m.model === DEFAULT_MODEL ? defaultModel : m.model;
   }
@@ -1866,6 +1929,7 @@ export class Bridge {
     return modelList(
       available,
       refs.some((r) => r.startsWith("claude-code/")),
+      refs.some((r) => r.startsWith(`${CODEX_PROVIDER}/`)) ? codexModels() : [],
     );
   }
 
@@ -1979,6 +2043,7 @@ export class Bridge {
     const run = this.#runs.get(conversationId);
     if (!run) return;
     this.#cli.abort(conversationId);
+    this.#codex.abort(conversationId);
     clearTimeout(run.idleTimer);
     this.#live.delete(conversationId);
     for (const s of run.sessions.values()) s.dispose();
@@ -2002,6 +2067,8 @@ interface Stream {
   crew: { slug: string; name: string };
   text: string;
   tools: string[];
+  /** Pictures shown on the reply (Codex's image tool). */
+  files: AttachmentDto[];
   closed: boolean;
 }
 

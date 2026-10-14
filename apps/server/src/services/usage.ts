@@ -32,13 +32,13 @@ export function costMicroUsd(model: Model<Api>, usage: Usage): number {
 /**
  * How a call was paid for. "api": billed per token (an API key, or a free local model).
  * "subscription": covered by a flat plan the person already pays for (Claude through the Claude
- * Code CLI, ChatGPT through Sign in with ChatGPT), so it is not spend and does not count
+ * Code CLI, ChatGPT through Sign in with ChatGPT or Codex), so it is not spend and does not count
  * towards caps; its API-price estimate is kept apart.
  */
 export type Billing = "api" | "subscription";
 
 /** Providers whose calls run on someone's plan rather than an API key. */
-const SUBSCRIPTION_PROVIDERS = new Set(["claude-code", "chatgpt"]);
+const SUBSCRIPTION_PROVIDERS = new Set(["claude-code", "chatgpt", "codex"]);
 
 export const defaultBilling = (model: Pick<Model<Api>, "provider">): Billing =>
   SUBSCRIPTION_PROVIDERS.has(model.provider) ? "subscription" : "api";
@@ -50,7 +50,7 @@ let openaiPrices: Map<string, Model<Api>> | undefined;
  * registered at zero cost, so look the id up in pi's OpenAI catalog. Others keep their own table.
  */
 function apiPriced(model: Model<Api>): Model<Api> {
-  if (model.provider !== "chatgpt") return model;
+  if (model.provider !== "chatgpt" && model.provider !== "codex") return model;
   openaiPrices ??= new Map(
     openaiProvider()
       .getModels()

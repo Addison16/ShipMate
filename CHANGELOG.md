@@ -33,6 +33,13 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   with exact questions and an example to copy, and `save_theme` fixes sloppy input instead of
   refusing it (color names, missing fields, a logo wrapped in code fences) and says what it
   changed.
+- **Codex engine**: a third Engine choice, Codex (your ChatGPT plan). Shipmate runs the
+  official, unmodified `codex` CLI (included in the image) for that crew member, signed in once
+  with `docker exec -it shipmate codex login --device-auth`; Shipmate never sees the login. Pick
+  a `codex/<model>` model and how much Codex may do (read only, edit its folder, or anything).
+  Shipmate's own tools (memory, lists, the Captain's crew tools) reach it under the usual
+  approvals; its own MCP servers and Shipyard projects stay on the other engines. Pictures it
+  makes with Codex's built-in image tool show under its reply.
 - **Helper agents (sub agents)**: tick "Let it start helper agents" in a crew member's
   settings (`helpers: true` in crew.yaml). On Shipmate (pi) it gets a `helper` tool that runs
   short-lived copies of itself side by side, with its tools and approvals, up to 8 per message;

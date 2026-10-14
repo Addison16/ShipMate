@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { DEFAULT_MODEL, type ServerEvent, SHIPMATE_VERSION } from "@shipmate/core";
-import { claudeCliStatus } from "@shipmate/crew";
+import { CODEX_PROVIDER, DEFAULT_MODEL, type ServerEvent, SHIPMATE_VERSION } from "@shipmate/core";
+import { claudeCliStatus, codexCliStatus } from "@shipmate/crew";
 import type { Db } from "@shipmate/db";
 import { SecretVault } from "@shipmate/providers";
 import { SessionStore } from "./auth.js";
@@ -249,6 +249,19 @@ export async function createServices(
           );
         if (!used) return { used, installed: false, signedIn: false };
         const s = await claudeCliStatus();
+        return { used, installed: s.installed, signedIn: s.signedIn };
+      },
+      codexCli: async () => {
+        const onDefault = (await settings.get()).defaultModel.startsWith(`${CODEX_PROVIDER}/`);
+        const used = crew.registry
+          .list()
+          .some(
+            (f) =>
+              f.manifest.backend === "codex-cli" ||
+              (onDefault && f.manifest.model === DEFAULT_MODEL),
+          );
+        if (!used) return { used, installed: false, signedIn: false };
+        const s = await codexCliStatus();
         return { used, installed: s.installed, signedIn: s.signedIn };
       },
       bridges: [

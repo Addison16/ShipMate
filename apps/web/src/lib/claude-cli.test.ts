@@ -6,6 +6,7 @@ describe("claude-cli helpers", () => {
     expect(readBackend("name: A\nmodel: faux/m\n")).toBe("pi");
     expect(readBackend("name: A\nbackend: claude-code-cli\n")).toBe("claude-code-cli");
     expect(readBackend('backend: "claude-code-cli" # sub\n')).toBe("claude-code-cli");
+    expect(readBackend("name: A\nbackend: codex-cli\n")).toBe("codex-cli");
   });
   it("sets the backend without touching other lines", () => {
     expect(withBackend("name: A\nmodel: faux/m\ntools: []\n", "claude-code-cli")).toBe(

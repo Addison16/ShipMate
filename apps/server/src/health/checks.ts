@@ -7,6 +7,7 @@ import type {
   HealthStatus,
   ShipyardStatusDto,
 } from "@shipmate/core";
+import { CODEX_SIGN_IN_COMMAND } from "@shipmate/crew";
 import { buildMigrationLevel, type Db, databaseMigrationLevel } from "@shipmate/db";
 import { type ProviderRecord, probeModels, SELF_HOSTED_KINDS } from "@shipmate/providers";
 
@@ -30,6 +31,8 @@ export interface HealthDeps {
   chatgpt: () => Promise<ChatGptStatusDto>;
   /** Crew backends in use, to decide whether the Claude Code CLI matters. */
   claudeCli: () => Promise<{ used: boolean; installed: boolean; signedIn: boolean }>;
+  /** The Codex CLI, checked only when a crew member runs on it. Optional for older callers. */
+  codexCli?: () => Promise<{ used: boolean; installed: boolean; signedIn: boolean }>;
   bridges: Array<{
     id: string;
     name: string;
@@ -293,7 +296,12 @@ async function database(d: HealthDeps): Promise<Check[]> {
 
 async function providers(d: HealthDeps): Promise<Check[]> {
   const G = "Models";
-  const [records, chatgpt, cli] = await Promise.all([d.providers(), d.chatgpt(), d.claudeCli()]);
+  const [records, chatgpt, cli, codex] = await Promise.all([
+    d.providers(),
+    d.chatgpt(),
+    d.claudeCli(),
+    d.codexCli?.() ?? { used: false, installed: false, signedIn: false },
+  ]);
   const out = await Promise.all(
     records.map(async (r): Promise<Check> => {
       const id = `provider:${r.id}`;
@@ -378,6 +386,22 @@ async function providers(d: HealthDeps): Promise<Check[]> {
             ? "Installed and signed in"
             : "Not signed in",
         "Crew use the Claude Code CLI backend. Sign in with `docker exec -it shipmate claude`.",
+      ),
+    );
+  }
+  if (codex.used) {
+    out.push(
+      check(
+        "provider:codex-cli",
+        G,
+        "Codex CLI",
+        codex.installed && codex.signedIn ? "ok" : codex.installed ? "warn" : "fail",
+        !codex.installed
+          ? "Not installed"
+          : codex.signedIn
+            ? "Installed and signed in"
+            : "Not signed in",
+        `Crew use the Codex engine. Sign in with \`${CODEX_SIGN_IN_COMMAND}\`.`,
       ),
     );
   }

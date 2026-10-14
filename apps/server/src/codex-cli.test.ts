@@ -1,0 +1,472 @@
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { CrewManifest, type ServerEvent } from "@shipmate/core";
+import { codexCliArgs, codexCliStatus, runCodexCli } from "@shipmate/crew";
+import postgres from "postgres";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { onCrewDefault } from "./claude-cli-turn.js";
+import { codexModelFromRef, codexModels, newCodexImages } from "./codex-cli-turn.js";
+import { planModelIds } from "./services/chatgpt.js";
+import { callCost } from "./services/usage.js";
+import { TEST_DATABASE_URL, testApp } from "./testing.js";
+
+const db = TEST_DATABASE_URL;
+
+/**
+ * A stand-in for the `codex` binary: prints JSONL like `codex exec --json` (event shapes copied
+ * from codex-cli 0.162), logs each call to $FAKE_CODEX_LOG. Prompts containing "fail" end in a
+ * failed turn; "route <slug> <task>" calls Shipmate's delegate tool over its MCP server.
+ */
+const FAKE_CODEX = `#!/usr/bin/env node
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+const log = (o) => process.env.FAKE_CODEX_LOG && fs.appendFileSync(process.env.FAKE_CODEX_LOG, JSON.stringify(o) + "\\n");
+if (args[0] === "--version") { console.log("codex-cli 9.9.9"); process.exit(0); }
+if (args[0] === "login") {
+  if (process.env.FAKE_CODEX_SIGNED_IN === "0") { console.error("Not logged in"); process.exit(1); }
+  console.error("Logged in using ChatGPT");
+  process.exit(0);
+}
+let prompt = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (c) => (prompt += c));
+process.stdin.on("end", () => {
+  const configs = {};
+  args.forEach((a, i) => { if (a === "-c") { const [k, ...v] = args[i + 1].split("="); configs[k] = JSON.parse(v.join("=")); } });
+  const r = args.indexOf("resume");
+  const resume = r >= 0 ? args[r + 1] : undefined;
+  log({ args, configs, cwd: process.cwd(), prompt, leaked: Object.keys(process.env).filter((k) => k.startsWith("SHIPMATE_")) });
+  const out = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
+  if (resume === "gone") { console.error("Error: thread/resume: thread/resume failed: no rollout found for thread id gone (code -32600)"); process.exit(1); }
+  const tid = resume || "thread-" + Math.random().toString(36).slice(2, 8);
+  out({ type: "thread.started", thread_id: tid });
+  out({ type: "turn.started" });
+  const say = (id, text) => out({ type: "item.completed", item: { id, type: "agent_message", text } });
+  const done = () => out({ type: "turn.completed", usage: { input_tokens: 200, cached_input_tokens: 80, output_tokens: 14, reasoning_output_tokens: 0 } });
+  if (prompt.includes("fail")) {
+    out({ type: "error", message: "Reconnecting... 1/5" });
+    out({ type: "turn.failed", error: { message: "unexpected status 401 Unauthorized" } });
+    process.exit(1);
+  }
+  if (prompt.startsWith("draw ")) {
+    // Like Codex's built-in image tool: the picture lands under CODEX_HOME/generated_images.
+    const dir = process.env.CODEX_HOME + "/generated_images/" + tid;
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(dir + "/ig_1.png", Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
+    say("item_0", "Here is your boat.");
+    done();
+    return;
+  }
+  const url = configs["mcp_servers.shipmate.url"];
+  if (prompt.startsWith("route ")) {
+    if (!url) { say("item_0", "No tools."); done(); return; }
+    const token = process.env[configs["mcp_servers.shipmate.bearer_token_env_var"]];
+    const rpc = async (method, params, id) => {
+      const res = await fetch(url, { method: "POST", headers: { authorization: "Bearer " + token, "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", ...(id ? { id } : {}), method, params }) });
+      return res.status === 202 ? null : res.json();
+    };
+    (async () => {
+      await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "codex-mcp-client", version: "9" } }, 1);
+      await rpc("notifications/initialized", {});
+      const [, crew, ...task] = prompt.trim().split(" ");
+      say("item_0", "Routing to " + crew + ".");
+      const item = { id: "item_1", type: "mcp_tool_call", server: "shipmate", tool: "delegate", arguments: { crew, task: task.join(" ") }, result: null, error: null, status: "in_progress" };
+      out({ type: "item.started", item });
+      const res = await rpc("tools/call", { name: "delegate", arguments: item.arguments }, 3);
+      out({ type: "item.completed", item: { ...item, result: { content: res.result.content }, status: "completed" } });
+      say("item_2", "Wrapped up: " + res.result.content[0].text);
+      done();
+    })();
+    return;
+  }
+  out({ type: "item.started", item: { id: "item_0", type: "command_execution", command: "cat notes.md", aggregated_output: "", exit_code: null, status: "in_progress" } });
+  out({ type: "item.completed", item: { id: "item_0", type: "command_execution", command: "cat notes.md", aggregated_output: "the notes", exit_code: 0, status: "completed" } });
+  say("item_1", "Done: " + prompt.trim());
+  done();
+});
+`;
+
+const dir = mkdtempSync(join(tmpdir(), "shipmate-fake-codex-"));
+const fakeBin = join(dir, "codex");
+const logFile = join(dir, "calls.jsonl");
+writeFileSync(fakeBin, FAKE_CODEX);
+chmodSync(fakeBin, 0o755);
+
+interface Call {
+  args: string[];
+  configs: Record<string, string>;
+  cwd: string;
+  prompt: string;
+  leaked: string[];
+}
+const calls = (): Call[] =>
+  existsSync(logFile)
+    ? readFileSync(logFile, "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l) as Call)
+    : [];
+
+const until = async (check: () => Promise<boolean> | boolean, ms = 8000) => {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (await check()) return;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error("timed out");
+};
+
+describe("codex-cli backend: manifest and runner", () => {
+  it("accepts the Codex engine and defaults its sandbox to read-only", () => {
+    const m = CrewManifest.parse({
+      name: "Coder",
+      role: "code",
+      model: "codex/gpt-6.1-sol",
+      backend: "codex-cli",
+      codex: {},
+    });
+    expect(m.codex?.sandbox).toBe("read-only");
+    expect(codexModelFromRef("codex/gpt-6.1-sol")).toBe("gpt-6.1-sol");
+    expect(codexModelFromRef("chatgpt/gpt-6.1-sol")).toBeUndefined();
+  });
+
+  it("offers the ChatGPT plan's models, newest first", () => {
+    const models = codexModels();
+    expect(models.map((m) => m.ref)).toEqual(planModelIds().map((id) => `codex/${id}`));
+    expect(models.some((m) => m.ref === "codex/gpt-4")).toBe(false);
+    expect(models[0]?.name).not.toBe(models[0]?.ref);
+  });
+
+  it("runs crew on a Codex crew default through Codex", () => {
+    const folder = {
+      manifest: CrewManifest.parse({ name: "A", role: "r", model: "default" }),
+    } as Parameters<typeof onCrewDefault>[0];
+    expect(onCrewDefault(folder, "codex/gpt-6.1-sol").manifest).toMatchObject({
+      backend: "codex-cli",
+      model: "codex/gpt-6.1-sol",
+    });
+  });
+
+  it("builds an exec command line with the prompt on stdin", () => {
+    const args = codexCliArgs({
+      model: "gpt-6.1-sol",
+      instructions: 'Be "brief".\nThanks',
+      mcp: { url: "http://127.0.0.1:3000/api/cli-mcp", token: "secret-token" },
+      resume: "thread-1",
+    });
+    expect(args.slice(0, 5)).toEqual([
+      "exec",
+      "--json",
+      "--skip-git-repo-check",
+      "--sandbox",
+      "read-only",
+    ]);
+    expect(args[args.indexOf("--model") + 1]).toBe("gpt-6.1-sol");
+    expect(args).toContain('developer_instructions="Be \\"brief\\".\\nThanks"');
+    // The token itself never goes on the command line.
+    expect(args.join(" ")).not.toContain("secret-token");
+    expect(args).toContain('mcp_servers.shipmate.bearer_token_env_var="CODEX_SHIPMATE_MCP_TOKEN"');
+    expect(args.slice(-3)).toEqual(["resume", "thread-1", "-"]);
+  });
+
+  it("streams a run and reports usage", async () => {
+    const events: string[] = [];
+    const result = await runCodexCli({
+      bin: fakeBin,
+      cwd: dir,
+      prompt: "hello",
+      onEvent: (e) =>
+        events.push(
+          e.type === "text" ? `text:${e.text}` : `${e.type}:${"name" in e ? e.name : ""}`,
+        ),
+    });
+    expect(result).toMatchObject({
+      isError: false,
+      text: "Done: hello",
+      // Cached input is counted apart from fresh input.
+      usage: { input: 120, cacheRead: 80, output: 14 },
+    });
+    expect(result.sessionId).toMatch(/^thread-/);
+    expect(events).toEqual(["init:", "tool_start:bash", "tool_end:bash", "text:Done: hello"]);
+  });
+
+  it("reports a failed turn with the sign-in hint", async () => {
+    const result = await runCodexCli({ bin: fakeBin, cwd: dir, prompt: "fail" });
+    expect(result.isError).toBe(true);
+    expect(result.error).toContain("401 Unauthorized");
+    expect(result.error).toContain("codex login --device-auth");
+  });
+
+  it("starts a fresh thread when the one to resume is gone", async () => {
+    const result = await runCodexCli({ bin: fakeBin, cwd: dir, prompt: "again", resume: "gone" });
+    expect(result.isError).toBe(false);
+    expect(result.sessionId).toMatch(/^thread-/);
+  });
+
+  it("fails clearly when the binary is missing", async () => {
+    await expect(
+      runCodexCli({ bin: join(dir, "missing-codex"), cwd: dir, prompt: "x" }),
+    ).rejects.toThrow(/not installed/);
+  });
+
+  it("reads the login status without opening credentials", async () => {
+    expect(await codexCliStatus({ bin: fakeBin })).toMatchObject({
+      installed: true,
+      version: "9.9.9",
+      signedIn: true,
+      authMethod: "chatgpt",
+    });
+    expect(
+      await codexCliStatus({ bin: fakeBin, env: { ...process.env, FAKE_CODEX_SIGNED_IN: "0" } }),
+    ).toMatchObject({ signedIn: false, authMethod: null });
+  });
+
+  it("finds only this turn's pictures", async () => {
+    const root = mkdtempSync(join(tmpdir(), "shipmate-codex-home-"));
+    const at = (p: string) => {
+      mkdirSync(join(root, "generated_images", p, ".."), { recursive: true });
+      writeFileSync(join(root, "generated_images", p), "png");
+    };
+    const since = Date.now() - 1000;
+    at("thread-a/one.png");
+    at("thread-b/two.png");
+    const base = { root, since, named: [] as string[] };
+    expect(await newCodexImages({ ...base, threadId: "thread-a", alone: false })).toEqual([
+      join(root, "generated_images", "thread-a", "one.png"),
+    ]);
+    // Not named by thread: only when no other Codex turn ran alongside.
+    expect(await newCodexImages({ ...base, threadId: "thread-c", alone: false })).toEqual([]);
+    expect(await newCodexImages({ ...base, threadId: "thread-c", alone: true })).toHaveLength(2);
+    // Older pictures never come back.
+    expect(
+      await newCodexImages({ ...base, since: Date.now() + 60_000, threadId: "x", alone: true }),
+    ).toEqual([]);
+    expect(
+      await newCodexImages({ ...base, threadId: null, alone: false, named: ["/a.png"] }),
+    ).toEqual(["/a.png"]);
+  });
+
+  it("prices Codex calls at API rates without counting them as spend", () => {
+    const usage = {
+      input: 1_000_000,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 1_000_000,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    };
+    const model = {
+      provider: "codex",
+      id: planModelIds()[0],
+      cost: usage.cost,
+    } as unknown as Parameters<typeof callCost>[0];
+    const c = callCost(model, usage);
+    expect(c.billing).toBe("subscription");
+    expect(c.costMicroUsd).toBe(0);
+    expect(c.apiEquivalentMicroUsd).toBeGreaterThan(0);
+  });
+});
+
+describe.skipIf(!db)("codex-cli backend through the Bridge", () => {
+  let t: Awaited<ReturnType<typeof testApp>>;
+  let sql: postgres.Sql;
+  let ownerCookie = "";
+  let memberCookie = "";
+  const cookieOf = (res: { headers: Record<string, unknown> }) =>
+    String(res.headers["set-cookie"]).split(";")[0] ?? "";
+  const api = (method: "GET" | "POST" | "PUT", url: string, body?: unknown, cookie = ownerCookie) =>
+    t.app.inject({
+      method,
+      url,
+      ...(body !== undefined ? { payload: body as object } : {}),
+      headers: { cookie },
+    });
+
+  const turn = async (conversationId: string, text: string) => {
+    const ws = await t.app.injectWS("/api/ws", { headers: { cookie: ownerCookie } });
+    const events: ServerEvent[] = [];
+    ws.on("message", (raw: Buffer) => events.push(JSON.parse(raw.toString()) as ServerEvent));
+    ws.send(JSON.stringify({ type: "send", conversationId, text }));
+    await until(() => events.some((e) => e.type === "status" && !e.busy));
+    ws.terminate();
+    return events;
+  };
+
+  let convId = "";
+
+  beforeAll(async () => {
+    process.env.SHIPMATE_CODEX_BIN = fakeBin;
+    process.env.FAKE_CODEX_LOG = logFile;
+    process.env.CODEX_HOME = mkdtempSync(join(tmpdir(), "shipmate-codex-home-"));
+    process.env.SHIPMATE_TEST_LEAK = "must-not-reach-the-cli";
+    t = await testApp(db as string, { watches: false });
+    sql = postgres(db as string, { max: 2, onnotice: () => {} });
+    ownerCookie = cookieOf(
+      await api(
+        "POST",
+        "/api/setup",
+        { email: "owner@example.com", displayName: "Addison", password: "correct horse" },
+        "",
+      ),
+    );
+    await api("POST", "/api/users", {
+      email: "m@example.com",
+      displayName: "Member",
+      password: "password1",
+      role: "member",
+    });
+    memberCookie = cookieOf(
+      await api("POST", "/api/auth/login", { email: "m@example.com", password: "password1" }, ""),
+    );
+    await api("PUT", "/api/settings", { defaultModel: "faux/m" });
+    const created = await api("POST", "/api/crew", {
+      slug: "coder",
+      manifestYaml:
+        "name: Coder\nrole: code\nmodel: codex/gpt-6.1-sol\nbackend: codex-cli\ncodex:\n  sandbox: workspace-write\n",
+      persona: "# Coder\nYou write code.",
+    });
+    expect(created.statusCode).toBe(200);
+    convId = (await api("POST", "/api/conversations", { kind: "direct", crewSlug: "coder" })).json()
+      .conversation.id;
+  });
+
+  afterAll(async () => {
+    delete process.env.SHIPMATE_CODEX_BIN;
+    delete process.env.SHIPMATE_TEST_LEAK;
+    delete process.env.CODEX_HOME;
+    await sql?.end();
+    await t?.app.close();
+  });
+
+  it("streams a full Codex turn into messages and records its usage", async () => {
+    const before = calls().length;
+    const events = await turn(convId, "fix the bug");
+    expect(events.find((e) => e.type === "error")).toBeUndefined();
+    const tools = events.filter((e) => e.type === "tool");
+    expect(tools.map((e) => (e.type === "tool" ? `${e.phase}:${e.toolName}` : ""))).toEqual([
+      "start:bash",
+      "end:bash",
+    ]);
+    const msgs = (await api("GET", `/api/conversations/${convId}/messages`)).json().messages;
+    expect(msgs.at(-1)).toMatchObject({
+      role: "assistant",
+      content: "Done: fix the bug",
+      author: { kind: "crew", slug: "coder" },
+    });
+
+    const [usage] = await sql`select * from usage_events where conversation_id = ${convId}`;
+    expect(usage).toMatchObject({ model: "codex/gpt-6.1-sol", billing: "subscription" });
+    expect(Number(usage?.cost_micro_usd)).toBe(0);
+    expect(Number(usage?.input_tokens)).toBe(120);
+    expect(Number(usage?.cache_read_tokens)).toBe(80);
+
+    const call = calls()[before];
+    expect(call?.prompt).toBe("fix the bug");
+    expect(call?.cwd).toMatch(/coder[/\\]cli-workspace$/);
+    expect(call?.leaked).toEqual([]);
+    const args = call?.args ?? [];
+    expect(args[args.indexOf("--model") + 1]).toBe("gpt-6.1-sol");
+    expect(args[args.indexOf("--sandbox") + 1]).toBe("workspace-write");
+    expect(call?.configs.developer_instructions).toContain("You write code.");
+    expect(args).not.toContain("resume");
+  });
+
+  it("resumes the Codex thread on the next message", async () => {
+    const [conv] = await sql`select session_files from conversations where id = ${convId}`;
+    const tid = ((conv?.session_files ?? {}) as Record<string, string>)["codex-cli:coder"];
+    expect(tid).toMatch(/^thread-/);
+    const before = calls().length;
+    await turn(convId, "and the next one");
+    const args = calls()[before]?.args ?? [];
+    expect(args.slice(-3)).toEqual(["resume", tid, "-"]);
+  });
+
+  it("shows pictures Codex makes on its reply", async () => {
+    const events = await turn(convId, "draw a boat");
+    expect(events.find((e) => e.type === "error")).toBeUndefined();
+    const reply = (await api("GET", `/api/conversations/${convId}/messages`))
+      .json()
+      .messages.at(-1);
+    expect(reply.content).toBe("Here is your boat.");
+    const [file] = reply.meta.attachments;
+    expect(file).toMatchObject({ kind: "image", mimeType: "image/png", name: "ig_1.png" });
+    const img = await api("GET", `/api/attachments/${file.id}`);
+    expect(img.statusCode).toBe(200);
+    expect(img.headers["content-type"]).toContain("image/png");
+  });
+
+  it("shows Codex errors with the sign-in command", async () => {
+    const events = await turn(convId, "fail please");
+    const error = events.find((e) => e.type === "error");
+    expect(error && "message" in error ? error.message : "").toContain("codex login");
+  });
+
+  it("lets a Captain on Codex route a message to a crew member", async () => {
+    await t.app.listen({ port: 0, host: "127.0.0.1" });
+    const deck = await api("POST", "/api/crew", {
+      slug: "deckhand",
+      manifestYaml: "name: Deckhand\nrole: odd jobs\nmodel: faux/m\n",
+      persona: "# Deckhand",
+    });
+    expect(deck.statusCode).toBe(200);
+    const detail = (await api("GET", "/api/crew/captain")).json().crew;
+    const yaml = `${detail.manifestYaml
+      .replace(/^backend:.*\n?/m, "")
+      .replace(/^model:.*$/m, "model: codex/gpt-6.1-sol")
+      .trimEnd()}\nbackend: codex-cli\n`;
+    expect((await api("PUT", "/api/crew/captain", { manifestYaml: yaml })).statusCode).toBe(200);
+    try {
+      const conv = (await api("POST", "/api/conversations", {})).json().conversation;
+      t.faux.setResponses([fauxAssistantMessage("Deck swabbed.")]);
+      const before = calls().length;
+      const events = await turn(conv.id, "route deckhand swab the deck");
+      expect(events.find((e) => e.type === "error")).toBeUndefined();
+      expect(events.find((e) => e.type === "handoff")).toMatchObject({
+        from: { slug: "captain" },
+        to: { slug: "deckhand" },
+        task: "swab the deck",
+      });
+      const msgs = (await api("GET", `/api/conversations/${conv.id}/messages`)).json().messages;
+      expect(
+        msgs.map((m: { author: { slug?: string }; content: string }) => [
+          m.author.slug ?? "user",
+          m.content,
+        ]),
+      ).toEqual([
+        ["user", "route deckhand swab the deck"],
+        ["captain", "Routing to deckhand."],
+        ["deckhand", "Deck swabbed."],
+        ["captain", expect.stringMatching(/^Wrapped up: Deck swabbed\./)],
+      ]);
+      const call = calls()[before];
+      expect(call?.configs["mcp_servers.shipmate.url"]).toMatch(/\/api\/cli-mcp$/);
+      expect(call?.configs.developer_instructions).toMatch(/deckhand: Deckhand, odd jobs/);
+    } finally {
+      await api("PUT", "/api/crew/captain", { manifestYaml: detail.manifestYaml });
+    }
+  });
+
+  it("reports Codex status to admins only", async () => {
+    const res = await api("GET", "/api/codex-cli");
+    expect(res.statusCode).toBe(200);
+    expect(res.json().codexCli).toMatchObject({
+      installed: true,
+      version: "9.9.9",
+      signedIn: true,
+      authMethod: "chatgpt",
+      signInCommand: "docker exec -it shipmate codex login --device-auth",
+    });
+    expect(res.json().codexCli.models[0].ref).toBe(`codex/${planModelIds()[0]}`);
+    expect((await api("GET", "/api/codex-cli", undefined, memberCookie)).statusCode).toBe(403);
+  });
+});

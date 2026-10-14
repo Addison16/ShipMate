@@ -202,6 +202,12 @@ export class CrewBundleService {
         `It runs on the Claude Code CLI${allowed.length ? ` and may use ${allowed.join(", ")} without asking` : ""}.`,
       );
     }
+    if (manifest.backend === "codex-cli") {
+      const sandbox = manifest.codex?.sandbox ?? "read-only";
+      warnings.push(
+        `It runs on Codex${sandbox === "read-only" ? "" : ` and may ${sandbox === "workspace-write" ? "change files in its folder" : "run any command"}`}.`,
+      );
+    }
     let flagged = redactSecrets(bundle.persona).count + redactSecrets(bundle.manifest).count;
     for (const s of bundle.skills) flagged += redactSecrets(s.content).count;
     if (flagged) {

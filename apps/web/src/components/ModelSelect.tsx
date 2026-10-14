@@ -4,6 +4,7 @@ import { api, errorMessage } from "../api.js";
 import { CLAUDE_CODE_MODELS, readBackend, withBackend } from "../lib/claude-cli.js";
 import {
   CLAUDE_CODE_PROVIDER,
+  CODEX_PROVIDER,
   CREW_DEFAULT,
   groupByProvider,
   type ModelChoice,
@@ -28,6 +29,7 @@ export function ModelSelect({
   disabled,
   crewDefault,
   claudeCode,
+  codexModels,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -39,6 +41,8 @@ export function ModelSelect({
   crewDefault?: string;
   /** Offer the Claude subscription's models (`claude-code/<alias>`). */
   claudeCode?: boolean;
+  /** Codex models to offer (`codex/<id>`), when Codex is signed in. */
+  codexModels?: ReadonlyArray<ModelChoice>;
 }) {
   const groups = groupByProvider(
     (models ?? [])
@@ -46,6 +50,7 @@ export function ModelSelect({
       .map((m) => ({ ref: m.ref, name: m.name, provider: m.provider })),
   );
   if (claudeCode) groups.set(CLAUDE_CODE_PROVIDER, [...CLAUDE_CODE_MODELS]);
+  if (codexModels?.length) groups.set(CODEX_PROVIDER, [...codexModels]);
   const offerDefault = crewDefault !== undefined;
   const valueProvider = value === CREW_DEFAULT ? CREW_DEFAULT : providerOf(value);
   // A saved model nothing can run any more still shows, marked.

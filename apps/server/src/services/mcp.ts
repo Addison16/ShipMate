@@ -1,4 +1,3 @@
-import { basename, join } from "node:path";
 import type { McpServerConfig } from "@earendil-works/pi-coding-agent";
 import type { CreateCustomMcpRequest, McpGoogleDto, McpServerDto } from "@shipmate/core";
 import type { CrewFolder } from "@shipmate/crew";
@@ -269,17 +268,13 @@ const tierOrder = { core: 0, catalog: 1, custom: 2 } as const;
 
 /**
  * The browser server's extra arguments: the Chromium the image ships (docker/Dockerfile sets
- * SHIPMATE_BROWSER_PATH; elsewhere Playwright uses its own download), and a profile per crew
- * member under the data folder, so sites people signed in to stay signed in after an update.
- * The profile sits outside the crew folder, which crew bundles export.
+ * SHIPMATE_BROWSER_PATH; elsewhere Playwright uses its own download), and a fresh in-memory
+ * profile each time. Every conversation starts its own browser server, and Chromium locks an
+ * on-disk profile, so a shared one would stop the second conversation's browser from starting.
  */
-export function browserArgs(crewDir: string, env: NodeJS.ProcessEnv = process.env): string[] {
-  const out: string[] = [];
+export function browserArgs(env: NodeJS.ProcessEnv = process.env): string[] {
   const browser = env.SHIPMATE_BROWSER_PATH?.trim();
-  if (browser) out.push("--executable-path", browser);
-  const data = env.SHIPMATE_DATA_DIR?.trim();
-  if (data) out.push("--user-data-dir", join(data, "browser", basename(crewDir)));
-  return out;
+  return ["--isolated", ...(browser ? ["--executable-path", browser] : [])];
 }
 
 export function toConfig(
@@ -299,7 +294,7 @@ export function toConfig(
   }
   // The filesystem server only sees the crew member's own folder.
   const args = entry.id === "filesystem" ? [...entry.args, crewDir] : [...entry.args];
-  if (entry.id === "browser") args.push(...browserArgs(crewDir));
+  if (entry.id === "browser") args.push(...browserArgs());
   return {
     command: entry.command ?? "npx",
     args,

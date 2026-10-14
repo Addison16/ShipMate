@@ -21,14 +21,13 @@ describe("crew environment and servers", () => {
     );
   });
 
-  it("points the browser at the image's Chromium and a profile kept under /data", () => {
-    expect(
-      browserArgs("/data/crew/bosun", {
-        SHIPMATE_BROWSER_PATH: "/usr/bin/chromium",
-        SHIPMATE_DATA_DIR: "/data",
-      }),
-    ).toEqual(["--executable-path", "/usr/bin/chromium", "--user-data-dir", "/data/browser/bosun"]);
-    expect(browserArgs("/x/crew/a", {})).toEqual([]);
+  it("points the browser at the image's Chromium, with a profile of its own each time", () => {
+    expect(browserArgs({ SHIPMATE_BROWSER_PATH: "/usr/bin/chromium" })).toEqual([
+      "--isolated",
+      "--executable-path",
+      "/usr/bin/chromium",
+    ]);
+    expect(browserArgs({})).toEqual(["--isolated"]);
   });
 });
 

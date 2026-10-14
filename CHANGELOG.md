@@ -12,8 +12,8 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   the crew default, and a crew member's model lives in one place (picking a model drops an old
   Claude Code model that overrode it). New `list_mcp_catalog` tool, so the Captain stops
   guessing server ids. Crew on Claude Code can use the MCP servers they are given (each call
-  still goes through approvals). The image now ships Chromium, so the browser server starts,
-  with a profile per crew member kept in `/data/browser`. Web search shows "needs secrets"
+  still goes through approvals). The image now ships Chromium, so the browser server starts
+  (each conversation gets a fresh browser profile). Web search shows "needs secrets"
   until it has a SearXNG URL or a Brave key. The Weather, Docker and SQLite servers start again
   (a new MCP library broke them). Crew shell commands no longer see `NODE_ENV=production`, so
   `npm install` gets dev packages, nor Shipmate's own secrets. Long hand-offs to Claude Code

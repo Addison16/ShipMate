@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import { api, errorMessage } from "../api.js";
+import { useCrewName, useThemeWords } from "../appearance.js";
 import { useApprovals } from "../approvals.js";
 import { useUser } from "../auth.js";
 import { ApprovalCard } from "../components/ApprovalCard.js";
@@ -169,7 +170,8 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
   }
 
   const canDirect = directCandidates(crewList).length > 0;
-  const captainName = crewList.find((m) => m.captain)?.name ?? "Captain";
+  const crewName = useCrewName();
+  const captainName = crewName(crewList.find((m) => m.captain)?.name ?? "Captain");
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -364,6 +366,7 @@ function ConversationRow({
   onPinned: () => void;
   onDeleted: () => void;
 }) {
+  const words = useThemeWords();
   const [renaming, setRenaming] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -460,7 +463,7 @@ function ConversationRow({
             </span>
           )}
           <span className="mt-0.5 flex min-h-9 min-w-0 flex-wrap items-center gap-1.5 pr-32 text-xs sm:min-h-7 sm:pr-24 text-slate-500 dark:text-slate-400">
-            {c.kind === "bridge" ? `Bridge · ${who}` : `Direct · ${who}`}
+            {c.kind === "bridge" ? `${words.bridge} · ${who}` : `Direct · ${who}`}
             <ConversationTags c={c} projectNames={projectNames} />
           </span>
         </span>
@@ -532,6 +535,8 @@ function Thread({
   onPinned: () => void;
   onDeleted: () => void;
 }) {
+  const words = useThemeWords();
+  const crewName = useCrewName();
   const user = useUser();
   const socketState = useSocketState();
   // Chats from Discord, Telegram, Slack or a watch (opened from search) are shown, not continued.
@@ -740,7 +745,7 @@ function Thread({
                   <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                     {conversation?.kind === "direct"
                       ? `${member.name} · ${member.role}`
-                      : `${member.name} · brings in the right crew member`}
+                      : `${crewName(member.name)} · brings in the right ${words.crewMember}`}
                   </p>
                 )}
               </div>
@@ -932,10 +937,10 @@ function Thread({
                 }}
                 placeholder={
                   state.busy
-                    ? `${member?.name ?? "The crew"} is working…`
+                    ? `${member ? crewName(member.name) : `The ${words.crew.toLowerCase()}`} is working…`
                     : conversation?.kind === "direct" && member
                       ? `Message ${member.name}`
-                      : "Message the crew"
+                      : `Message the ${words.crew.toLowerCase()}`
                 }
                 className={cx(
                   "min-h-[42px] flex-1 resize-none rounded-xl border border-control bg-white px-3.5 py-2 text-[15px] shadow-xs transition-[border-color,box-shadow] duration-150 dark:bg-slate-950",

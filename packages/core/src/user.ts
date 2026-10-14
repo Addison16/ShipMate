@@ -26,6 +26,8 @@ export type ColorTheme = z.infer<typeof ColorTheme>;
 export const UserPreferences = z.object({
   themeMode: ThemeMode.catch("auto"),
   colorTheme: ColorTheme.catch("harbor"),
+  /** A custom theme (see theme.ts) painted over the color theme; null for none. */
+  customTheme: z.string().uuid().nullable().catch(null),
 });
 export type UserPreferences = z.infer<typeof UserPreferences>;
 

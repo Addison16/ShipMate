@@ -9,6 +9,7 @@ import type {
 } from "@shipmate/core";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useThemeWords } from "../appearance.js";
 import { isAdmin, useUser } from "../auth.js";
 import { CopyField } from "../components/CopyField.js";
 import { NavIcon } from "../components/icons.js";
@@ -198,6 +199,7 @@ const TOKEN_HINT = (
 
 function ProjectList() {
   const user = useUser();
+  const words = useThemeWords();
   const admin = isAdmin(user);
   const shipyard = useResource(() => api.getShipyard());
   const crew = useCrew();
@@ -209,7 +211,7 @@ function ProjectList() {
     <Page wide>
       <PageHeader
         icon="shipyard"
-        title="Shipyard"
+        title={words.shipyard}
         description="Software projects your crew works on: pull requests, issues, and a sandbox to run code in."
         actions={
           admin && !adding ? (

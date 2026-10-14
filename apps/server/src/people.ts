@@ -41,7 +41,9 @@ export class PeopleSettings {
       // Account details are for the people who manage accounts (as on the Users page) and for
       // the person themselves.
       if (self || manager) {
-        out.push(`- ${u.email}, ${u.role}, ${cap}, theme ${prefs.colorTheme} (${prefs.themeMode})`);
+        out.push(
+          `- ${u.email}, ${u.role}, ${cap}, theme ${prefs.customTheme ? "custom" : prefs.colorTheme} (${prefs.themeMode})`,
+        );
       }
       // Unshared profiles stay private, except to the managers who set people up.
       if (self || profile.shared || manager) {
@@ -108,7 +110,8 @@ export class PeopleSettings {
       );
       const appearance: Partial<UserPreferences> = {
         ...(picked.themeMode ? { themeMode: picked.themeMode } : {}),
-        ...(picked.colorTheme ? { colorTheme: picked.colorTheme } : {}),
+        // A color theme replaces any custom theme.
+        ...(picked.colorTheme ? { colorTheme: picked.colorTheme, customTheme: null } : {}),
       };
       values.preferences = { ...raw, ...parseUserPreferences(raw), ...appearance };
       done.push("theme");

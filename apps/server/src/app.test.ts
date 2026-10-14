@@ -125,15 +125,30 @@ describe.skipIf(!db)("Shipmate server", () => {
 
   it("keeps appearance preferences per user", async () => {
     const before = (await api("GET", "/api/auth/me")).json().user;
-    expect(before.preferences).toEqual({ themeMode: "auto", colorTheme: "harbor" });
+    expect(before.preferences).toEqual({
+      themeMode: "auto",
+      colorTheme: "harbor",
+      customTheme: null,
+    });
     expect(
       (await api("PATCH", "/api/auth/preferences", { themeMode: "dark" }, "")).statusCode,
     ).toBe(401);
     const res = await api("PATCH", "/api/auth/preferences", { themeMode: "dark" });
     expect(res.statusCode).toBe(200);
-    expect(res.json().user.preferences).toEqual({ themeMode: "dark", colorTheme: "harbor" });
-    const both = await api("PATCH", "/api/auth/preferences", { colorTheme: "coral-reef" });
-    expect(both.json().user.preferences).toEqual({ themeMode: "dark", colorTheme: "coral-reef" });
+    expect(res.json().user.preferences).toEqual({
+      themeMode: "dark",
+      colorTheme: "harbor",
+      customTheme: null,
+    });
+    const both = await api("PATCH", "/api/auth/preferences", {
+      colorTheme: "coral-reef",
+      customTheme: null,
+    });
+    expect(both.json().user.preferences).toEqual({
+      themeMode: "dark",
+      colorTheme: "coral-reef",
+      customTheme: null,
+    });
     expect((await api("PATCH", "/api/auth/preferences", { colorTheme: "plaid" })).statusCode).toBe(
       400,
     );
@@ -145,7 +160,7 @@ describe.skipIf(!db)("Shipmate server", () => {
       "",
     );
     const kid = (await api("GET", "/api/auth/me", undefined, cookieOf(login))).json().user;
-    expect(kid.preferences).toEqual({ themeMode: "auto", colorTheme: "harbor" });
+    expect(kid.preferences).toEqual({ themeMode: "auto", colorTheme: "harbor", customTheme: null });
   });
 
   it("stores provider keys encrypted and never returns them", async () => {

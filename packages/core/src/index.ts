@@ -1,4 +1,5 @@
 export type * from "./api.js";
+export * from "./color.js";
 export * from "./crew.js";
 export * from "./memory.js";
 export * from "./onboarding.js";
@@ -6,5 +7,7 @@ export type * from "./phone.js";
 export * from "./routine.js";
 export * from "./search.js";
 export * from "./skill.js";
+export * from "./theme.js";
+export { THEME_BUILD_GUIDE } from "./theme-guide.js";
 export * from "./user.js";
 export { SHIPMATE_VERSION } from "./version.js";

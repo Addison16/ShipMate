@@ -401,6 +401,15 @@ function readDrafts(): Record<string, string> {
   }
 }
 
+/** Put text in a conversation's composer before opening it (the person reads it and sends). */
+export function setDraft(conversationId: string, text: string) {
+  try {
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ ...readDrafts(), [conversationId]: text }));
+  } catch {
+    // Storage unavailable: the chat opens with an empty composer.
+  }
+}
+
 /** The composer's text, kept per conversation for this browser tab, so switching chats loses nothing. */
 export function useDraft(
   conversationId: string,

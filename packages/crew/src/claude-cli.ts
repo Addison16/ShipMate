@@ -118,13 +118,17 @@ export function claudeCliArgs(
 }
 
 /**
- * The environment the CLI runs with: Shipmate's own environment minus its secrets (database URL,
- * vault key, bot tokens). CLAUDE_CONFIG_DIR and anything the user set for the CLI pass through.
+ * The environment crew commands run with (the CLI, and pi's shell): Shipmate's own environment
+ * minus its secrets (database URL, vault key, bot tokens) and NODE_ENV, which the image sets to
+ * production for Shipmate itself and would make `npm install` in a crew member's project skip
+ * its dev packages (TypeScript, test runners). CLAUDE_CONFIG_DIR and anything the user set for
+ * the CLI pass through.
  */
 export function childEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {};
   for (const [k, v] of Object.entries(env)) {
-    if (/^(SHIPMATE_|DATABASE_URL$|TEST_DATABASE_URL$|DISCORD_|TELEGRAM_|SLACK_)/.test(k)) continue;
+    if (/^(SHIPMATE_|DATABASE_URL$|TEST_DATABASE_URL$|DISCORD_|TELEGRAM_|SLACK_|NODE_ENV$)/.test(k))
+      continue;
     out[k] = v;
   }
   return out;

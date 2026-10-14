@@ -42,6 +42,7 @@ function setup(role: ActingUser["role"] = "owner") {
     delegate: async () => "",
     createWatch: async () => ({ id: "w", name: "w" }),
     installMcp: async () => "ok",
+    listMcpCatalog: async () => "",
     equip: async (slug, grant) => {
       equips.push([slug, grant]);
       return "equipped";

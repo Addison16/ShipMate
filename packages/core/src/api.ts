@@ -619,6 +619,8 @@ export interface McpServerDto {
   /** Core servers are always installed. */
   installed: boolean;
   secrets: McpSecretDto[];
+  /** At least one of its optional secrets must be set (e.g. a SearXNG URL or a Brave key). */
+  needsOneSecret: boolean;
   /** Ready to start: installed and every required secret set. */
   ready: boolean;
   /** Slugs of crew members whose crew.yaml lists it. */

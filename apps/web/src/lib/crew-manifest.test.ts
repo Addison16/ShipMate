@@ -100,6 +100,13 @@ describe("applyManifestForm", () => {
     expect(cleared).not.toContain("avatar");
     expect(cleared).not.toContain("opus");
   });
+
+  it("drops an old Claude Code model when a new model is picked", () => {
+    const withCli = applyManifestForm(CAPTAIN, { ...form(CAPTAIN), cliModel: "sonnet" });
+    const picked = applyManifestForm(withCli, { ...form(withCli), model: "claude-code/opus" });
+    expect(picked).toContain("model: claude-code/opus");
+    expect(picked).not.toContain("sonnet");
+  });
 });
 
 describe("cleanList", () => {

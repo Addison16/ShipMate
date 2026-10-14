@@ -85,6 +85,7 @@ can also pick a sandbox host in **Settings → Shipyard sandbox**, which overrid
 | `SHIPMATE_PUSH_HOSTS` | unset | Extra Web Push service hosts to accept, comma-separated, besides the browser makers' own. |
 | `SHIPMATE_CLAUDE_BIN` | `claude` | Path of the Claude Code CLI, for the Claude subscription backend. The image ships it. |
 | `CLAUDE_CONFIG_DIR` | `/data/claude` | Where the Claude Code CLI keeps its sign-in. Set by the image so it survives updates. |
+| `SHIPMATE_BROWSER_PATH` | `/usr/bin/chromium` | The Chromium the browser MCP server drives. The image ships it; outside Docker, leave it unset and Playwright uses its own download. |
 | `SHIPMATE_CODEX_BIN` | `codex` | Path of the Codex CLI, for the Codex engine (ChatGPT plan). The image ships it. |
 | `CODEX_HOME` | `/data/codex` | Where the Codex CLI keeps its sign-in. Set by the image so it survives updates. |
 

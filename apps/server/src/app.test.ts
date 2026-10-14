@@ -292,6 +292,7 @@ describe.skipIf(!db)("Shipmate server", () => {
       /galley: Galley, meal planning \(model faux\/m \(crew default\), /,
     );
     expect(captainContext).toContain("## Coordinating");
+    expect(captainContext).toContain("## Setting up crew");
     expect(captainContext).toContain("Then supervise");
 
     const handoff = events.find((e) => e.type === "handoff");

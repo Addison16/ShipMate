@@ -11,6 +11,8 @@ export const CLI_MCP_PATH = "/api/cli-mcp";
 export const CLI_GATE_PATH = `${CLI_MCP_PATH}/gate`;
 /** How long the hook waits for a person to answer an approval, in seconds. */
 const GATE_TIMEOUT_S = 900;
+/** How often a long tool call's stream sends a keep-alive comment. */
+export const KEEPALIVE_MS = 15_000;
 
 /** What one CLI turn may call: its tools, behind the crew member's approval policy. */
 export interface CliToolGrant {
@@ -264,6 +266,34 @@ export async function cliMcpRoutes(app: FastifyInstance, server: CliToolServer) 
     const token = tokenOf(req.headers.authorization);
     // 404 rather than 401, so the CLI does not start an OAuth discovery for an expired turn.
     if (!server.has(token)) return reply.code(404).send({ error: "unknown or expired token" });
+    // A tool call can run for a long time (the Captain's delegate waits for a whole crew turn).
+    // Answered as one JSON body, the CLI's HTTP client gives up after minutes without a byte
+    // (a timeout, or ECONNRESET), so stream it: headers now, a keep-alive comment every few
+    // seconds, then the result as one event. MCP's streamable HTTP allows either.
+    const body = req.body as RpcRequest | undefined;
+    if (
+      body &&
+      !Array.isArray(body) &&
+      body.method === "tools/call" &&
+      /text\/event-stream/.test(String(req.headers.accept ?? ""))
+    ) {
+      reply.hijack();
+      const res = reply.raw;
+      res.writeHead(200, {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+        connection: "keep-alive",
+      });
+      const ping = setInterval(() => res.write(": keep-alive\n\n"), KEEPALIVE_MS);
+      try {
+        const out = await server.handle(token, body);
+        if (out !== undefined) res.write(`event: message\ndata: ${JSON.stringify(out)}\n\n`);
+      } finally {
+        clearInterval(ping);
+        res.end();
+      }
+      return;
+    }
     const out = await server.handle(token, req.body);
     if (out === undefined) return reply.code(202).send();
     return reply.header("content-type", "application/json").send(out);

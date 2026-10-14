@@ -6,6 +6,24 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Fixes from the Captain's own scan**: a crew member whose model isn't set up now gets a note
+  in the chat naming it, instead of quietly answering on another model. The Captain can no
+  longer save a model name that doesn't exist (it is told which ones work), `list_models` shows
+  the crew default, and a crew member's model lives in one place (picking a model drops an old
+  Claude Code model that overrode it). New `list_mcp_catalog` tool, so the Captain stops
+  guessing server ids. Crew on Claude Code can use the MCP servers they are given (each call
+  still goes through approvals). The image now ships Chromium, so the browser server starts
+  (each conversation gets a fresh browser profile). Web search shows "needs secrets"
+  until it has a SearXNG URL or a Brave key. The Weather, Docker and SQLite servers start again
+  (a new MCP library broke them). Crew shell commands no longer see `NODE_ENV=production`, so
+  `npm install` gets dev packages, nor Shipmate's own secrets. Long hand-offs to Claude Code
+  crew no longer drop after a few minutes, and a hand-off that fails partway gives the Captain
+  what was done so far. `crew_settings` explains that `tools: []` means all built-in tools.
+  Every Captain now gets a short "Setting up crew" guide in its instructions (which tools to
+  check for model names and server ids), whatever its standing orders say, and every crew
+  member is told to ask the Captain when a tool or server is missing. The Health Log starter is
+  now private (only the person who adds it, and admins, see it).
+
 - **Tidier Usage and cost page on phones**: Month and Show (Mine / Everyone) sit side by side
   and line up, money shows as cents ($0.00, not $0.0000), the subscription note is one line
   with "More details", and the chart buttons and table names no longer wrap.

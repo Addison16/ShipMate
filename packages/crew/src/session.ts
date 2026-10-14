@@ -17,6 +17,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { CREW_FILES } from "@shipmate/core";
 import { type ApprovalHost, approvalExtension } from "./approval.js";
+import { childEnv } from "./claude-cli.js";
 import type { CrewFolder } from "./folder.js";
 import { guardExtension } from "./guard.js";
 
@@ -159,12 +160,20 @@ export async function createCrewSession(options: CreateCrewSessionOptions): Prom
         ? SessionManager.continueRecent(cwd, sessionDir)
         : SessionManager.create(cwd, sessionDir);
 
+  const shell = !crew.manifest.tools.length || crew.manifest.tools.includes("bash");
   const customTools = [
     ...(options.customTools ?? []),
-    // Replaces pi's built-in bash, so commands go to the sandbox.
+    // Replaces pi's built-in bash, so commands go to the sandbox, or on the Shipmate host run
+    // without Shipmate's secrets and its NODE_ENV (see childEnv).
     ...(workspace
       ? [createBashToolDefinition(cwd, { operations: workspace.bash }) as unknown as ToolDefinition]
-      : []),
+      : shell
+        ? [
+            createBashToolDefinition(cwd, {
+              spawnHook: (ctx) => ({ ...ctx, env: childEnv(ctx.env) }),
+            }) as unknown as ToolDefinition,
+          ]
+        : []),
   ];
   // An explicit tool list is an allowlist, so Shipmate's own tools and MCP tools are added to it.
   const tools = crew.manifest.tools.length

@@ -5,4 +5,4 @@ tools: [read, write, edit]
 mcp: [time]
 skills: []
 approval: ask
-visibility: shared
+visibility: private

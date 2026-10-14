@@ -1,7 +1,7 @@
 import type { ConversationDto, CrewDto } from "@shipmate/core";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api.js";
-import { useCrewName, useThemeWords } from "../appearance.js";
+import { useCrewName, useThemeText, useThemeWords } from "../appearance.js";
 import { useKeyboardInset } from "../lib/keyboard.js";
 import { href, navigate } from "../router.js";
 import { Avatar } from "./Avatar.js";
@@ -55,6 +55,7 @@ function MemberButton({
   card?: boolean;
 }) {
   const name = useCrewName()(member.name);
+  const t = useThemeText();
   return (
     <button
       type="button"
@@ -76,7 +77,7 @@ function MemberButton({
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-sm font-medium">{name}</span>
         <span className="truncate text-xs text-slate-500 dark:text-slate-400">
-          {busy ? "Opening chat…" : (subtitle ?? member.role)}
+          {busy ? "Opening chat…" : (subtitle ?? t(member.role))}
         </span>
       </span>
       {card && (
@@ -112,6 +113,7 @@ export function ChatLanding({
   const [error, setError] = useState<string | null>(null);
   const words = useThemeWords();
   const crewName = useCrewName();
+  const t = useThemeText();
   const captain = crew.find((m) => m.captain);
   const members = directCandidates(crew);
   const talked = chattedWith(conversations);
@@ -151,7 +153,7 @@ export function ChatLanding({
       {members.length > 0 && (
         <div className="space-y-2">
           <p className="text-[11px] font-semibold tracking-wider text-slate-500 uppercase dark:text-slate-400">
-            Crew
+            {words.crew}
           </p>
           <div className="stagger grid grid-cols-1 gap-2 sm:grid-cols-2">
             {members.map((m) => (
@@ -159,7 +161,7 @@ export function ChatLanding({
                 key={m.slug}
                 card
                 member={m}
-                subtitle={talked.has(m.slug) ? `${m.role} · continue chat` : m.role}
+                subtitle={talked.has(m.slug) ? `${t(m.role)} · continue chat` : t(m.role)}
                 busy={opening === m.slug}
                 disabled={creating || opening !== null}
                 onClick={() => void open(m.slug)}
@@ -176,7 +178,7 @@ export function ChatLanding({
           focusRing,
         )}
       >
-        Browse the whole crew
+        {t("Browse all crew members")}
       </a>
     </div>
   );
@@ -229,7 +231,7 @@ export function CrewStrip({
               type="button"
               disabled={creating || opening !== null}
               onClick={() => void open(m)}
-              title={m.captain ? `New chat with ${crewName(m.name)}` : `Chat with ${m.name}`}
+              title={`${m.captain ? "New chat" : "Chat"} with ${crewName(m.name)}`}
               className={cx(
                 "flex w-16 flex-col items-center gap-1 rounded-lg py-1.5 transition active:scale-95 disabled:opacity-60",
                 focusRing,
@@ -277,6 +279,7 @@ export function CrewPicker({
   const [opening, setOpening] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const keyboard = useKeyboardInset(open);
+  const t = useThemeText();
   const talked = chattedWith(conversations);
   const q = query.trim().toLowerCase();
   const shown = directCandidates(crew).filter((m) =>
@@ -345,14 +348,14 @@ export function CrewPicker({
         <div className="shrink-0 space-y-3 border-b border-slate-200 p-4 dark:border-slate-800">
           <div className="flex items-center justify-between gap-2">
             <h2 id="crew-picker-title" className="text-sm font-semibold">
-              Chat with a crew member
+              {t("Chat with a crew member")}
             </h2>
             <Button size="sm" variant="ghost" aria-label="Close" onClick={onClose}>
               ✕
             </Button>
           </div>
           <label htmlFor="crew-picker-search" className="sr-only">
-            Find a crew member
+            {t("Find a crew member")}
           </label>
           <input
             id="crew-picker-search"
@@ -375,7 +378,9 @@ export function CrewPicker({
         <div className="relative min-h-0 max-h-[50vh] overflow-y-auto overscroll-contain p-2 max-sm:max-h-[60vh]">
           {shown.length === 0 ? (
             <p className="px-2.5 py-6 text-sm text-slate-500 dark:text-slate-400">
-              {q ? "No one matches. Try another name or role." : "No crew to chat with yet."}
+              {q
+                ? "No one matches. Try another name or role."
+                : t("No crew members to chat with yet.")}
             </p>
           ) : (
             <ul className="space-y-0.5">
@@ -383,7 +388,7 @@ export function CrewPicker({
                 <li key={m.slug}>
                   <MemberButton
                     member={m}
-                    subtitle={talked.has(m.slug) ? `${m.role} · continue chat` : m.role}
+                    subtitle={talked.has(m.slug) ? `${t(m.role)} · continue chat` : t(m.role)}
                     busy={opening === m.slug}
                     disabled={opening !== null}
                     active={i === index}
@@ -398,7 +403,7 @@ export function CrewPicker({
           </div>
         </div>
         <p className="border-t border-slate-200 px-4 py-2.5 text-xs max-sm:hidden text-slate-500 dark:border-slate-800 dark:text-slate-400">
-          ↑ ↓ to choose, Enter to open. Each crew member keeps one chat with you.
+          {t("↑ ↓ to choose, Enter to open. Each crew member keeps one chat with you.")}
         </p>
       </div>
     </dialog>

@@ -1,6 +1,6 @@
 import type { AttachmentDto, MessageDto } from "@shipmate/core";
 import type { ReactNode } from "react";
-import { useCrewName } from "../appearance.js";
+import { useCrewName, useThemeText } from "../appearance.js";
 import { messageAttachments } from "../lib/files.js";
 import { formatTime } from "../lib/format.js";
 import { petPreview } from "../lib/pets.js";
@@ -166,13 +166,14 @@ function Bubble({
 
 function MessageView({ message, selfId }: { message: MessageDto; selfId: string }) {
   const crewName = useCrewName();
+  const t = useThemeText();
   const a = message.author;
   if (message.meta?.sessionReset) {
     return (
       <div className="flex items-center gap-3 py-1 text-xs text-slate-500 dark:text-slate-400">
         <span className="h-px min-w-6 flex-1 bg-slate-200 dark:bg-slate-800" />
         <span className="max-w-[75%] text-center">
-          {message.content} · {formatTime(message.createdAt)}
+          {resetNote(message.content, crewName, t)} · {formatTime(message.createdAt)}
         </span>
         <span className="h-px min-w-6 flex-1 bg-slate-200 dark:bg-slate-800" />
       </div>
@@ -187,7 +188,7 @@ function MessageView({ message, selfId }: { message: MessageDto; selfId: string 
   if (a.kind === "system" || message.role === "system") {
     return (
       <div className="mx-auto max-w-[85%] text-center text-xs text-slate-500 dark:text-slate-400">
-        <Markdown text={message.content} />
+        <Markdown text={t(message.content)} />
       </div>
     );
   }
@@ -215,6 +216,14 @@ function MessageView({ message, selfId }: { message: MessageDto; selfId: string 
   );
 }
 
+/** "Fresh start. Captain won't remember…" with the name as this person sees it. */
+function resetNote(content: string, crewName: (name: string) => string, t: (s: string) => string) {
+  const m = /^Fresh start\. (.+) won't remember the messages above\.$/.exec(content);
+  if (!m?.[1]) return t(content);
+  const who = m[1] === "The crew" ? t("The Crew") : crewName(m[1]);
+  return `Fresh start. ${who} won't remember the messages above.`;
+}
+
 interface Answered {
   crew: string;
   text: string;
@@ -235,9 +244,10 @@ function answeredQuestion(m: MessageDto): Answered | null {
 
 /** A crew member's question and the person's answer, kept in the conversation. */
 function AnsweredQuestion({ crew, text, answer }: Answered) {
+  const crewName = useCrewName();
   return (
     <div className="mx-auto w-full max-w-md rounded-xl border border-slate-200 bg-white/60 px-3.5 py-2.5 text-sm dark:border-slate-800 dark:bg-slate-900/60">
-      <p className="text-xs text-slate-600 dark:text-slate-300">{crew} asked</p>
+      <p className="text-xs text-slate-600 dark:text-slate-300">{crewName(crew)} asked</p>
       <p className="mt-0.5 break-words text-slate-800 dark:text-slate-100">{text}</p>
       <p className="mt-1.5 flex flex-wrap items-baseline gap-x-1.5 text-xs text-slate-600 dark:text-slate-300">
         You:

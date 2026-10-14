@@ -1,7 +1,7 @@
 import type { CrewDetailDto, CrewDto, MemoryEntryDto } from "@shipmate/core";
 import { type FormEvent, useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
-import { useCrewName, useThemeWords } from "../appearance.js";
+import { useCrewName, useThemeText, useThemeWords } from "../appearance.js";
 import { isAdmin, useUser } from "../auth.js";
 import { Avatar } from "../components/Avatar.js";
 import { ExportCrewButton, ImportCrewPage } from "../components/CrewBundle.js";
@@ -45,9 +45,10 @@ export function CrewPage({ slug }: { slug: string | null }) {
 }
 
 function StatusBadges({ crew }: { crew: CrewDto }) {
+  const words = useThemeWords();
   return (
     <>
-      {crew.captain && <Badge tone="accent">captain</Badge>}
+      {crew.captain && <Badge tone="accent">{words.captain.toLowerCase()}</Badge>}
       {crew.status === "pending_review" && <Badge tone="warn">pending review</Badge>}
       {crew.status === "retired" && <Badge>retired</Badge>}
       {crew.visibility === "private" && <Badge>private</Badge>}
@@ -58,6 +59,8 @@ function StatusBadges({ crew }: { crew: CrewDto }) {
 function CrewList() {
   const user = useUser();
   const words = useThemeWords();
+  const t = useThemeText();
+  const crewName = useCrewName();
   const [showRetired, setShowRetired] = useState(false);
   const crew = useResource(() => api.listCrew(showRetired).then((r) => r.crew), [showRetired]);
   const settings = useResource(() => api.getSettings());
@@ -70,14 +73,18 @@ function CrewList() {
       <PageHeader
         icon="crew"
         title={words.crew}
-        description="Each crew member is a folder with a persona, a manifest and its own memory."
+        description={t(
+          "Each crew member is a folder with a persona, a manifest and its own memory.",
+        )}
         actions={
           isAdmin(user) && (
             <>
               <Button onClick={() => navigate("/crew/import")}>Import</Button>
-              <Button onClick={() => navigate("/crew/starters")}>Add starter crew</Button>
+              <Button onClick={() => navigate("/crew/starters")}>
+                {t("Add starter crew members")}
+              </Button>
               <Button variant="primary" onClick={() => navigate("/crew/new")}>
-                New crew member
+                {t("New crew member")}
               </Button>
             </>
           )
@@ -96,8 +103,10 @@ function CrewList() {
       <ErrorText>{crew.error}</ErrorText>
       {crew.loading && !crew.data && <LoadingCards />}
       {crew.data?.length === 0 && (
-        <EmptyState icon={<NavIcon name="crew" size={22} />} title="No crew yet">
-          Crew members are bots with their own job, persona and memory. Add a starter crew to begin.
+        <EmptyState icon={<NavIcon name="crew" size={22} />} title={t("No Crew yet")}>
+          {t(
+            "Crew members are bots with their own job, persona and memory. Add starter crew members to begin.",
+          )}
         </EmptyState>
       )}
       <ul className="stagger grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -111,27 +120,27 @@ function CrewList() {
               )}
             >
               <div className="flex items-start gap-3">
-                <Avatar name={c.name} />
+                <Avatar name={crewName(c.name)} />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold">{c.name}</span>
+                    <span className="font-semibold">{crewName(c.name)}</span>
                     <StatusBadges crew={c} />
                   </div>
-                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{c.role}</p>
+                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{t(c.role)}</p>
                   <p
                     className={cx(
                       "mt-3 truncate font-mono text-xs text-slate-500 dark:text-slate-400",
                       c.pet?.shown && "pr-12",
                     )}
                   >
-                    {modelLabel(c.model, settings.data?.defaultModel)}
+                    {t(modelLabel(c.model, settings.data?.defaultModel))}
                   </p>
                 </div>
               </div>
               {c.pet?.shown && (
                 <PetSprite
                   pet={c.pet}
-                  crewName={c.name}
+                  crewName={crewName(c.name)}
                   mood="idle"
                   size={44}
                   className="absolute right-3 bottom-2"
@@ -155,6 +164,7 @@ function slugify(name: string): string {
 
 function NewCrew() {
   const user = useUser();
+  const t = useThemeText();
   const models = useResource(() => api.listModels().then((r) => r.models));
   const settings = useResource(() => api.getSettings());
   const [name, setName] = useState("");
@@ -169,7 +179,7 @@ function NewCrew() {
   if (!isAdmin(user)) {
     return (
       <Page>
-        <Muted>Only owners and admins can recruit crew members.</Muted>
+        <Muted>{t("Only owners and admins can recruit crew members.")}</Muted>
       </Page>
     );
   }
@@ -200,9 +210,9 @@ function NewCrew() {
         href={href("/crew")}
         className="text-sm text-accent-700 hover:underline dark:text-accent-300"
       >
-        ← Crew
+        ← {t("Crew")}
       </a>
-      <PageHeader title="New crew member" />
+      <PageHeader title={t("New crew member")} />
       <Card>
         <form onSubmit={submit} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -245,7 +255,7 @@ function NewCrew() {
             mono
             rows={12}
             required
-            placeholder="Who this crew member is and how it should work."
+            placeholder={t("Who this crew member is and how it should work.")}
             value={persona}
             onChange={(e) => setPersona(e.target.value)}
           />
@@ -264,10 +274,11 @@ function NewCrew() {
 
 function ImportCrew() {
   const user = useUser();
+  const t = useThemeText();
   if (!isAdmin(user)) {
     return (
       <Page>
-        <Muted>Only owners and admins can import crew members.</Muted>
+        <Muted>{t("Only owners and admins can import crew members.")}</Muted>
       </Page>
     );
   }
@@ -276,11 +287,12 @@ function ImportCrew() {
 
 function StarterCrew() {
   const user = useUser();
+  const t = useThemeText();
   const [notes, setNotes] = useState<string[] | null>(null);
   if (!isAdmin(user)) {
     return (
       <Page>
-        <Muted>Only owners and admins can bring crew aboard.</Muted>
+        <Muted>{t("Only owners and admins can bring crew members aboard.")}</Muted>
       </Page>
     );
   }
@@ -290,24 +302,26 @@ function StarterCrew() {
         href={href("/crew")}
         className="text-sm text-accent-700 hover:underline dark:text-accent-300"
       >
-        ← Crew
+        ← {t("Crew")}
       </a>
       <PageHeader
-        title="Starter crew"
-        description="Ready-made crew members with a persona, the MCP servers they need and a starter watch. They use the default model from Settings."
+        title={t("Starter Crew")}
+        description={t(
+          "Ready-made crew members with a persona, the MCP servers they need and a starter watch. They use the default model from Settings.",
+        )}
       />
       <Card>
         {notes ? (
           <div className="space-y-3">
-            <p className="text-sm">The new crew members are aboard.</p>
+            <p className="text-sm">{t("The new crew members are aboard.")}</p>
             {notes.map((n) => (
               <Notice key={n}>{n}</Notice>
             ))}
             <div className="flex gap-2">
               <Button variant="primary" onClick={() => navigate("/crew")}>
-                See the crew
+                {t("See the Crew")}
               </Button>
-              <Button onClick={() => navigate("/watches")}>Watches</Button>
+              <Button onClick={() => navigate("/watches")}>{t("Watches")}</Button>
             </div>
           </div>
         ) : (
@@ -336,7 +350,9 @@ function CrewDetail({ slug }: { slug: string }) {
   });
 
   const crew = detail.data;
-  const captainName = useCrewName()(settings.data?.captainName || "Captain");
+  const t = useThemeText();
+  const crewName = useCrewName();
+  const captainName = crewName(settings.data?.captainName || "Captain");
 
   async function approve() {
     setActionError(null);
@@ -349,7 +365,8 @@ function CrewDetail({ slug }: { slug: string }) {
   }
 
   async function retire() {
-    if (!crew || !window.confirm(`Retire ${crew.name}? Their folder is kept on disk.`)) return;
+    if (!crew || !window.confirm(`Retire ${crewName(crew.name)}? Their folder is kept on disk.`))
+      return;
     setActionError(null);
     try {
       await api.retireCrew(slug);
@@ -371,7 +388,7 @@ function CrewDetail({ slug }: { slug: string }) {
         href={href("/crew")}
         className="text-sm text-accent-700 hover:underline dark:text-accent-300"
       >
-        ← Crew
+        ← {t("Crew")}
       </a>
       {detail.error && !crew && <ErrorText>{detail.error}</ErrorText>}
       {!crew && !detail.error && <Loading />}
@@ -380,11 +397,11 @@ function CrewDetail({ slug }: { slug: string }) {
           <header className="mt-2 mb-4 flex flex-wrap items-start justify-between gap-3">
             <div className="flex items-start gap-4">
               <span className="relative shrink-0">
-                <Avatar name={crew.name} size="lg" />
+                <Avatar name={crewName(crew.name)} size="lg" />
                 {crew.pet?.shown && (
                   <PetSprite
                     pet={crew.pet}
-                    crewName={crew.name}
+                    crewName={crewName(crew.name)}
                     mood="idle"
                     size={34}
                     className="absolute -right-3 -bottom-3"
@@ -393,12 +410,12 @@ function CrewDetail({ slug }: { slug: string }) {
               </span>
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-2xl font-semibold tracking-tight">{crew.name}</h1>
+                  <h1 className="text-2xl font-semibold tracking-tight">{crewName(crew.name)}</h1>
                   <StatusBadges crew={crew} />
                 </div>
-                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{crew.role}</p>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{t(crew.role)}</p>
                 <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">
-                  {crew.slug} · {modelLabel(crew.model, settings.data?.defaultModel)}
+                  {crew.slug} · {t(modelLabel(crew.model, settings.data?.defaultModel))}
                 </p>
               </div>
             </div>
@@ -433,35 +450,36 @@ function CrewDetail({ slug }: { slug: string }) {
           {crew.status === "pending_review" && (
             <div className="mb-4">
               <Notice>
-                This crew member is waiting for review (recruited by the coordinator, or imported).
-                Read the persona and settings, then approve it to put it to work.
+                {t(
+                  "This crew member is waiting for review (recruited by the coordinator, or imported). Read the persona and settings, then approve it to put it to work.",
+                )}
               </Notice>
             </div>
           )}
           <ErrorText>{actionError}</ErrorText>
           <div
             role="tablist"
-            aria-label="Crew member sections"
+            aria-label={t("Crew member sections")}
             className="mb-4 flex gap-1 border-b border-slate-200 dark:border-slate-800"
           >
-            {tabs.map((t) => (
+            {tabs.map((item) => (
               <button
-                key={t.id}
+                key={item.id}
                 type="button"
                 role="tab"
-                id={`tab-${t.id}`}
-                aria-selected={tab === t.id}
-                aria-controls={`panel-${t.id}`}
-                onClick={() => setTab(t.id)}
+                id={`tab-${item.id}`}
+                aria-selected={tab === item.id}
+                aria-controls={`panel-${item.id}`}
+                onClick={() => setTab(item.id)}
                 className={cx(
                   "-mb-px border-b-2 px-3 py-2 text-sm font-medium",
                   focusRing,
-                  tab === t.id
+                  tab === item.id
                     ? "border-accent-700 text-accent-800 dark:border-accent-400 dark:text-accent-200"
                     : "border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100",
                 )}
               >
-                {t.label}
+                {item.label}
               </button>
             ))}
           </div>

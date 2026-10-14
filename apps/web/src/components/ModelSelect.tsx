@@ -1,6 +1,7 @@
 import type { CrewDetailDto, ModelOption } from "@shipmate/core";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useThemeText } from "../appearance.js";
 import { CLAUDE_CODE_MODELS, readBackend, withBackend } from "../lib/claude-cli.js";
 import {
   CLAUDE_CODE_PROVIDER,
@@ -44,6 +45,7 @@ export function ModelSelect({
   /** Codex models to offer (`codex/<id>`), when Codex is signed in. */
   codexModels?: ReadonlyArray<ModelChoice>;
 }) {
+  const t = useThemeText();
   const groups = groupByProvider(
     (models ?? [])
       .filter((m) => m.available)
@@ -92,7 +94,8 @@ export function ModelSelect({
           {!provider && <option value="">Choose where it runs…</option>}
           {offerDefault && (
             <option value={CREW_DEFAULT}>
-              Crew default{crewDefault ? ` (${crewDefault})` : ""}
+              {t("Crew default")}
+              {crewDefault ? ` (${crewDefault})` : ""}
             </option>
           )}
           {[...groups.keys()].map((p) => (
@@ -142,6 +145,7 @@ export function CrewModelSelect({
   readOnly: boolean;
   onSaved: (crew: CrewDetailDto) => void;
 }) {
+  const t = useThemeText();
   const onCli = readBackend(crew.manifestYaml) === "claude-code-cli";
   const saved = readModel(crew.manifestYaml);
   // On Claude Code a non-Claude model in crew.yaml means "the CLI's own default": show the
@@ -180,11 +184,11 @@ export function CrewModelSelect({
         crewDefault={crewDefault}
         claudeCode={claudeCode || onCli}
         disabled={readOnly || busy}
-        hint={
+        hint={t(
           onCli
             ? "Runs on your Claude subscription through Claude Code. Not available in Shipyard projects."
-            : "Crew default follows the model picked in Settings → General. Pick a provider and model to give this crew member its own."
-        }
+            : "Crew default follows the model picked in Settings → General. Pick a provider and model to give this crew member its own.",
+        )}
       />
       <ErrorText>{error}</ErrorText>
     </div>

@@ -121,7 +121,7 @@ describe.skipIf(!db)("push notifications", () => {
     });
     await until(() => push.received.length > 0);
     const note = push.for(device.endpoint)[0];
-    expect(note).toMatchObject({ kind: "approval", title: "Captain needs your OK" });
+    expect(note).toMatchObject({ kind: "approval", title: "Assistant needs your OK" });
     expect(push.received[0]?.headers.urgency).toBe("high");
     const id = note?.approval?.id as string;
     const token = note?.approval?.token as string;
@@ -205,7 +205,7 @@ describe.skipIf(!db)("push notifications", () => {
     await until(() => push.received.length > 0);
     expect(push.for(device.endpoint)[0]).toMatchObject({
       kind: "message",
-      title: "Captain",
+      title: "Assistant",
       body: "Reply to two",
       url: `/#/bridge/${conv.id}`,
     });

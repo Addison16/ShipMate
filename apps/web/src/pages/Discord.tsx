@@ -1,6 +1,7 @@
 import type { DiscordChannelDto, DiscordLinkCode, DiscordStatusDto } from "@shipmate/core";
 import { type FormEvent, useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useCrewName, useThemeText } from "../appearance.js";
 import { isAdmin, useAuth, useUser } from "../auth.js";
 import {
   Badge,
@@ -23,12 +24,15 @@ import { useResource } from "../lib/useResource.js";
 import { useServerEvents } from "../ws.js";
 
 export function DiscordPage() {
+  const t = useThemeText();
   return (
     <Page>
       <PageHeader
         icon="bridges"
         title="Discord"
-        description="Talk to the crew from Discord: each crew member gets its own channel and posts under its own name."
+        description={t(
+          "Talk to the crew from Discord: each crew member gets its own channel and posts under its own name.",
+        )}
       />
       <DiscordPanel />
     </Page>
@@ -122,6 +126,7 @@ function StatusCard({
 }
 
 function SetupSteps() {
+  const t = useThemeText();
   return (
     <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-700 dark:text-slate-300">
       <li>
@@ -146,7 +151,7 @@ function SetupSteps() {
         In Discord, turn on Developer Mode (Settings → Advanced), right-click your server, Copy
         Server ID, paste it below as the guild id and save.
       </li>
-      <li>Press Sync to create a channel for each crew member.</li>
+      <li>{t("Press Sync to create a channel for each crew member.")}</li>
     </ol>
   );
 }
@@ -294,6 +299,7 @@ function ChannelsCard({
   admin: boolean;
   onChange: (d: DiscordStatusDto) => void;
 }) {
+  const t = useThemeText();
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const missing = d.channels.filter((c) => !c.channelId || !c.webhook).length;
@@ -328,18 +334,19 @@ function ChannelsCard({
         )}
       </div>
       <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-        Each crew member talks in its own channel, through a webhook so it posts under its own name
-        and avatar.
+        {t(
+          "Each crew member talks in its own channel, through a webhook so it posts under its own name and avatar.",
+        )}
         {admin && " Sync creates any missing channels and webhooks in a “Shipmate” category."}
       </p>
       <ErrorText>{error}</ErrorText>
       {d.channels.length === 0 ? (
-        <Muted>No crew members to show.</Muted>
+        <Muted>{t("No crew members to show.")}</Muted>
       ) : (
         <Table>
           <thead>
             <tr>
-              <th className={th}>Crew member</th>
+              <th className={th}>{t("Crew member")}</th>
               <th className={th}>Channel</th>
               <th className={th}>Webhook</th>
               {admin && (
@@ -369,6 +376,7 @@ function ChannelRow({
   admin: boolean;
   onChange: (d: DiscordStatusDto) => void;
 }) {
+  const crewName = useCrewName()(c.crewName);
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -391,7 +399,7 @@ function ChannelRow({
   return (
     <tr>
       <td className={td}>
-        <span className="font-medium">{c.crewName}</span>
+        <span className="font-medium">{crewName}</span>
       </td>
       <td className={td}>
         {editing !== null ? (
@@ -403,7 +411,7 @@ function ChannelRow({
             }}
           >
             <label className="sr-only" htmlFor={`bind-${c.crewSlug}`}>
-              Channel id for {c.crewName}
+              Channel id for {crewName}
             </label>
             <input
               id={`bind-${c.crewSlug}`}
@@ -463,7 +471,7 @@ function ChannelRow({
                   variant="ghost"
                   disabled={busy}
                   onClick={() => {
-                    if (window.confirm(`Unbind ${c.crewName} from its channel?`)) void bind(null);
+                    if (window.confirm(`Unbind ${crewName} from its channel?`)) void bind(null);
                   }}
                 >
                   Unbind

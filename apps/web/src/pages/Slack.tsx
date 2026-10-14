@@ -1,6 +1,7 @@
 import type { SlackChannelDto, SlackStatusDto } from "@shipmate/core";
 import { type FormEvent, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useCrewName, useThemeText } from "../appearance.js";
 import { isAdmin, useUser } from "../auth.js";
 import { CopyBlock, ExternalLink, LinkAccountCard, StatusCard } from "../components/BridgeParts.js";
 import {
@@ -70,6 +71,7 @@ export function SlackPanel() {
 }
 
 function SetupSteps() {
+  const t = useThemeText();
   return (
     <div className="space-y-4">
       <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-700 dark:text-slate-300">
@@ -87,8 +89,10 @@ function SetupSteps() {
         </li>
         <li>Paste both tokens below and save. Socket Mode needs no public URL.</li>
         <li>
-          Bind each crew member to a channel below. Public channels are joined automatically; invite
-          the app to private ones first with <code>/invite @Shipmate</code>.
+          {t(
+            "Bind each crew member to a channel below. Public channels are joined automatically; invite the app to private ones first with",
+          )}{" "}
+          <code>/invite @Shipmate</code>.
         </li>
       </ol>
       <CopyBlock label="App manifest (YAML)" value={SLACK_MANIFEST} />
@@ -105,6 +109,7 @@ function OwnerCard({
   onChange: (s: SlackStatusDto) => void;
   onReload: () => Promise<void>;
 }) {
+  const t = useThemeText();
   const [botToken, setBotToken] = useState("");
   const [appToken, setAppToken] = useState("");
   const [busy, setBusy] = useState<"save" | "disconnect" | null>(null);
@@ -158,8 +163,9 @@ function OwnerCard({
     <Card>
       <h2 className="mb-1 font-semibold">App</h2>
       <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-        One Slack app for this instance. Crew members post under their own names and icons. Only you
-        (the owner) can change it.
+        {t(
+          "One Slack app for this instance. Crew members post under their own names and icons. Only you (the owner) can change it.",
+        )}
       </p>
       {!s.configured && (
         <div className="mb-4">
@@ -247,21 +253,24 @@ function ChannelsCard({
   admin: boolean;
   onChange: (s: SlackStatusDto) => void;
 }) {
+  const t = useThemeText();
   return (
     <Card>
       <h2 className="mb-1 font-semibold">Channels</h2>
       <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-        Each crew member talks in its own channel. Direct messages to the app go to the Captain.
+        {t(
+          "Each crew member talks in its own channel. Direct messages to the app go to the Captain.",
+        )}
         {admin &&
           " To find a channel id, open the channel's details in Slack; the id (C…) is at the bottom."}
       </p>
       {s.channels.length === 0 ? (
-        <Muted>No crew members to show.</Muted>
+        <Muted>{t("No crew members to show.")}</Muted>
       ) : (
         <Table>
           <thead>
             <tr>
-              <th className={th}>Crew member</th>
+              <th className={th}>{t("Crew member")}</th>
               <th className={th}>Channel</th>
               {admin && (
                 <th className={th}>
@@ -298,6 +307,7 @@ function ChannelRow({
   connected: boolean;
   onChange: (s: SlackStatusDto) => void;
 }) {
+  const crewName = useCrewName()(c.crewName);
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -320,7 +330,7 @@ function ChannelRow({
   return (
     <tr>
       <td className={td}>
-        <span className="font-medium">{c.crewName}</span>
+        <span className="font-medium">{crewName}</span>
       </td>
       <td className={td}>
         {editing !== null ? (
@@ -332,7 +342,7 @@ function ChannelRow({
             }}
           >
             <label className="sr-only" htmlFor={`slack-bind-${c.crewSlug}`}>
-              Channel id for {c.crewName}
+              Channel id for {crewName}
             </label>
             <input
               id={`slack-bind-${c.crewSlug}`}
@@ -394,7 +404,7 @@ function ChannelRow({
                   variant="ghost"
                   disabled={busy}
                   onClick={() => {
-                    if (window.confirm(`Unbind ${c.crewName} from its channel?`)) void bind(null);
+                    if (window.confirm(`Unbind ${crewName} from its channel?`)) void bind(null);
                   }}
                 >
                   Unbind

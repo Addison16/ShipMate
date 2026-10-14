@@ -1,6 +1,7 @@
 import type { InstallStartersResponse, ShipmateUse, StarterCrewDto } from "@shipmate/core";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useThemeWords } from "../appearance.js";
 import { rankStarters } from "../lib/onboarding.js";
 import { browserTimeZone, describeSchedule } from "../lib/starters.js";
 import { useResource } from "../lib/useResource.js";
@@ -26,6 +27,7 @@ export function StarterCrewPicker({
   use?: ShipmateUse | "";
 }) {
   const starters = useResource(() => api.listStarters().then((r) => r.starters));
+  const words = useThemeWords();
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [withWatches, setWithWatches] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -100,8 +102,8 @@ export function StarterCrewPicker({
             className="mt-0.5 size-4 accent-accent-700"
           />
           <span>
-            Also add their starter watches, <strong>paused</strong>. Nothing runs or spends until
-            you turn one on.
+            Also add their starter {words.watches.toLowerCase()}, <strong>paused</strong>. Nothing
+            runs or spends until you turn one on.
           </span>
         </label>
       )}
@@ -138,6 +140,8 @@ function StarterRow({
   onToggle: () => void;
 }) {
   const id = `starter-${starter.slug}`;
+  // The theme's word for watches, in the singular.
+  const watch = useThemeWords().watches.replace(/s$/, "");
   return (
     <li>
       <label
@@ -170,7 +174,7 @@ function StarterRow({
           </span>
           {starter.watch && (
             <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
-              Watch: {starter.watch.name} ({describeSchedule(starter.watch.cron)})
+              {watch}: {starter.watch.name} ({describeSchedule(starter.watch.cron)})
             </span>
           )}
           {starter.mcp.length > 0 && (

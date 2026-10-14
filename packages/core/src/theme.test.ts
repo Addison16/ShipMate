@@ -10,6 +10,7 @@ import {
   THEME_NEUTRALS,
   themeFile,
   themePaint,
+  themeText,
   themeWords,
 } from "./theme.js";
 import { THEME_BUILD_GUIDE } from "./theme-guide.js";
@@ -260,5 +261,30 @@ describe("theme words", () => {
       captain: "CEO",
       bridge: "Chat",
     });
+  });
+
+  it("rewrites nautical sentences in the theme's words", () => {
+    const plain = themeWords(null);
+    expect(themeText("Captain asked", plain)).toBe("Assistant asked");
+    expect(themeText("Pick a crew member. Crew members have jobs.", plain)).toBe(
+      "Pick an agent. Agents have jobs.",
+    );
+    expect(themeText("Open it in the Shipyard, or the Bridge.", plain)).toBe(
+      "Open it in Projects, or Chat.",
+    );
+    expect(themeText("← Crew", plain)).toBe("← Agents");
+    expect(
+      themeText("A watch runs after another watch. Results go on the watch's page.", plain),
+    ).toBe("A routine runs after another routine. Results go on the routine's page.");
+    expect(themeText("Pick the project to watch.", plain)).toBe("Pick the project to watch.");
+    const guild = themeWords({
+      words: { captain: "Guildmaster", crewMember: "adventurer", bridge: "Tavern" },
+    });
+    expect(themeText("A crew member asks the Captain on the Bridge.", guild)).toBe(
+      "An adventurer asks the Guildmaster on the Tavern.",
+    );
+    const nautical = themeWords(null, "nautical");
+    const text = "Open it in the Shipyard. A crew member asks the Captain with ask_captain.";
+    expect(themeText(text, nautical)).toBe(text);
   });
 });

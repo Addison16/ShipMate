@@ -2,6 +2,7 @@ import "../pets.css";
 import type { CrewDto, PetDto, PetPreviewMeta } from "@shipmate/core";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useCrewName } from "../appearance.js";
 import { type DockPet, type PetMood, petBuildPrompt, petPhase, petsApi } from "../lib/pets.js";
 import { navigate } from "../router.js";
 import { setDraft } from "./CrewChat.js";
@@ -27,6 +28,7 @@ export function PetSprite({
   tappable?: boolean;
   className?: string;
 }) {
+  const owner = useCrewName()(crewName);
   const [tapped, setTapped] = useState(0);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -36,7 +38,7 @@ export function PetSprite({
   }, [tapped]);
   if (failed) return null;
   const shown: PetMood = tapped ? "happy" : mood;
-  const label = `${pet.name}, ${crewName}'s pet${mood === "working" ? ", dancing while they work" : ""}`;
+  const label = `${pet.name}, ${owner}'s pet${mood === "working" ? ", dancing while they work" : ""}`;
   // Pets start at different points of their loop so several of them don't move in lockstep.
   const style = {
     width: size,
@@ -148,16 +150,17 @@ export function PetDock({ pets, className }: { pets: DockPet[]; className?: stri
 
 /** A pet the Captain just made, shown in the conversation above the Keep it question. */
 export function PetPreviewCard({ preview }: { preview: PetPreviewMeta }) {
+  const owner = useCrewName()(preview.crew.name);
   return (
     <div className="mx-auto flex w-full max-w-md animate-scale-in items-center gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <div className="grid size-28 shrink-0 place-items-center rounded-xl bg-gradient-to-b from-accent-50 to-slate-50 dark:from-accent-950/60 dark:to-slate-900">
         <PetSprite pet={preview} crewName={preview.crew.name} mood="working" size={88} />
       </div>
       <div className="min-w-0">
-        <p className="text-xs text-slate-600 dark:text-slate-300">{preview.crew.name}'s new pet</p>
+        <p className="text-xs text-slate-600 dark:text-slate-300">{owner}'s new pet</p>
         <p className="mt-0.5 truncate text-lg font-semibold">{preview.name}</p>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Hangs out in chat and dances while {preview.crew.name} works.
+          Hangs out in chat and dances while {owner} works.
         </p>
       </div>
     </div>
@@ -183,6 +186,9 @@ export function CrewPetCard({
   admin: boolean;
   onSaved: () => void;
 }) {
+  const crewName = useCrewName();
+  const name = crewName(crew.name);
+  const captain = crewName(captainName);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pet = crew.pet;
@@ -227,10 +233,10 @@ export function CrewPetCard({
           <h2 className="truncate font-semibold">{pet ? pet.name : "Pet"}</h2>
           <p className="text-sm text-slate-600 dark:text-slate-300">
             {pet?.shown
-              ? `Hangs out in chat and dances while ${crew.name} works.`
+              ? `Hangs out in chat and dances while ${name} works.`
               : pet
                 ? "Hidden for now."
-                : `Optional: a little creature that hangs out with ${crew.name} in chat.`}
+                : `Optional: a little creature that hangs out with ${name} in chat.`}
           </p>
         </div>
         {admin && pet && (
@@ -254,7 +260,7 @@ export function CrewPetCard({
             disabled={busy}
             onClick={() => void build(Boolean(pet))}
           >
-            {pet ? "Make a new pet" : `Make a pet with ${captainName}`}
+            {pet ? "Make a new pet" : `Make a pet with ${captain}`}
           </Button>
           <details className="w-full text-sm sm:w-auto">
             <summary
@@ -266,10 +272,10 @@ export function CrewPetCard({
               More details
             </summary>
             <p className="mt-2 max-w-xl text-xs text-slate-500 dark:text-slate-400">
-              {captainName} asks a few quick questions (creature, style and name), then shows you
-              the pet to keep or redo. Pictures come from the image model picked under Settings,
-              Photos and voice. Without one, {captainName} draws the pet itself, so it always works.
-              Pets keep still when your device asks for reduced motion.
+              {captain} asks a few quick questions (creature, style and name), then shows you the
+              pet to keep or redo. Pictures come from the image model picked under Settings, Photos
+              and voice. Without one, {captain} draws the pet itself, so it always works. Pets keep
+              still when your device asks for reduced motion.
             </p>
           </details>
         </div>

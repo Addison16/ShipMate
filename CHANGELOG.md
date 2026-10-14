@@ -6,6 +6,10 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Theme names show everywhere**: after switching themes, question cards still said "Captain
+  asked", and agent pages, settings, help text, routines and phone notifications kept the old
+  ship words. They now all use your theme's names, including the coordinator's stock name and
+  the roles the starter agents came with. Names you gave agents yourself stay as they are.
 - **Upgrading no longer breaks the built-in database**: v0.3.1's database account got different
   IDs than v0.3.0's, so an upgraded install couldn't open its own database files and kept
   restarting ("cannot create /data/postgres/server.log: Permission denied"). On start, Shipmate

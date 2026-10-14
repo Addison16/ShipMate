@@ -1,6 +1,7 @@
 import type { CrewDto, TelegramStatusDto } from "@shipmate/core";
 import { type FormEvent, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useCrewName, useThemeText } from "../appearance.js";
 import { isAdmin, useUser } from "../auth.js";
 import { ExternalLink, LinkAccountCard, StatusCard } from "../components/BridgeParts.js";
 import {
@@ -78,6 +79,7 @@ export function TelegramPanel() {
 }
 
 function SetupSteps() {
+  const themeText = useThemeText();
   return (
     <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-700 dark:text-slate-300">
       <li>
@@ -91,11 +93,12 @@ function SetupSteps() {
       </li>
       <li>
         Add the bot to a group, then write something there. The group shows up under “Chats the bot
-        has seen” below; connect it to a crew member.
+        has seen” below; {themeText("connect it to a crew member.")}
       </li>
       <li>
-        Direct messages to the bot go to the Captain. Shipmate polls Telegram for messages, so no
-        public URL is needed.
+        {themeText(
+          "Direct messages to the bot go to the Captain. Shipmate polls Telegram for messages, so no public URL is needed.",
+        )}
       </li>
     </ol>
   );
@@ -110,6 +113,7 @@ function OwnerCard({
   onChange: (t: TelegramStatusDto) => void;
   onReload: () => Promise<void>;
 }) {
+  const themeText = useThemeText();
   const [botToken, setBotToken] = useState("");
   const [busy, setBusy] = useState<"save" | "disconnect" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -153,8 +157,9 @@ function OwnerCard({
     <Card>
       <h2 className="mb-1 font-semibold">Bot</h2>
       <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-        One Telegram bot for this instance. A Telegram bot has one name, so each reply starts with
-        the crew member who is speaking. Only you (the owner) can change it.
+        {themeText(
+          "One Telegram bot for this instance. A Telegram bot has one name, so each reply starts with the crew member who is speaking. Only you (the owner) can change it.",
+        )}
       </p>
       {!t.configured && (
         <div className="mb-4">
@@ -218,6 +223,8 @@ function CrewSelect({
   onChange: (slug: string) => void;
   disabled?: boolean;
 }) {
+  const themeText = useThemeText();
+  const crewName = useCrewName();
   const options = crew.filter((c) => c.status === "active");
   return (
     <>
@@ -234,13 +241,13 @@ function CrewSelect({
           focusRing,
         )}
       >
-        {value === "" && <option value="">Choose a crew member…</option>}
+        {value === "" && <option value="">{themeText("Choose a crew member…")}</option>}
         {!options.some((c) => c.slug === value) && value !== "" && (
           <option value={value}>{value}</option>
         )}
         {options.map((c) => (
           <option key={c.slug} value={c.slug}>
-            {c.name}
+            {crewName(c.name)}
           </option>
         ))}
       </select>
@@ -261,6 +268,8 @@ function ChatsCard({
   onChange: (t: TelegramStatusDto) => void;
   onReload: () => void;
 }) {
+  const themeText = useThemeText();
+  const crewName = useCrewName();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [manualId, setManualId] = useState("");
@@ -292,8 +301,9 @@ function ChatsCard({
         </Button>
       </div>
       <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-        Each Telegram chat (a group, or a direct message) is answered by one crew member. Direct
-        messages that are not listed here go to the Captain.
+        {themeText(
+          "Each Telegram chat (a group, or a direct message) is answered by one crew member. Direct messages that are not listed here go to the Captain.",
+        )}
       </p>
       <ErrorText>{error}</ErrorText>
       {t.chats.length === 0 ? (
@@ -303,7 +313,7 @@ function ChatsCard({
           <thead>
             <tr>
               <th className={th}>Chat</th>
-              <th className={th}>Crew member</th>
+              <th className={th}>{themeText("Crew member")}</th>
               {admin && (
                 <th className={th}>
                   <span className="sr-only">Actions</span>
@@ -324,14 +334,14 @@ function ChatsCard({
                   {admin ? (
                     <CrewSelect
                       id={`tg-crew-${c.chatId}`}
-                      label={`Crew member for ${c.title ?? c.chatId}`}
+                      label={`${themeText("Crew member")} for ${c.title ?? c.chatId}`}
                       crew={crew}
                       value={c.crewSlug}
                       disabled={busy !== null}
                       onChange={(slug) => void map(c.chatId, slug)}
                     />
                   ) : (
-                    c.crewName
+                    crewName(c.crewName)
                   )}
                 </td>
                 {admin && (
@@ -378,7 +388,7 @@ function ChatsCard({
                     </span>
                     <CrewSelect
                       id={`tg-seen-${c.chatId}`}
-                      label={`Crew member for ${c.title}`}
+                      label={`${themeText("Crew member")} for ${c.title}`}
                       crew={crew}
                       value={pick}
                       onChange={(slug) => setPicks({ ...picks, [c.chatId]: slug })}
@@ -415,7 +425,7 @@ function ChatsCard({
             <div className="pb-0.5">
               <CrewSelect
                 id="tg-manual-crew"
-                label="Crew member for that chat"
+                label={themeText("Crew member for that chat")}
                 crew={crew}
                 value={manualCrew}
                 onChange={setManualCrew}

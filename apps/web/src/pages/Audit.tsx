@@ -1,6 +1,7 @@
 import type { AuditEventDto } from "@shipmate/core";
 import { useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useCrewName, useThemeText } from "../appearance.js";
 import { isAdmin, useUser } from "../auth.js";
 import {
   Badge,
@@ -47,6 +48,8 @@ function formatStamp(iso: string): string {
 
 export function AuditPage() {
   const user = useUser();
+  const t = useThemeText();
+  const crewName = useCrewName();
   const admin = isAdmin(user);
   const crew = useResource(() => api.listCrew(true).then((r) => r.crew));
   const users = useResource(
@@ -104,14 +107,14 @@ export function AuditPage() {
       />
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
         <SelectField
-          label="Crew member"
+          label={t("Crew member")}
           value={crewFilter}
           onChange={(e) => setCrewFilter(e.target.value)}
         >
-          <option value="">All crew</option>
+          <option value="">{t("All Crew")}</option>
           {crew.data?.map((c) => (
             <option key={c.slug} value={c.slug}>
-              {c.name}
+              {crewName(c.name)}
             </option>
           ))}
         </SelectField>
@@ -138,7 +141,7 @@ export function AuditPage() {
             <tr>
               <th className={th}>Time</th>
               <th className={th}>Person</th>
-              <th className={th}>Crew</th>
+              <th className={th}>{t("Crew member")}</th>
               <th className={th}>Action</th>
               <th className={th}>Summary</th>
               <th className={th}>Decision</th>
@@ -153,7 +156,9 @@ export function AuditPage() {
                 <td className={`${td} whitespace-nowrap`}>
                   {e.user ? (e.user.id === user.id ? "You" : e.user.name) : "—"}
                 </td>
-                <td className={`${td} whitespace-nowrap`}>{e.crew?.name ?? "—"}</td>
+                <td className={`${td} whitespace-nowrap`}>
+                  {e.crew ? crewName(e.crew.name) : "—"}
+                </td>
                 <td className={`${td} font-mono text-xs whitespace-nowrap`}>{e.action}</td>
                 <td className={`${td} min-w-[16rem] break-words`}>{e.summary}</td>
                 <td className={td}>

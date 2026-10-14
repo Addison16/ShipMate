@@ -1,6 +1,7 @@
 import type { CrewDto, SkillDto, SkillScope } from "@shipmate/core";
 import { type FormEvent, useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useCrewName, useThemeText } from "../appearance.js";
 import { useUser } from "../auth.js";
 import {
   Badge,
@@ -42,12 +43,13 @@ export function SkillsPage({ skillId }: { skillId: string | null }) {
 }
 
 function useCrewNames() {
+  const crewName = useCrewName();
   const crew = useResource(() => api.listCrew(true).then((r) => r.crew));
   useServerEvents((ev) => {
     if (ev.type === "crew_changed") void crew.reload();
   });
   const names: Record<string, string> = {};
-  for (const c of crew.data ?? []) names[c.slug] = c.name;
+  for (const c of crew.data ?? []) names[c.slug] = crewName(c.name);
   return { crew: crew.data ?? [], names };
 }
 
@@ -61,6 +63,7 @@ function SkillStatus({ skill }: { skill: SkillDto }) {
 
 function SkillList() {
   const user = useUser();
+  const t = useThemeText();
   const skills = useResource(() => api.listSkills().then((r) => r.skills));
   const { names } = useCrewNames();
   const [error, setError] = useState<string | null>(null);
@@ -126,7 +129,9 @@ function SkillList() {
       <PageHeader
         icon="skills"
         title="Skills"
-        description="Reusable instructions crew members load when a task calls for them. Skills a crew member writes itself wait for approval before they are used."
+        description={t(
+          "Reusable instructions crew members load when a task calls for them. Skills a crew member writes itself wait for approval before they are used.",
+        )}
         actions={
           <Button variant="primary" onClick={() => navigate("/skills/new")}>
             New skill
@@ -147,14 +152,14 @@ function SkillList() {
             <Card>
               <h2 className="mb-1 font-semibold">Instance</h2>
               <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-                Available to every crew member for everyone.
+                {t("Available to every crew member for everyone.")}
               </p>
               {groups.instance.length ? list(groups.instance) : <Muted>None yet.</Muted>}
             </Card>
             <Card>
-              <h2 className="mb-1 font-semibold">Crew</h2>
+              <h2 className="mb-1 font-semibold">{t("Crew")}</h2>
               <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-                Private to one crew member.
+                {t("Private to one crew member.")}
               </p>
               {groups.crew.length === 0 && <Muted>None yet.</Muted>}
               <div className="space-y-4">
@@ -189,6 +194,8 @@ function SkillList() {
 
 function NewSkill() {
   const user = useUser();
+  const t = useThemeText();
+  const crewName = useCrewName();
   const scopes = creatableScopes(user);
   const { crew } = useCrewNames();
   const [scope, setScope] = useState<SkillScope>("user");
@@ -238,26 +245,26 @@ function NewSkill() {
               onChange={(e) => setScope(e.target.value as SkillScope)}
               hint={
                 scopes.length === 1
-                  ? "Only owners and admins can add crew or instance skills."
+                  ? t("Only owners and admins can add skills for a crew member or the instance.")
                   : undefined
               }
             >
               {scopes.map((s) => (
                 <option key={s} value={s}>
-                  {SCOPE_LABEL[s]}
+                  {t(SCOPE_LABEL[s])}
                 </option>
               ))}
             </SelectField>
             {scope === "crew" && (
               <SelectField
-                label="Crew member"
+                label={t("Crew member")}
                 required
                 value={crewSlug}
                 onChange={(e) => setCrewSlug(e.target.value)}
               >
                 {activeCrew.map((c) => (
                   <option key={c.slug} value={c.slug}>
-                    {c.name}
+                    {crewName(c.name)}
                   </option>
                 ))}
               </SelectField>
@@ -268,7 +275,9 @@ function NewSkill() {
             mono
             rows={18}
             required
-            hint="The name and description in the frontmatter are required. The description tells crew members when to use it."
+            hint={t(
+              "The name and description in the frontmatter are required. The description tells crew members when to use it.",
+            )}
             value={content}
             onChange={(e) => setContent(e.target.value)}
           />
@@ -287,6 +296,7 @@ function NewSkill() {
 
 function SkillDetail({ id }: { id: string }) {
   const user = useUser();
+  const t = useThemeText();
   const detail = useResource(() => api.getSkill(id).then((r) => r.skill), [id]);
   const { names } = useCrewNames();
   const [value, setValue] = useState<string | null>(null);
@@ -348,7 +358,7 @@ function SkillDetail({ id }: { id: string }) {
       ? "Instance"
       : skill.scope === "user"
         ? "Mine"
-        : `Crew: ${names[skill.crewSlug ?? ""] ?? skill.crewSlug}`
+        : `${t("Crew")}: ${names[skill.crewSlug ?? ""] ?? skill.crewSlug}`
     : "";
 
   return (
@@ -395,8 +405,9 @@ function SkillDetail({ id }: { id: string }) {
           {skill.status === "pending" && (
             <div className="mb-4">
               <Notice>
-                A crew member wrote this skill. It is not loaded until it is approved; read it
-                first.
+                {t(
+                  "A crew member wrote this skill. It is not loaded until it is approved; read it first.",
+                )}
               </Notice>
             </div>
           )}
@@ -429,7 +440,7 @@ function SkillDetail({ id }: { id: string }) {
               <Muted>
                 {skill.scope === "user"
                   ? "Only the person who owns this skill can change it."
-                  : "Only owners and admins can change crew and instance skills."}
+                  : t("Only owners and admins can change skills for crew members or the instance.")}
               </Muted>
             )}
           </form>

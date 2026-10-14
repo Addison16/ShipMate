@@ -4,6 +4,7 @@ import {
   checkTheme,
   parseUserPreferences,
   repairTheme,
+  type ThemeWordMap,
   themeWords,
   type UserPreferences,
 } from "@shipmate/core";
@@ -141,6 +142,14 @@ export class ThemeService {
     return check.ok ? check.theme : null;
   }
 
+  /** The app's words as `userId` sees them (their custom theme's, or their style's). */
+  async wordsFor(userId: string): Promise<ThemeWordMap> {
+    const [user] = await this.db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (!user) return themeWords(null);
+    const { style } = parseUserPreferences(user.preferences);
+    return themeWords(await this.activeFor(user), style);
+  }
+
   /** Whether a theme exists (for picking one in preferences). */
   async exists(id: string): Promise<boolean> {
     return (await this.#row(id)) !== null;
@@ -162,7 +171,7 @@ export class ThemeService {
     const lines = [
       `## ${user.displayName}'s theme: ${theme.name}`,
       "",
-      `${user.displayName} uses a custom theme, so in this app (for them) the coordinator is called "${w.captain}", the team is "${w.crew}" (one of them is a "${w.crewMember}"), the chat is "${w.bridge}", scheduled jobs are "${w.watches}", work projects are "${w.shipyard}", and the app is "${w.appName}". Use these words with ${user.displayName}.`,
+      `${user.displayName} uses a custom theme, so in this app (for them) the coordinator is called "${w.captain}", the team is "${w.crew}" (one of them is a "${w.crewMember}"), the chat is "${w.bridge}", scheduled jobs are "${w.watches}", work projects are "${w.shipyard}", and the app is "${w.appName}". Use these words with ${user.displayName}, including for yourself and the others, even where your instructions use ship words like Captain, Crew, Bridge, Watches or Shipyard.`,
     ];
     if (theme.voice) {
       lines.push(

@@ -1,6 +1,7 @@
 import type { HouseholdDto, ProfileDto } from "@shipmate/core";
 import { type FormEvent, useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useThemeText } from "../appearance.js";
 import { isAdmin, useUser } from "../auth.js";
 import { USE_CHOICES } from "../lib/onboarding.js";
 import { browserTimeZone } from "../lib/starters.js";
@@ -34,6 +35,7 @@ export function ProfileSettings() {
 }
 
 function MyProfile({ initial }: { initial: ProfileDto }) {
+  const t = useThemeText();
   const [p, setP] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -70,7 +72,7 @@ function MyProfile({ initial }: { initial: ProfileDto }) {
     <Card>
       <h2 className="mb-1 font-semibold">Your profile</h2>
       <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-        Every crew member reads this when working for you, so you never have to repeat it.
+        {t("Every crew member reads this when working for you, so you never have to repeat it.")}
       </p>
       <form onSubmit={save} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
@@ -152,6 +154,7 @@ function MyProfile({ initial }: { initial: ProfileDto }) {
 function Household({ initial }: { initial: HouseholdDto }) {
   const user = useUser();
   const canEdit = isAdmin(user);
+  const t = useThemeText();
   const [h, setH] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -186,7 +189,7 @@ function Household({ initial }: { initial: HouseholdDto }) {
     <Card>
       <h2 className="mb-1 font-semibold">Household</h2>
       <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-        Shared facts every crew member knows.{" "}
+        {t("Shared facts every crew member knows.")}{" "}
         {canEdit ? "Everyone can read them." : "Only owners and admins can change them."}
       </p>
       <form onSubmit={save} className="space-y-4">

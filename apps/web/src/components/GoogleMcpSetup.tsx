@@ -1,6 +1,7 @@
 import type { McpServerDto } from "@shipmate/core";
 import { type FormEvent, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useThemeText } from "../appearance.js";
 import { googleMcpApi, isLoopbackHost } from "../lib/google-mcp.js";
 import { CopyField } from "./CopyField.js";
 import { Button, ErrorText, Muted, TextField } from "./ui.js";
@@ -21,6 +22,7 @@ export function GoogleMcpSetup({
   onChange: (s: McpServerDto) => void;
 }) {
   const g = server.google;
+  const t = useThemeText();
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [editing, setEditing] = useState(false);
@@ -100,7 +102,7 @@ export function GoogleMcpSetup({
   }
 
   function signOut() {
-    if (!window.confirm("Sign out of Google? Crew lose Gmail, Calendar and Drive.")) return;
+    if (!window.confirm(t("Sign out of Google? Crew lose Gmail, Calendar and Drive."))) return;
     void run("signout", async () => {
       const { server: s } = await googleMcpApi.signOut();
       onChange(s);

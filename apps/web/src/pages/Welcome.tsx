@@ -1,7 +1,7 @@
 import type { ProfileDto } from "@shipmate/core";
 import { type ReactNode, useState } from "react";
 import { api, errorMessage } from "../api.js";
-import { useThemeWords } from "../appearance.js";
+import { useThemeText, useThemeWords } from "../appearance.js";
 import { useAuth, useUser } from "../auth.js";
 import { AppearanceSettings } from "../components/AppearanceSettings.js";
 import { Logo } from "../components/Logo.js";
@@ -22,6 +22,7 @@ const STEPS: Step[] = ["profile", "notifications", "tour"];
 export function WelcomePage() {
   const user = useUser();
   const words = useThemeWords();
+  const t = useThemeText();
   const { setUser } = useAuth();
   const [step, setStep] = useState<Step>("profile");
   const [error, setError] = useState<string | null>(null);
@@ -85,8 +86,9 @@ export function WelcomePage() {
           {step === "notifications" && (
             <>
               <Heading title="Make it yours">
-                Pick a look and turn on notifications on this device, so you hear back when a crew
-                member finishes or needs your OK.
+                {t(
+                  "Pick a look and turn on notifications on this device, so you hear back when a crew member finishes or needs your OK.",
+                )}
               </Heading>
               <div className="space-y-4">
                 <AppearanceSettings />
@@ -108,7 +110,7 @@ export function WelcomePage() {
               <TourGrid onGo={(path) => void done(path)} />
               <Footer>
                 <Button variant="primary" onClick={() => void done()}>
-                  Go to the Bridge
+                  {t("Go to the Bridge")}
                 </Button>
               </Footer>
             </>

@@ -11,7 +11,7 @@ import type {
 } from "@shipmate/core";
 import { type FormEvent, useState } from "react";
 import { api, errorMessage } from "../api.js";
-import { useThemeWords } from "../appearance.js";
+import { useCrewName, useThemeText, useThemeWords } from "../appearance.js";
 import { useApprovals } from "../approvals.js";
 import { isAdmin, useUser } from "../auth.js";
 import { ApprovalCard } from "../components/ApprovalCard.js";
@@ -178,10 +178,13 @@ function EnabledToggle({
 }
 
 function DeleteWatchButton({ watch, onDeleted }: { watch: WatchDto; onDeleted: () => void }) {
+  const t = useThemeText();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   async function remove() {
-    if (!window.confirm(`Delete the watch "${watch.name}"? Its run history goes too.`)) return;
+    if (!window.confirm(`${t("Delete the watch")} "${watch.name}"? Its run history goes too.`)) {
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -241,11 +244,16 @@ function RunNow({ watch, onRun }: { watch: WatchDto; onRun?: (run: WatchRunDto) 
 
 function WatchList() {
   const words = useThemeWords();
+  const t = useThemeText();
+  const displayName = useCrewName();
   const projects = useGitHubProjects();
   const user = useUser();
   const watches = useWatches();
   const crew = useCrew();
-  const crewName = (slug: string) => crew.find((c) => c.slug === slug)?.name ?? slug;
+  const crewName = (slug: string) => {
+    const name = crew.find((c) => c.slug === slug)?.name;
+    return name ? displayName(name) : slug;
+  };
   const all = watches.data ?? [];
 
   const replace = (w: WatchDto) => watches.setData(all.map((x) => (x.id === w.id ? w : x)));
@@ -255,10 +263,12 @@ function WatchList() {
       <PageHeader
         icon="watches"
         title={words.watches}
-        description="Jobs a crew member runs on a schedule, on a webhook, or after another watch finishes."
+        description={t(
+          "Jobs a crew member runs on a schedule, on a webhook, or after another watch finishes.",
+        )}
         actions={
           <Button variant="primary" onClick={() => navigate("/watches/new")}>
-            New watch
+            New {words.watches.replace(/s$/, "").toLowerCase()}
           </Button>
         }
       />
@@ -267,9 +277,13 @@ function WatchList() {
       <ErrorText>{watches.error}</ErrorText>
       {watches.loading && !watches.data && <Loading lines={4} />}
       {watches.data?.length === 0 && (
-        <EmptyState icon={<NavIcon name="watches" size={22} />} title="No watches yet">
-          A watch could send you a morning brief every weekday, plan meals each Monday, or triage a
-          repository every night.
+        <EmptyState
+          icon={<NavIcon name="watches" size={22} />}
+          title={`No ${words.watches.toLowerCase()} yet`}
+        >
+          {t(
+            "A watch could send you a morning brief every weekday, plan meals each Monday, or triage a repository every night.",
+          )}
         </EmptyState>
       )}
       <ul className="stagger space-y-3">
@@ -369,6 +383,8 @@ function WatchTemplateCard({
   crew: CrewDto[];
   exists: boolean;
 }) {
+  const t = useThemeText();
+  const crewName = useCrewName();
   const [time, setTime] = useState("07:00");
   const [crewSlug, setCrewSlug] = useState(template.crewSlug);
   const [error, setError] = useState<string | null>(null);
@@ -421,13 +437,13 @@ function WatchTemplateCard({
         />
         {active.length > 1 && (
           <SelectField
-            label="Crew member"
+            label={t("Crew member")}
             value={crewSlug}
             onChange={(e) => setCrewSlug(e.target.value)}
           >
             {active.map((c) => (
               <option key={c.slug} value={c.slug}>
-                {c.name}
+                {crewName(c.name)}
               </option>
             ))}
           </SelectField>
@@ -438,7 +454,7 @@ function WatchTemplateCard({
       </form>
       {tz && (
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-          Runs in your timezone ({tz}). Results appear on the watch's page.
+          Runs in your timezone ({tz}). {t("Results appear on the watch's page.")}
         </p>
       )}
       <ErrorText>{error}</ErrorText>
@@ -506,7 +522,7 @@ function toTrigger(f: FormState): WatchTrigger | string {
       if (!f.afterId) return "Pick the watch this one runs after.";
       return { kind: "after", routineId: f.afterId };
     case "github":
-      if (!f.projectId) return "Pick the Shipyard project to watch.";
+      if (!f.projectId) return "Pick the project to watch.";
       if (!f.events.length) return "Pick at least one GitHub event.";
       return { kind: "github", projectId: f.projectId, events: f.events };
     default:
@@ -531,6 +547,7 @@ function GitHubTriggerFields({
   onProject: (id: string) => void;
   onEvents: (events: GitHubWatchEvent[]) => void;
 }) {
+  const t = useThemeText();
   const projects = useGitHubProjects();
   return (
     <>
@@ -539,7 +556,9 @@ function GitHubTriggerFields({
         required
         value={projectId}
         onChange={(e) => onProject(e.target.value)}
-        hint="The run works in this project's workspace. Its GitHub webhook must be set up (Shipyard → project → Settings)."
+        hint={t(
+          "The run works in this project's workspace. Its GitHub webhook must be set up (Shipyard → project → Settings).",
+        )}
       >
         <option value="">Pick a project…</option>
         {projects.map((p) => (
@@ -586,6 +605,9 @@ function WatchForm({
   onSaved: (w: WatchDto) => void;
   onCancel?: () => void;
 }) {
+  const t = useThemeText();
+  const crewName = useCrewName();
+  const one = useThemeWords().watches.replace(/s$/, "").toLowerCase();
   const [f, setF] = useState<FormState>(() => toForm(watch, crew));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -640,15 +662,15 @@ function WatchForm({
           onChange={(e) => set("name", e.target.value)}
         />
         <SelectField
-          label="Crew member"
+          label={t("Crew member")}
           required
           value={crewSlug}
           onChange={(e) => set("crewSlug", e.target.value)}
         >
-          {activeCrew.length === 0 && <option value="">No active crew</option>}
+          {activeCrew.length === 0 && <option value="">{t("No active crew members")}</option>}
           {activeCrew.map((c) => (
             <option key={c.slug} value={c.slug}>
-              {c.name} ({c.role})
+              {crewName(c.name)} ({t(c.role)})
             </option>
           ))}
         </SelectField>
@@ -664,7 +686,7 @@ function WatchForm({
           <option value="cron">On a schedule (cron)</option>
           <option value="interval">Every few minutes</option>
           <option value="webhook">When a webhook is called</option>
-          <option value="after">After another watch finishes</option>
+          <option value="after">After another {one} finishes</option>
           <option value="github">When something happens on GitHub</option>
         </SelectField>
         {f.kind === "cron" && (
@@ -741,7 +763,7 @@ function WatchForm({
             value={f.afterId}
             onChange={(e) => set("afterId", e.target.value)}
           >
-            <option value="">Pick a watch…</option>
+            <option value="">Pick a {one}…</option>
             {candidates.map((w) => (
               <option key={w.id} value={w.id}>
                 {w.name}
@@ -755,7 +777,7 @@ function WatchForm({
         label="Prompt"
         rows={6}
         required
-        placeholder="What should the crew member do each time this runs?"
+        placeholder={t("What should the crew member do each time this runs?")}
         value={f.prompt}
         onChange={(e) => set("prompt", e.target.value)}
       />
@@ -788,7 +810,9 @@ function WatchForm({
         label="Monthly cap (USD, optional)"
         inputMode="decimal"
         placeholder="No cap"
-        hint="Runs stop and are marked failed once this watch has spent this much in the month (UTC)."
+        hint={t(
+          "Runs stop and are marked failed once this watch has spent this much in the month (UTC).",
+        )}
         value={f.cap}
         onChange={(e) => set("cap", e.target.value)}
       />
@@ -806,7 +830,7 @@ function WatchForm({
       <ErrorText>{error}</ErrorText>
       <div className="flex gap-2">
         <Button type="submit" variant="primary" disabled={busy || !crewSlug}>
-          {busy ? "Saving…" : watch ? "Save" : "Create watch"}
+          {busy ? "Saving…" : watch ? "Save" : `Create ${one}`}
         </Button>
         {onCancel && <Button onClick={onCancel}>Cancel</Button>}
       </div>
@@ -815,6 +839,7 @@ function WatchForm({
 }
 
 function NewWatch() {
+  const t = useThemeText();
   const watches = useWatches();
   const crew = useCrew();
   return (
@@ -823,12 +848,12 @@ function NewWatch() {
         href={href("/watches")}
         className="text-sm text-accent-700 hover:underline dark:text-accent-300"
       >
-        ← Watches
+        ← {t("Watches")}
       </a>
       <PageHeader title="New watch" />
       <Card>
         {crew.length === 0 ? (
-          <Muted>Loading crew…</Muted>
+          <Muted>{t("Loading Crew…")}</Muted>
         ) : (
           <WatchForm
             watch={null}
@@ -844,16 +869,21 @@ function NewWatch() {
 }
 
 function WebhookCopyField({ label, value }: { label: string; value: string }) {
+  const t = useThemeText();
   return (
     <CopyField
       label={label}
       value={value}
-      hint="Keep it private: anyone with this URL can start the watch. POST body text is appended to the prompt."
+      hint={t(
+        "Keep it private: anyone with this URL can start the watch. POST body text is appended to the prompt.",
+      )}
     />
   );
 }
 
 function WatchDetail({ id, startEditing }: { id: string; startEditing: boolean }) {
+  const t = useThemeText();
+  const displayName = useCrewName();
   const projects = useGitHubProjects();
   const user = useUser();
   const watches = useWatches();
@@ -871,10 +901,16 @@ function WatchDetail({ id, startEditing }: { id: string; startEditing: boolean }
   // only people who may change the watch get it.
   const editing = startEditing && editable;
   const setEditing = (on: boolean) => navigate(on ? `/watches/${id}/edit` : `/watches/${id}`);
-  const crewName = (slug: string) => crew.find((c) => c.slug === slug)?.name ?? slug;
+  const crewName = (slug: string) => {
+    const name = crew.find((c) => c.slug === slug)?.name;
+    return name ? displayName(name) : slug;
+  };
 
   async function remove() {
-    if (!watch || !window.confirm(`Delete the watch "${watch.name}"? Its run history goes too.`)) {
+    if (
+      !watch ||
+      !window.confirm(`${t("Delete the watch")} "${watch.name}"? Its run history goes too.`)
+    ) {
       return;
     }
     setError(null);
@@ -892,11 +928,11 @@ function WatchDetail({ id, startEditing }: { id: string; startEditing: boolean }
         href={href("/watches")}
         className="text-sm text-accent-700 hover:underline dark:text-accent-300"
       >
-        ← Watches
+        ← {t("Watches")}
       </a>
       {watches.error && !watch && <ErrorText>{watches.error}</ErrorText>}
       {!watch && watches.loading && <Loading />}
-      {!watch && watches.data && <Muted>This watch no longer exists.</Muted>}
+      {!watch && watches.data && <Muted>{t("This watch no longer exists.")}</Muted>}
       {watch && (
         <>
           <header className="mt-2 mb-4 flex flex-wrap items-start justify-between gap-3">

@@ -1,4 +1,10 @@
-import type { CrewDetailDto, McpServerDto, ModelOption, SkillDto } from "@shipmate/core";
+import {
+  type CrewDetailDto,
+  type McpServerDto,
+  type ModelOption,
+  type SkillDto,
+  STOCK_CAPTAIN_NAME,
+} from "@shipmate/core";
 import {
   type FormEvent,
   type KeyboardEvent,
@@ -8,6 +14,7 @@ import {
   useState,
 } from "react";
 import { api, errorMessage } from "../api.js";
+import { useThemeText, useThemeWords } from "../appearance.js";
 import {
   type ApprovalMode,
   applyManifestForm,
@@ -72,6 +79,7 @@ export function CrewSettings({
   readOnly: boolean;
   onSaved: (crew: CrewDetailDto) => void;
 }) {
+  const t = useThemeText();
   const saved = crew.manifestYaml;
   const initial = readManifestForm(saved);
   const [mode, setMode] = useState<Mode>(initial.ok ? "form" : "file");
@@ -153,8 +161,9 @@ export function CrewSettings({
     <form onSubmit={save} className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-2xl text-xs text-slate-500 dark:text-slate-400">
-          These settings live in this crew member's <code className="font-mono">crew.yaml</code>.
-          Change them here, or edit the file directly; both stay in step.
+          {t("These settings live in this crew member's")}{" "}
+          <code className="font-mono">crew.yaml</code>. Change them here, or edit the file directly;
+          both stay in step.
         </p>
         <fieldset className="inline-flex rounded-md border border-slate-300 p-0.5 dark:border-slate-600">
           <legend className="sr-only">How to edit</legend>
@@ -270,6 +279,8 @@ function ManifestFields({
   readOnly: boolean;
   patch: (p: Partial<ManifestForm>) => void;
 }) {
+  const t = useThemeText();
+  const words = useThemeWords();
   const servers = useResource<McpServerDto[]>(() => api.listMcp().then((r) => r.servers));
   const skills = useResource<SkillDto[]>(() => api.listSkills().then((r) => r.skills));
   const cli = form.backend === "claude-code-cli";
@@ -279,8 +290,8 @@ function ManifestFields({
   // with no model picked yet.
   const engineProvider = cli ? CLAUDE_CODE_PROVIDER : codex ? CODEX_PROVIDER : null;
 
-  const builtin = new Set(BUILTIN_TOOLS.map((t) => t.id));
-  const otherTools = form.tools.filter((t) => !builtin.has(t));
+  const builtin = new Set(BUILTIN_TOOLS.map((tool) => tool.id));
+  const otherTools = form.tools.filter((tool) => !builtin.has(tool));
   const installedIds = (servers.data ?? []).filter((s) => s.installed).map((s) => s.id);
   const toolChoices = approvalToolChoices(
     form.mcp.map((id) => ({ id, name: servers.data?.find((s) => s.id === id)?.name ?? id })),
@@ -300,8 +311,21 @@ function ManifestFields({
             required
             maxLength={60}
             disabled={readOnly}
-            value={form.name}
-            onChange={(e) => patch({ name: e.target.value })}
+            hint={
+              form.name === STOCK_CAPTAIN_NAME && words.captain !== STOCK_CAPTAIN_NAME
+                ? "A new name here changes it for everyone."
+                : undefined
+            }
+            // The stock name shows as the theme's word, and is kept as is unless renamed.
+            value={form.name === STOCK_CAPTAIN_NAME ? words.captain : form.name}
+            onChange={(e) =>
+              patch({
+                name:
+                  e.target.value === words.captain && form.name === STOCK_CAPTAIN_NAME
+                    ? STOCK_CAPTAIN_NAME
+                    : e.target.value,
+              })
+            }
           />
           <SelectField
             label="Who can use it"
@@ -318,7 +342,7 @@ function ManifestFields({
           required
           maxLength={200}
           disabled={readOnly}
-          hint="One line the Captain reads when deciding who to hand work to."
+          hint={t("One line the Captain reads when deciding who to hand work to.")}
           value={form.role}
           onChange={(e) => patch({ role: e.target.value })}
         />
@@ -331,13 +355,13 @@ function ManifestFields({
         />
         {form.captain && (
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            <Badge tone="accent">captain</Badge> This is the coordinator. Use Edit file to move the
-            role to someone else.
+            <Badge tone="accent">{words.captain.toLowerCase()}</Badge> This is the coordinator. Use
+            Edit file to move the role to someone else.
           </p>
         )}
       </Section>
 
-      <Section title="Model" description="What runs this crew member's turns.">
+      <Section title="Model" description={t("What runs this crew member's turns.")}>
         <SelectField
           label="Engine"
           disabled={readOnly}
@@ -376,10 +400,14 @@ function ManifestFields({
           disabled={readOnly}
           hint={
             cli
-              ? "Runs on your Claude subscription through Claude Code. Shipmate's approval rules below do not apply; the Claude Code settings decide which tools it may use. Not available in Shipyard projects."
+              ? t(
+                  "Runs on your Claude subscription through Claude Code. Shipmate's approval rules below do not apply; the Claude Code settings decide which tools it may use. Not available in Shipyard projects.",
+                )
               : codex
-                ? "Runs on your ChatGPT plan through Codex. Not available in Shipyard projects."
-                : "Crew default follows the model picked in Settings. Pick a provider and model to give this crew member its own."
+                ? t("Runs on your ChatGPT plan through Codex. Not available in Shipyard projects.")
+                : t(
+                    "Crew default follows the model picked in Settings. Pick a provider and model to give this crew member its own.",
+                  )
           }
         />
         {codex && (
@@ -485,7 +513,7 @@ function ManifestFields({
         title="Tools"
         description={
           cli || codex
-            ? "Used when this crew member runs on Shipmate (pi)."
+            ? t("Used when this crew member runs on Shipmate (pi).")
             : "Shipmate's own tools and its MCP servers are always added."
         }
       >
@@ -502,17 +530,17 @@ function ManifestFields({
         {form.tools.length > 0 && (
           <fieldset disabled={readOnly} className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             <legend className="sr-only">Built-in tools</legend>
-            {BUILTIN_TOOLS.map((t) => (
+            {BUILTIN_TOOLS.map((tool) => (
               <Check
-                key={t.id}
-                checked={form.tools.includes(t.id)}
+                key={tool.id}
+                checked={form.tools.includes(tool.id)}
                 onChange={(on) =>
                   patch({
-                    tools: on ? [...form.tools, t.id] : form.tools.filter((x) => x !== t.id),
+                    tools: on ? [...form.tools, tool.id] : form.tools.filter((x) => x !== tool.id),
                   })
                 }
               >
-                {t.label} <code className="font-mono text-xs text-slate-500">{t.id}</code>
+                {tool.label} <code className="font-mono text-xs text-slate-500">{tool.id}</code>
               </Check>
             ))}
           </fieldset>
@@ -524,7 +552,7 @@ function ManifestFields({
             disabled={readOnly}
             values={otherTools}
             onChange={(next) =>
-              patch({ tools: [...form.tools.filter((t) => builtin.has(t)), ...next] })
+              patch({ tools: [...form.tools.filter((tool) => builtin.has(tool)), ...next] })
             }
           />
         )}
@@ -609,7 +637,9 @@ function ManifestFields({
 
       <Section
         title="Approvals"
-        description="When this crew member has to ask before running a tool (Shipmate backend only)."
+        description={t(
+          "When this crew member has to ask before running a tool (Shipmate backend only).",
+        )}
       >
         <SelectField
           label="Ask before running tools"

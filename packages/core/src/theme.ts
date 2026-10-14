@@ -194,6 +194,60 @@ export function themeWords(
   return out;
 }
 
+const PLAIN_PAGES = new Set<string>([
+  THEME_WORDS.bridge.default,
+  THEME_WORDS.watches.default,
+  THEME_WORDS.shipyard.default,
+]);
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const plural = (s: string) => (/s$/i.test(s) ? s : `${s}s`);
+const article = (s: string) => (/^[aeiou]/i.test(s) ? "an" : "a");
+
+/**
+ * Puts the theme's words into a sentence written with the nautical ones (Captain, Crew, crew
+ * member, Bridge, Watches, Shipyard, and "a watch" or "the watch"), so help text and labels
+ * follow the theme too. Lowercase "crew" on its own is left alone: it reads fine in any theme
+ * ("the crew tools").
+ */
+export function themeText(text: string, words: ThemeWordMap): string {
+  const member = words.crewMember;
+  const page: Record<string, string> = {
+    Bridge: words.bridge,
+    Watches: words.watches,
+    Shipyard: words.shipyard,
+  };
+  return (
+    text
+      // "a crew member" → "an agent"
+      .replace(/\b([Aa]) crew member\b(?!s)/g, (_, a: string) => {
+        const art = article(member);
+        return `${a === "A" ? capitalize(art) : art} ${member}`;
+      })
+      .replace(/\bCrew members\b/g, capitalize(plural(member)))
+      .replace(/\bcrew members\b/g, plural(member))
+      .replace(/\bCrew member\b/g, capitalize(member))
+      .replace(/\bcrew member\b/g, member)
+      // The plain words read as names ("in the Shipyard" → "in Projects"); a theme's own words
+      // keep "the" ("on the Tavern").
+      .replace(/\b([Tt])he (Bridge|Watches|Shipyard)\b/g, (_m: string, t: string, p: string) => {
+        const to = page[p] ?? p;
+        return PLAIN_PAGES.has(to) ? to : `${t}he ${to}`;
+      })
+      .replace(/\b(Bridge|Watches|Shipyard)\b/g, (p: string) => page[p] ?? p)
+      // One watch, after a word that makes it a noun ("a watch", "the watch's page").
+      .replace(
+        /\b(a|A|an|An|another|Another|the|The|this|This|each|Each|that|That) watch\b/g,
+        (_, d: string) => {
+          const one = words.watches.replace(/s$/i, "").toLowerCase();
+          const det = /^an?$/i.test(d) ? article(one) : d.toLowerCase();
+          return `${d[0] === d[0]?.toUpperCase() ? capitalize(det) : det} ${one}`;
+        },
+      )
+      .replace(/\bCaptain\b/g, words.captain)
+      .replace(/\bCrew\b/g, words.crew)
+  );
+}
+
 // ---------- palettes ----------
 
 const TAILWIND_NEUTRALS: Record<Exclude<ThemeNeutral, "tinted">, string[]> = {

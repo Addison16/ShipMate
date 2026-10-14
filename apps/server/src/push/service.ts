@@ -6,7 +6,9 @@ import type {
   PushPayload,
   PushStatusDto,
   ServerEvent,
+  ThemeWordMap,
 } from "@shipmate/core";
+import { STOCK_CAPTAIN_NAME } from "@shipmate/core";
 import { conversations, type Db, pushSubscriptions, secrets } from "@shipmate/db";
 import type { SecretVault } from "@shipmate/providers";
 import { and, eq } from "drizzle-orm";
@@ -43,6 +45,8 @@ export interface PushServiceOptions {
   extraHosts?: string[];
   /** Stand-in for the push services (tests). */
   fetch?: PushFetch;
+  /** The app's words as a person sees them, so notifications match their theme. */
+  wordsFor?: (userId: string) => Promise<ThemeWordMap>;
 }
 
 /**
@@ -172,7 +176,12 @@ export class PushService {
 
   async #handle(userId: string, event: ServerEvent): Promise<void> {
     if (event.type === "approval_request") {
-      await this.#deliver(userId, "approvals", this.approvalPayload(userId, event.approval), {
+      const crew = event.approval.crew;
+      const approval = {
+        ...event.approval,
+        crew: { ...crew, name: await this.#name(userId, crew.name) },
+      };
+      await this.#deliver(userId, "approvals", this.approvalPayload(userId, approval), {
         urgency: "high",
         ttl: Math.floor(ACTION_TOKEN_MS / 1000),
         topic: event.approval.id,
@@ -201,12 +210,19 @@ export class PushService {
       if (conv?.surface !== "web") return;
       await this.#deliver(userId, "messages", {
         kind: "message",
-        title: m.author.name,
+        title: await this.#name(userId, m.author.name),
         body: preview(m.content),
         url: `/#/bridge/${event.conversationId}`,
         tag: `conversation-${event.conversationId}`,
       });
     }
+  }
+
+  /** A crew member's name as `userId` sees it: the stock "Captain" goes by their theme's word. */
+  async #name(userId: string, name: string): Promise<string> {
+    if (name !== STOCK_CAPTAIN_NAME || !this.options.wordsFor) return name;
+    const words = await this.options.wordsFor(userId).catch(() => null);
+    return words?.captain ?? name;
   }
 
   /** The notification for an approval request, with a token for its Approve and Deny buttons. */

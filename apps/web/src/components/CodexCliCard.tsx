@@ -1,5 +1,6 @@
 import type { CodexCliStatusDto } from "@shipmate/core";
 import { useEffect } from "react";
+import { useThemeText } from "../appearance.js";
 import { isAdmin, useUser } from "../auth.js";
 import { describeStatus } from "../lib/claude-cli.js";
 import { codexCliApi } from "../lib/codex-cli.js";
@@ -27,6 +28,7 @@ function CodexCliStatusCard({
   onStatus: ((status: CodexCliStatusDto) => void) | undefined;
 }) {
   const res = useResource(() => codexCliApi.status().then((r) => r.codexCli));
+  const t = useThemeText();
   const s = res.data;
   useEffect(() => {
     if (s) onStatus?.(s);
@@ -51,7 +53,7 @@ function CodexCliStatusCard({
         <>
           <p className="text-sm text-slate-600 dark:text-slate-300">
             {s.signedIn
-              ? "Ready. Pick Codex as a crew member's engine on their Crew page."
+              ? t("Ready. Pick Codex as a crew member's engine on their Crew page.")
               : "Run crew through OpenAI's Codex on your ChatGPT plan. Sign in once on the Docker host:"}
           </p>
           {!s.signedIn && (

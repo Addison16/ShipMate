@@ -2,6 +2,7 @@ import type { ConversationDto, CrewDto } from "@shipmate/core";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { useCrewName, useThemeWords } from "../appearance.js";
+import { useKeyboardInset } from "../lib/keyboard.js";
 import { href, navigate } from "../router.js";
 import { Avatar } from "./Avatar.js";
 import { Button, cx, ErrorText, focusRing } from "./ui.js";
@@ -275,6 +276,7 @@ export function CrewPicker({
   const [index, setIndex] = useState(0);
   const [opening, setOpening] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const keyboard = useKeyboardInset(open);
   const talked = chattedWith(conversations);
   const q = query.trim().toLowerCase();
   const shown = directCandidates(crew).filter((m) =>
@@ -330,10 +332,17 @@ export function CrewPicker({
         if (e.target === dialog.current) onClose();
       }}
       aria-labelledby="crew-picker-title"
-      className="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-xl max-sm:mb-0 max-sm:w-full max-sm:max-w-none max-sm:rounded-b-none max-sm:pb-[var(--safe-bottom)] border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/40 backdrop:backdrop-blur-[2px] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+      // With the phone keyboard open, sit on top of it and fit the space left, so the matches
+      // stay in view as the list narrows instead of sinking behind the keyboard.
+      style={
+        keyboard.inset > 0 && keyboard.height !== null
+          ? { marginBottom: keyboard.inset, maxHeight: keyboard.height - 8, paddingBottom: 0 }
+          : undefined
+      }
+      className="m-auto open:flex open:flex-col w-[min(28rem,calc(100vw-2rem))] rounded-xl max-sm:mb-0 max-sm:w-full max-sm:max-w-none max-sm:rounded-b-none max-sm:pb-[var(--safe-bottom)] border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/40 backdrop:backdrop-blur-[2px] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
     >
-      <div className="flex flex-col">
-        <div className="space-y-3 border-b border-slate-200 p-4 dark:border-slate-800">
+      <div className="flex min-h-0 flex-col">
+        <div className="shrink-0 space-y-3 border-b border-slate-200 p-4 dark:border-slate-800">
           <div className="flex items-center justify-between gap-2">
             <h2 id="crew-picker-title" className="text-sm font-semibold">
               Chat with a crew member
@@ -363,7 +372,7 @@ export function CrewPicker({
             )}
           />
         </div>
-        <div className="relative max-h-[50vh] overflow-y-auto p-2 max-sm:max-h-[60vh]">
+        <div className="relative min-h-0 max-h-[50vh] overflow-y-auto overscroll-contain p-2 max-sm:max-h-[60vh]">
           {shown.length === 0 ? (
             <p className="px-2.5 py-6 text-sm text-slate-500 dark:text-slate-400">
               {q ? "No one matches. Try another name or role." : "No crew to chat with yet."}

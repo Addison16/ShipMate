@@ -21,6 +21,8 @@ export interface CrewSummary {
   name: string;
   role: string;
   model: string;
+  /** What the model costs in a few words (e.g. "$1 in / $5 out per million tokens"). */
+  price?: string | undefined;
   status: "active" | "pending_review" | "retired";
   captain: boolean;
 }
@@ -89,6 +91,8 @@ export interface HouseholdChanges {
  */
 export interface CaptainHost {
   listCrew(): Promise<CrewSummary[]>;
+  /** Models crew can run on right now, cheapest first, one per line with its price. */
+  listModels(): Promise<string>;
   recruit(spec: RecruitSpec): Promise<CrewSummary>;
   edit(slug: string, spec: EditSpec): Promise<CrewSummary>;
   /** A crew member's crew.yaml as text. */
@@ -266,7 +270,7 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
       .filter((c) => c.status !== "retired")
       .map(
         (c) =>
-          `- ${c.slug}: ${c.name}, ${c.role} (model ${c.model}${c.status === "pending_review" ? ", awaiting review" : ""}${c.captain ? ", you" : ""})`,
+          `- ${c.slug}: ${c.name}, ${c.role} (model ${c.model}${c.price ? `, ${c.price}` : ""}${c.status === "pending_review" ? ", awaiting review" : ""}${c.captain ? ", you" : ""})`,
       )
       .join("\n");
   const stringList = (description: string) =>
@@ -276,10 +280,21 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
     defineTool({
       name: "list_crew",
       label: "List crew",
-      description: "List the crew members aboard, with their roles and models.",
+      description: "List the crew members aboard, with their roles, models and what those cost.",
       parameters: Type.Object({}),
       async execute() {
         return text(roster(await host.listCrew()) || "No crew yet.");
+      },
+    }),
+    defineTool({
+      name: "list_models",
+      label: "List models",
+      description:
+        "List the models crew members can run on, cheapest first, with prices. Use it to pick the smallest model that does a crew member's job (for recruit_crew_member or edit_crew_member).",
+      promptSnippet: "list_models: the models crew can run on, cheapest first",
+      parameters: Type.Object({}),
+      async execute() {
+        return text((await host.listModels()) || "No models are set up yet.");
       },
     }),
     defineTool({
@@ -560,8 +575,9 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
       name: "delegate",
       label: "Delegate",
       description:
-        "Hand a task to a crew member and get their reply. The person sees the hand-off and the crew member's answer in the conversation, so do not repeat it at length; add only what they need next.",
-      promptSnippet: "delegate: hand a task to a crew member whose role fits",
+        "Hand a task to a crew member and get their reply. Prefer this to doing the work yourself whenever a crew member's role fits: they run on their own, usually cheaper, model and keep tool output out of your context. They remember earlier tasks in this conversation, so to correct their work, delegate to them again with specific notes. The person sees the hand-off and the crew member's answer, so do not repeat it at length; add only what they need next.",
+      promptSnippet:
+        "delegate: hand work to the crew member whose role fits (the default for anything beyond a quick answer)",
       parameters: Type.Object({
         crew: Type.String({ description: "the crew member's slug" }),
         task: Type.String({
@@ -572,7 +588,11 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
       executionMode: "sequential",
       async execute(_id, p, signal) {
         const reply = await host.delegate(p.crew, p.task, signal);
-        return text(reply || "(no reply)");
+        return text(
+          reply
+            ? `${reply}\n\n(Check this against what was asked. If it misses, delegate to ${p.crew} again with specific notes instead of redoing the work yourself.)`
+            : `(no reply) Ask ${p.crew} again with clearer instructions, or tell the person it did not work.`,
+        );
       },
     }),
   ];

@@ -5,10 +5,13 @@ export function formatTokens(n: number): string {
 }
 
 /** costMicroUsd → "$0.0123" (4 decimals). */
+/** "$1,234.57", or "$0.0012" for amounts under a cent so tiny spend still shows. */
 export function formatCost(micro: number): string {
-  return `$${(micro / 1_000_000).toLocaleString("en-US", {
-    minimumFractionDigits: 4,
-    maximumFractionDigits: 4,
+  const usd = micro / 1_000_000;
+  const digits = usd !== 0 && Math.abs(usd) < 0.01 ? 4 : 2;
+  return `$${usd.toLocaleString("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
   })}`;
 }
 

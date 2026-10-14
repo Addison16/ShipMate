@@ -47,8 +47,10 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
   );
 }
 
-const num = `${td} text-right tabular-nums`;
-const numTh = `${th} text-right`;
+const num = `${td} text-right tabular-nums whitespace-nowrap`;
+const name = `${td} whitespace-nowrap`;
+const numTh = `${th} text-right whitespace-nowrap`;
+const nameTh = `${th} whitespace-nowrap`;
 
 /** `subs`: the month has subscription calls, so show their API-price estimate column. */
 function TotalsCells({ t, subs }: { t: UsageTotals; subs: boolean }) {
@@ -168,16 +170,11 @@ const METRICS: Array<{ id: ChartMetric; label: string; caption: string }> = [
   { id: "cost", label: "API cost", caption: "API spend per day (UTC)." },
   {
     id: "saved",
-    label: "Subscription value",
-    caption:
-      "What subscription calls would have cost at API prices, per day (UTC). An estimate, not spend.",
+    label: "Saved",
+    caption: "Subscription calls at API prices, per day (UTC). An estimate, not spend.",
   },
   { id: "tokens", label: "Tokens", caption: "Input and output tokens per day (UTC)." },
-  {
-    id: "time",
-    label: "Response time",
-    caption: "Average time the model took to answer, per day (UTC).",
-  },
+  { id: "time", label: "Time", caption: "Average response time per day (UTC)." },
 ];
 
 /** One day's numbers in every metric, for the hover title and the screen-reader table. */
@@ -253,7 +250,8 @@ function DailyChart({ daily, metric }: { daily: UsageResponse["daily"]; metric: 
         </div>
       </div>
       <figcaption className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-        {caption} Hover a bar for the exact numbers.
+        {caption}
+        <span className="hidden sm:inline"> Hover a bar for the exact numbers.</span>
       </figcaption>
       <table className="sr-only">
         <caption>Usage per day</caption>
@@ -293,14 +291,21 @@ function Segmented<T extends string>({
   value,
   options,
   onChange,
+  className,
 }: {
   label: string;
   value: T;
   options: Array<{ id: T; label: string }>;
   onChange: (value: T) => void;
+  className?: string;
 }) {
   return (
-    <fieldset className="inline-flex rounded-md border border-slate-300 p-0.5 dark:border-slate-600">
+    <fieldset
+      className={cx(
+        "flex rounded-md border border-slate-300 p-0.5 dark:border-slate-600",
+        className,
+      )}
+    >
       <legend className="sr-only">{label}</legend>
       {options.map((o) => (
         <button
@@ -309,7 +314,7 @@ function Segmented<T extends string>({
           aria-pressed={value === o.id}
           onClick={() => onChange(o.id)}
           className={cx(
-            "rounded px-3 py-1.5 text-sm font-medium",
+            "flex-1 rounded px-3 py-1.5 text-sm font-medium whitespace-nowrap",
             focusRing,
             value === o.id
               ? "bg-accent-700 text-white dark:bg-accent-600"
@@ -367,7 +372,7 @@ export function UsagePage() {
       <PageHeader
         icon="cost"
         title="Usage and cost"
-        description="Spend, tokens, response times and monthly ceilings per calendar month (UTC)."
+        description="Spend, tokens and response times by month (UTC)."
         actions={
           /^\d{4}-\d{2}$/.test(month) && (
             <a
@@ -383,27 +388,30 @@ export function UsagePage() {
           )
         }
       />
-      <div className="mb-6 flex flex-wrap items-end gap-4">
+      {/* Two equal columns on phones; the labels share one style so both rows line up. */}
+      <div className="mb-6 grid grid-cols-2 items-end gap-3 sm:flex sm:gap-4">
         <TextField
           label="Month"
           type="month"
           value={month}
           max={currentMonth()}
           onChange={(e) => setMonth(e.target.value || currentMonth())}
+          className="min-w-0 sm:w-48 [&_input]:h-10"
         />
         {admin && (
-          <div>
-            <p aria-hidden="true" className="mb-1 text-sm font-medium">
-              Scope
+          <div className="min-w-0">
+            <p aria-hidden="true" className="mb-1 block text-sm font-medium">
+              Show
             </p>
             <Segmented
-              label="Scope"
+              label="Show"
               value={scope}
               options={[
-                { id: "me", label: "Just me" },
+                { id: "me", label: "Mine" },
                 { id: "all", label: "Everyone" },
               ]}
               onChange={setScope}
+              className="h-10"
             />
           </div>
         )}
@@ -416,7 +424,8 @@ export function UsagePage() {
           <div
             className={cx(
               "grid grid-cols-2 gap-3 sm:grid-cols-3",
-              subs ? "lg:grid-cols-6" : "lg:grid-cols-5",
+              // Six cards only fit in a row on wide screens; "Subscriptions" overflows narrower ones.
+              subs ? "2xl:grid-cols-6" : "xl:grid-cols-5",
             )}
           >
             <Stat
@@ -432,7 +441,7 @@ export function UsagePage() {
               <Stat
                 label="Saved by subscriptions"
                 value={formatEstimate(data.totals.apiEquivalentMicroUsd)}
-                hint={`Estimate at API prices · ${formatTokens(data.totals.subscriptionCalls)} calls`}
+                hint={`${formatTokens(data.totals.subscriptionCalls)} calls at API prices`}
               />
             )}
             <Stat label="Calls" value={formatTokens(data.totals.calls)} />
@@ -448,17 +457,24 @@ export function UsagePage() {
           </div>
 
           {subs && (
-            <p className="-mt-5 text-xs text-slate-500 dark:text-slate-400">
-              Calls through the Claude Code CLI or a ChatGPT plan are covered by that subscription,
-              so they are not counted as spend or towards caps. "Saved by subscriptions" estimates
-              what they would have cost on an API key, from the provider's API prices.
-            </p>
+            <details className="-mt-5 text-xs text-slate-500 dark:text-slate-400">
+              <summary className={cx("cursor-pointer rounded font-medium", focusRing)}>
+                Subscription calls don't count as spend.{" "}
+                <span className="text-accent-700 underline dark:text-accent-300">More details</span>
+              </summary>
+              <p className="mt-1">
+                Calls through the Claude Code CLI or a ChatGPT plan are covered by that
+                subscription, so they don't count towards caps either. "Saved by subscriptions"
+                estimates what they would have cost on an API key.
+              </p>
+            </details>
           )}
 
           <Card>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-semibold">Daily usage</h2>
               <Segmented
+                className="w-full sm:w-auto"
                 label="Chart"
                 value={metric}
                 options={METRICS.filter((m) => subs || m.id !== "saved").map((m) => ({
@@ -473,12 +489,6 @@ export function UsagePage() {
                 Everything this month ran on free (local) models, so the chart shows tokens.
               </p>
             )}
-            {metric === "saved" && chosen === null && (
-              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-                Nothing this month was spent on API keys, so the chart shows what your subscriptions
-                covered.
-              </p>
-            )}
             <DailyChart daily={data.daily} metric={metric} />
           </Card>
 
@@ -486,7 +496,7 @@ export function UsagePage() {
             <Table>
               <thead>
                 <tr>
-                  <th className={th}>Person</th>
+                  <th className={nameTh}>Person</th>
                   <TotalsHead subs={subs} />
                   <CapHead />
                 </tr>
@@ -494,7 +504,7 @@ export function UsagePage() {
               <tbody>
                 {data.byUser.map((u) => (
                   <tr key={u.userId ?? "deleted"}>
-                    <td className={td}>{u.displayName}</td>
+                    <td className={name}>{u.displayName}</td>
                     <TotalsCells t={u} subs={subs} />
                     <CapCells
                       spent={u.costMicroUsd}
@@ -511,7 +521,7 @@ export function UsagePage() {
             <Table>
               <thead>
                 <tr>
-                  <th className={th}>Crew member</th>
+                  <th className={nameTh}>Crew member</th>
                   <TotalsHead subs={subs} />
                   <CapHead />
                 </tr>
@@ -519,7 +529,7 @@ export function UsagePage() {
               <tbody>
                 {data.byCrew.map((c) => (
                   <tr key={c.slug ?? "none"}>
-                    <td className={td}>{c.name}</td>
+                    <td className={name}>{c.name}</td>
                     <TotalsCells t={c} subs={subs} />
                     <CapCells
                       spent={c.costMicroUsd}
@@ -541,7 +551,7 @@ export function UsagePage() {
             <Table>
               <thead>
                 <tr>
-                  <th className={th}>Watch</th>
+                  <th className={nameTh}>Watch</th>
                   <TotalsHead subs={subs} />
                   <CapHead />
                 </tr>
@@ -549,7 +559,7 @@ export function UsagePage() {
               <tbody>
                 {data.byWatch.map((w) => (
                   <tr key={w.watchId}>
-                    <td className={td}>
+                    <td className={name}>
                       <a
                         href={href(`/watches/${w.watchId}`)}
                         className={cx(
@@ -576,14 +586,14 @@ export function UsagePage() {
             <Table>
               <thead>
                 <tr>
-                  <th className={th}>Model</th>
+                  <th className={nameTh}>Model</th>
                   <TotalsHead subs={subs} />
                 </tr>
               </thead>
               <tbody>
                 {data.byModel.map((m) => (
                   <tr key={m.model}>
-                    <td className={`${td} font-mono text-xs`}>{m.model}</td>
+                    <td className={`${name} font-mono text-xs`}>{m.model}</td>
                     <TotalsCells t={m} subs={subs} />
                   </tr>
                 ))}

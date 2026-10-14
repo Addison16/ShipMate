@@ -33,6 +33,7 @@ import { ProviderService } from "./services/providers.js";
 import { SettingsService } from "./services/settings.js";
 import { SkillService } from "./services/skills.js";
 import { StarterService } from "./services/starters.js";
+import { ThemeService } from "./services/themes.js";
 import { UsageService } from "./services/usage.js";
 import { WatchService } from "./services/watches.js";
 import { WeatherService } from "./services/weather.js";
@@ -76,6 +77,7 @@ export interface Services {
   localAi: LocalAiService;
   health: HealthService;
   pets: PetService;
+  themes: ThemeService;
 }
 
 /**
@@ -138,7 +140,9 @@ export async function createServices(
     ownerId ? bridge?.emit(ownerId, event) : bridge?.broadcast(event),
   );
   const files = new AttachmentService(db, config.dirs.files);
+  const themes = new ThemeService(db);
   bridge = new Bridge({
+    themes,
     db,
     crew,
     providers,
@@ -297,6 +301,7 @@ export async function createServices(
     backups,
     health,
     pets,
+    themes,
     localAi: new LocalAiService(providers, settings, config.SHIPMATE_OLLAMA_URL),
     oidc: new OidcService({
       db,

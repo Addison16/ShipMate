@@ -52,7 +52,9 @@ export type IconName =
   | "chevron"
   | "pencil"
   | "trash"
-  | "pin";
+  | "pin"
+  | "download"
+  | "sparkle";
 
 const paths: Record<IconName, ReactNode> = {
   // Speech bubble: talk to the crew.
@@ -228,6 +230,19 @@ const paths: Record<IconName, ReactNode> = {
     </>
   ),
   pin: <path d="M15 3l6 6-3 1-3.5 3.5L15 18l-2 2-4-4-5 5M9 16l-4-4 2-2 4.5.5L13 6l2-3" />,
+  download: (
+    <>
+      <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5" />
+      <path d="M5 19.5h14" />
+    </>
+  ),
+  // Make something new with the AI.
+  sparkle: (
+    <>
+      <path d="M12 3.5l1.8 5.2 5.2 1.8-5.2 1.8L12 17.5l-1.8-5.2L5 10.5l5.2-1.8z" />
+      <path d="M18.5 16v4M16.5 18h4" />
+    </>
+  ),
 };
 
 export function NavIcon({ name, size }: { name: IconName; size?: number }) {

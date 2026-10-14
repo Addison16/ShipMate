@@ -1465,4 +1465,8 @@ export type ServerEvent =
   /** A list or its items changed (here, on another device, or by a crew member); refetch it. */
   | { type: "list_changed"; listId: string; deleted?: boolean }
   /** An issue-to-PR job changed; sent to everyone (the Shipyard is shared). Refetch its list. */
-  | { type: "shipyard_job"; projectId: string; jobId: string; status: ShipyardJobStatus };
+  | { type: "shipyard_job"; projectId: string; jobId: string; status: ShipyardJobStatus }
+  /** A custom theme was saved or deleted; refetch /api/themes. Sent to everyone. */
+  | { type: "themes_changed" }
+  /** The person's appearance changed elsewhere (a crew member switched their theme). */
+  | { type: "preferences_changed"; preferences: UserPreferences };

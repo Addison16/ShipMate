@@ -74,5 +74,7 @@ export {
   type RecruitSpec,
   type SkillHost,
   skillTools,
+  type ThemeHost,
+  themeTools,
   type WatchSpec,
 } from "./tools.js";

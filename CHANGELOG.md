@@ -12,6 +12,23 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   few tap questions, and keep or redo the result. Pictures come from the image model picked
   under Settings → Photos and voice (an OpenAI or OpenAI-compatible provider, a local image
   server); without one, the Captain draws the pet as an SVG, so it always works. See [docs/pets.md](docs/pets.md).
+- **Custom themes, built by your AI**: Settings > Appearance > Make a custom theme opens a chat
+  where the Captain follows a step-by-step build guide (`theme_build_guide`) to make a theme
+  around any idea, a trainer adventure or a company with a CEO: accent color and grays (light
+  and dark, kept readable automatically), font, corners, an original SVG logo, the app's words
+  (Bridge, Crew, Captain, Watches, Shipyard, the app name) and the crew's voice. It posts a
+  preview card with Try it; each person picks their own theme, can keep several, and goes back
+  to the standard look by picking a color theme. Themes import and export as files, so other
+  AIs can make them too. See docs/custom-themes.md.
+- **Plain AI words by default**: the app now says Assistant, Agents, Chat, Routines and
+  Projects. The ship words (Captain, Crew, Bridge, Watches, Shipyard) are one tap away in
+  Settings > Appearance > Words. The setup guide has a new Style step that explains this and
+  offers "Make my own", which opens the theme chat when setup ends. Existing crew names are
+  unchanged; a coordinator still named "Captain" shows as "Assistant" in the plain style.
+- **Theme building works with small local models**: the build guide is now nine short steps
+  with exact questions and an example to copy, and `save_theme` fixes sloppy input instead of
+  refusing it (color names, missing fields, a logo wrapped in code fences) and says what it
+  changed.
 - **Helper agents (sub agents)**: tick "Let it start helper agents" in a crew member's
   settings (`helpers: true` in crew.yaml). On Shipmate (pi) it gets a `helper` tool that runs
   short-lived copies of itself side by side, with its tools and approvals, up to 8 per message;

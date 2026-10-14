@@ -1,6 +1,7 @@
 import type { CrewDetailDto, CrewDto, MemoryEntryDto } from "@shipmate/core";
 import { type FormEvent, useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useCrewName, useThemeWords } from "../appearance.js";
 import { isAdmin, useUser } from "../auth.js";
 import { Avatar } from "../components/Avatar.js";
 import { ExportCrewButton, ImportCrewPage } from "../components/CrewBundle.js";
@@ -55,6 +56,7 @@ function StatusBadges({ crew }: { crew: CrewDto }) {
 
 function CrewList() {
   const user = useUser();
+  const words = useThemeWords();
   const [showRetired, setShowRetired] = useState(false);
   const crew = useResource(() => api.listCrew(showRetired).then((r) => r.crew), [showRetired]);
   const settings = useResource(() => api.getSettings());
@@ -66,7 +68,7 @@ function CrewList() {
     <Page wide>
       <PageHeader
         icon="crew"
-        title="Crew"
+        title={words.crew}
         description="Each crew member is a folder with a persona, a manifest and its own memory."
         actions={
           isAdmin(user) && (
@@ -332,7 +334,7 @@ function CrewDetail({ slug }: { slug: string }) {
   });
 
   const crew = detail.data;
-  const captainName = settings.data?.captainName || "the Captain";
+  const captainName = useCrewName()(settings.data?.captainName || "Captain");
 
   async function approve() {
     setActionError(null);

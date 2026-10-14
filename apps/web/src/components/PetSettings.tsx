@@ -1,6 +1,7 @@
 import type { PetImageSource, PetSettingsDto } from "@shipmate/core";
 import { type FormEvent, useEffect, useState } from "react";
 import { errorMessage } from "../api.js";
+import { useThemeWords } from "../appearance.js";
 import { useUser } from "../auth.js";
 import { PET_SOURCES, petsApi } from "../lib/pets.js";
 import { useResource } from "../lib/useResource.js";
@@ -16,21 +17,22 @@ const HINTS: Record<PetImageSource, string> = {
 /** Settings → Photos and voice: where crew pet pictures come from. */
 export function PetSettings() {
   const owner = useUser().role === "owner";
+  const words = useThemeWords();
   if (!owner) {
     return (
       <Card>
-        <h2 className="mb-1 font-semibold">Crew pets</h2>
+        <h2 className="mb-1 font-semibold">Pets</h2>
         <Muted>
-          Crew members can have a pet that hangs out in chat. Ask the Captain to make one; the owner
-          picks where pictures come from here.
+          Each {words.crewMember} can have a pet that hangs out in chat. Ask {words.captain} to make
+          one; the owner picks where pictures come from here.
         </Muted>
       </Card>
     );
   }
-  return <PetSettingsForm />;
+  return <PetSettingsForm captain={words.captain} />;
 }
 
-function PetSettingsForm() {
+function PetSettingsForm({ captain }: { captain: string }) {
   const settings = useResource(() => petsApi.settings());
   const [source, setSource] = useState<PetImageSource>("draw");
   const [providerId, setProviderId] = useState("");
@@ -76,10 +78,10 @@ function PetSettingsForm() {
   const d = settings.data;
   return (
     <Card>
-      <h2 className="mb-1 font-semibold">Crew pets</h2>
+      <h2 className="mb-1 font-semibold">Pets</h2>
       <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-        Who makes the pictures when the Captain builds a pet. If a picture fails, the Captain draws
-        it instead.
+        Who makes the pictures when {captain} builds a pet. If a picture fails, {captain} draws it
+        instead.
       </p>
       <ErrorText>{settings.error}</ErrorText>
       {d && (
@@ -113,7 +115,9 @@ function PetSettingsForm() {
                     className="mt-1 size-4 shrink-0 accent-accent-700"
                   />
                   <span className="min-w-0">
-                    <span className="block text-sm font-medium">{s.label}</span>
+                    <span className="block text-sm font-medium">
+                      {s.id === "draw" ? `${captain} draws them (no setup)` : s.label}
+                    </span>
                     <span className="block text-xs text-slate-500 dark:text-slate-400">
                       {off ? "Add an OpenAI or OpenAI-compatible provider first." : HINTS[s.id]}
                     </span>

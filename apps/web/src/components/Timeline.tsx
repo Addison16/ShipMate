@@ -1,5 +1,6 @@
 import type { AttachmentDto, MessageDto } from "@shipmate/core";
 import type { ReactNode } from "react";
+import { useCrewName } from "../appearance.js";
 import { messageAttachments } from "../lib/files.js";
 import { formatTime } from "../lib/format.js";
 import { petPreview } from "../lib/pets.js";
@@ -9,6 +10,7 @@ import { MessageFiles } from "./Attachments.js";
 import { Avatar } from "./Avatar.js";
 import { Markdown } from "./Markdown.js";
 import { PetPreviewCard } from "./Pet.js";
+import { ThemeChatCard } from "./ThemeCard.js";
 import { cx } from "./ui.js";
 import { ListenButton } from "./Voice.js";
 
@@ -28,12 +30,13 @@ export function TypingDots({ className }: { className?: string }) {
 }
 
 export function HandoffLine({ handoff }: { handoff: Handoff }) {
+  const crewName = useCrewName();
   return (
     <div className="my-1 flex animate-fade-in items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
       <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" aria-hidden="true" />
       <span className="max-w-[80%] text-center">
         <span className="font-medium text-accent-800 dark:text-accent-300">
-          {handoff.from.name} → {handoff.to.name}
+          {crewName(handoff.from.name)} → {crewName(handoff.to.name)}
         </span>
         {handoff.task && <span>: {handoff.task}</span>}
       </span>
@@ -162,6 +165,7 @@ function Bubble({
 }
 
 function MessageView({ message, selfId }: { message: MessageDto; selfId: string }) {
+  const crewName = useCrewName();
   const a = message.author;
   if (message.meta?.sessionReset) {
     return (
@@ -178,6 +182,8 @@ function MessageView({ message, selfId }: { message: MessageDto; selfId: string 
   if (preview) return <PetPreviewCard preview={preview} />;
   const question = answeredQuestion(message);
   if (question) return <AnsweredQuestion {...question} />;
+  const theme = message.meta?.theme as { id?: unknown } | undefined;
+  if (typeof theme?.id === "string") return <ThemeChatCard id={theme.id} />;
   if (a.kind === "system" || message.role === "system") {
     return (
       <div className="mx-auto max-w-[85%] text-center text-xs text-slate-500 dark:text-slate-400">
@@ -192,7 +198,7 @@ function MessageView({ message, selfId }: { message: MessageDto; selfId: string 
     <>
       {handoff && <HandoffLine handoff={handoff} />}
       <Bubble
-        name={a.kind === "user" ? (mine ? "You" : a.name) : a.name}
+        name={a.kind === "user" ? (mine ? "You" : a.name) : crewName(a.name)}
         mine={mine}
         time={formatTime(message.createdAt)}
         tools={metaTools(message)}
@@ -248,6 +254,7 @@ function AnsweredQuestion({ crew, text, answer }: Answered) {
 }
 
 export function TimelineView({ items, selfId }: { items: TimelineItem[]; selfId: string }) {
+  const crewName = useCrewName();
   return (
     <div className="space-y-4">
       {items.map((it) => {
@@ -257,7 +264,13 @@ export function TimelineView({ items, selfId }: { items: TimelineItem[]; selfId:
         if (it.kind === "handoff") return <HandoffLine key={it.key} handoff={it} />;
         if (it.kind === "approval") return <ApprovalCard key={it.key} approval={it.approval} />;
         return (
-          <Bubble key={it.key} name={it.crew.name} mine={false} tools={it.tools} live={!it.done}>
+          <Bubble
+            key={it.key}
+            name={crewName(it.crew.name)}
+            mine={false}
+            tools={it.tools}
+            live={!it.done}
+          >
             {it.text ? (
               <Markdown text={it.text} />
             ) : (

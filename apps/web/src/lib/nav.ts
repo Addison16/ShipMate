@@ -1,4 +1,4 @@
-import type { UserDto } from "@shipmate/core";
+import type { ThemeWordKey, ThemeWordMap, UserDto } from "@shipmate/core";
 import type { IconName } from "../components/icons.js";
 
 /** Who can see a destination: everyone, owners and admins, or the owner only. */
@@ -71,6 +71,26 @@ export const MAIN_NAV: Destination[] = [
     keywords: ["bots", "agents", "members", "starter", "persona", "import", "export"],
   },
 ];
+
+/** Places a custom theme renames, by destination id. */
+const THEMED: Partial<Record<string, ThemeWordKey>> = {
+  bridge: "bridge",
+  watches: "watches",
+  shipyard: "shipyard",
+  crew: "crew",
+};
+
+/** A destination in the words of the person's custom theme; the stock name still finds it. */
+export function withWords<T extends Destination>(d: T, words: ThemeWordMap): T {
+  const key = THEMED[d.id];
+  if (!key || words[key] === d.label) return d;
+  return {
+    ...d,
+    label: words[key],
+    hint: d.id === "bridge" ? `Chat with your ${words.crew.toLowerCase()}` : d.hint,
+    keywords: [...d.keywords, d.label.toLowerCase()],
+  };
+}
 
 export const SETTINGS_HOME: Destination = {
   id: "settings",

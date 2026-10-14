@@ -1115,11 +1115,34 @@ export class Bridge {
               return `No image model is set up, so you cannot make pictures yet. Tell ${user.displayName} that an owner can pick one under Settings, Photos and voice.`;
             }
             let made: Awaited<ReturnType<PetService["picture"]>>;
+            const startedAt = performance.now();
             try {
+              // A paid image API spends like the chat model, so the same caps stop it.
+              await this.#checkCap(user, slug, options.watchId);
               made = await pets.picture(description, signal);
             } catch (err) {
               return `The picture was not made: ${(err as Error).message}. Tell ${user.displayName} in one short sentence.`;
             }
+            this.#recordUsage(
+              run,
+              {
+                userId: user.id,
+                crewMemberId: crewRow.id,
+                conversationId: conv.id,
+                routineId: options.watchId ?? null,
+              },
+              pictureModel(made.model),
+              {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: made.costUsd },
+              },
+              performance.now() - startedAt,
+              "api",
+            );
             await showPicture({ name: `picture.${made.ext}`, data: Buffer.from(made.bytes) });
             return "The picture is shown on your reply. Say in one short sentence what it shows. Do not add a link or an image tag.";
           },
@@ -2109,6 +2132,22 @@ interface Stream {
   /** Pictures shown on the reply (Codex's image tool). */
   files: AttachmentDto[];
   closed: boolean;
+}
+
+/** How a `make_picture` call shows in usage: `images/<model>`, priced per picture. */
+function pictureModel(id: string): Model<Api> {
+  return {
+    id,
+    name: id,
+    api: "openai-responses",
+    provider: "images",
+    baseUrl: "",
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 0,
+    maxTokens: 0,
+  } as unknown as Model<Api>;
 }
 
 function withoutImages(options: TurnOptions): TurnOptions {

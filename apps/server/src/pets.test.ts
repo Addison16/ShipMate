@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import type { ApprovalDto, ServerEvent } from "@shipmate/core";
 import { EXAMPLE_PET_SVG, petGuide } from "@shipmate/crew";
+import { usageEvents } from "@shipmate/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   clearBackground,
@@ -289,5 +290,8 @@ describe.skipIf(!db)("building a pet with the Captain", () => {
     expect(reply.meta.attachments).toMatchObject([{ kind: "image" }]);
     const file = await api("GET", `/api/attachments/${reply.meta.attachments[0].id}`);
     expect(file.headers["content-type"]).toBe("image/png");
+    // Counted in usage, so caps see it (an image server is not priced).
+    const events = await t.app.db.select().from(usageEvents);
+    expect(events.filter((e) => e.model === "images/default")).toHaveLength(1);
   });
 });

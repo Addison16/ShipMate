@@ -17,6 +17,8 @@ const PAINT_TIMEOUT_MS = 180_000;
 const MAX_PICTURE_BYTES = 20 * 1024 * 1024;
 /** OpenAI's image model; any other server gets the model typed in, or its own default. */
 export const DEFAULT_OPENAI_IMAGE_MODEL = "gpt-image-1";
+/** What OpenAI charges for one medium-quality 1024x1024 gpt-image-1 picture. */
+export const OPENAI_PICTURE_USD = 0.042;
 
 interface Stored {
   source: PetImageSource;
@@ -142,11 +144,23 @@ export class PetService {
    * Make any picture a crew member asks for (`make_picture`), with the same image model as
    * pets. Throws a readable error.
    */
-  async picture(prompt: string, signal?: AbortSignal): Promise<{ bytes: Uint8Array; ext: PetExt }> {
+  async picture(
+    prompt: string,
+    signal?: AbortSignal,
+  ): Promise<{ bytes: Uint8Array; ext: PetExt; model: string; costUsd: number }> {
+    const c = await this.config();
     const bytes = await this.#generate(prompt, false, signal);
     const ext = isPng(bytes) ? "png" : sniff(bytes);
     if (!ext) throw new Error("the image model sent something that is not a picture");
-    return { bytes, ext };
+    const { base } = await this.#endpoint(c);
+    const openai = base.startsWith(OPENAI_BASE);
+    return {
+      bytes,
+      ext,
+      model: c.model || (openai ? DEFAULT_OPENAI_IMAGE_MODEL : "default"),
+      // OpenAI's price for one medium 1024px picture; other servers (often local) are not priced.
+      costUsd: openai ? OPENAI_PICTURE_USD : 0,
+    };
   }
 
   async #generate(prompt: string, sticker: boolean, signal?: AbortSignal): Promise<Uint8Array> {

@@ -101,6 +101,9 @@ describe("contextFullError", () => {
       contextFullError(reply({ stopReason: "length", content: text }), strata),
     ).toBeUndefined();
     expect(contextFullError(reply({}), strata)).toBeUndefined();
+    // A short chat whose whole reply allowance went on thinking is not a full context.
+    const thinking = reply({ stopReason: "length", usage: { input: 2000, output: 8192 } });
+    expect(contextFullError(thinking, strata)).toBeUndefined();
     expect(
       contextFullError(reply({ stopReason: "error", errorMessage: "fetch failed" }), strata),
     ).toBeUndefined();

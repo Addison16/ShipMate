@@ -161,6 +161,7 @@ export async function probeServer(
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} from ${baseUrl}/models`);
   const body = (await res.json()) as { data?: unknown[]; models?: unknown[] };
   const contexts: Record<string, number> = {};
+  const trained: Record<string, number> = {};
   const ids: string[] = [];
   for (const m of [...(body.data ?? []), ...(body.models ?? [])]) {
     const id = modelId(m);
@@ -168,13 +169,20 @@ export async function probeServer(
     ids.push(id);
     const ctx = contextOf(m);
     if (ctx) contexts[id] = ctx;
+    const train = trainedContextOf(m);
+    if (train) trained[id] = train;
   }
   const models = [...new Set(ids)].sort();
   const missing = models.filter((id) => !contexts[id]);
   if (missing.length) {
     const extra = await probeExtraContexts(base, headers, fetchImpl);
     for (const id of missing) {
-      const ctx = extra.byModel[id] ?? extra.byModel[id.replace(/:latest$/, "")] ?? extra.server;
+      // The most a model was trained on comes last: llama.cpp often loads it with less.
+      const ctx =
+        extra.byModel[id] ??
+        extra.byModel[id.replace(/:latest$/, "")] ??
+        extra.server ??
+        trained[id];
       if (ctx) contexts[id] = ctx;
     }
   }
@@ -205,9 +213,17 @@ export function contextOf(m: unknown): number | undefined {
     tokens(o.max_model_len) ??
     tokens(o.context_length) ??
     tokens(o.context_window) ??
-    tokens(o.max_context_length) ??
-    tokens(meta.n_ctx_train)
+    tokens(o.max_context_length)
   );
+}
+
+/** llama.cpp's training window: only a guess at what is loaded, so used after `/props`. */
+function trainedContextOf(m: unknown): number | undefined {
+  if (!m || typeof m !== "object") return undefined;
+  const meta = (m as { meta?: unknown }).meta;
+  return meta && typeof meta === "object"
+    ? tokens((meta as Record<string, unknown>).n_ctx_train)
+    : undefined;
 }
 
 /** Context sizes from servers' own endpoints. Every call is optional and quick to give up. */

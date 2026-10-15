@@ -712,7 +712,8 @@ export class Bridge {
     clearTimeout(run.idleTimer);
     const promptKey = await this.#promptKey().catch(() => run.promptKey);
     if (run.promptKey !== promptKey) {
-      // The crew, the crew default or the models changed since these sessions started: reopen
+      // The crew, the crew default or the models (or their context sizes) changed since these
+      // sessions started: reopen
       // them from their files so the Captain's crew list (in its system prompt) is current.
       for (const s of run.sessions.values()) s.dispose();
       run.sessions.clear();
@@ -2174,7 +2175,11 @@ export class Bridge {
       this.deps.providers.available(),
       this.deps.settings.get(),
     ]);
-    const models = available.map((m) => `${m.provider}/${m.id}:${m.cost.input}/${m.cost.output}`);
+    // Context size too: sessions keep the model (and compaction settings) they were made with.
+    const models = available.map(
+      (m) =>
+        `${m.provider}/${m.id}:${m.cost.input}/${m.cost.output}:${m.contextWindow}/${m.maxTokens}`,
+    );
     return [this.#crewVersion, settings.defaultModel, ...models].join("|");
   }
 

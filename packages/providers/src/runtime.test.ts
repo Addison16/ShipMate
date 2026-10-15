@@ -127,6 +127,17 @@ describe("probeServer", () => {
     });
   });
 
+  it("prefers llama.cpp's loaded size over the size the model was trained on", async () => {
+    const list = { data: [{ id: "m", meta: { n_ctx_train: 524288 } }] };
+    const loaded = server({
+      "http://x/v1/models": list,
+      "http://x/props": { default_generation_settings: { n_ctx: 32768 } },
+    }) as unknown as typeof fetch;
+    expect((await probeServer("http://x/v1", null, loaded)).contexts).toEqual({ m: 32768 });
+    const bare = server({ "http://x/v1/models": list }) as unknown as typeof fetch;
+    expect((await probeServer("http://x/v1", null, bare)).contexts).toEqual({ m: 524288 });
+  });
+
   it("uses llama.cpp's server-wide size for models it does not list one for", async () => {
     const fake = server({
       "http://x/v1/models": { data: [{ id: "m" }] },

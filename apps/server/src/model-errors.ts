@@ -82,8 +82,16 @@ export function contextFullError(
   const nothingSaid = !message.content.some(
     (c) => (c.type === "text" && c.text.trim()) || c.type === "toolCall",
   );
+  // A blank length stop alone could be a model that spent its whole allowance thinking; a full
+  // chat shows as a reply cut to a few tokens, or a prompt that already nearly fills the window.
+  const usage = message.usage;
+  const prompt = (usage?.input ?? 0) + (usage?.cacheRead ?? 0);
+  const output = usage?.output ?? 0;
+  const squeezed =
+    (output > 0 && output <= 16) ||
+    Boolean(model?.contextWindow && prompt >= model.contextWindow * 0.8);
   const full =
-    (message.stopReason === "length" && nothingSaid) ||
+    (message.stopReason === "length" && nothingSaid && squeezed) ||
     (message.stopReason === "error" && isContextOverflow(message, model?.contextWindow));
   if (!full) return undefined;
   const size = model?.contextWindow

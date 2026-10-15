@@ -403,12 +403,14 @@ function ManifestFields({
       <Section title="Model" description={t("What runs this crew member's turns.")}>
         <SelectField
           label="Engine"
-          disabled={readOnly}
+          // Inherited from the crew default: the engine follows the model, so it changes by
+          // picking a model under Runs on.
+          disabled={readOnly || running !== form.backend}
           value={running}
           onChange={(e) => patch(switchEngine(form, e.target.value as Engine))}
           hint={
             running !== form.backend
-              ? `${t("Crew default")} (${crewDefault}) runs on ${engineName(running)}. To use Shipmate, pick a model under Runs on.`
+              ? `${t("Crew default")} (${crewDefault}) runs on ${engineName(running)}. To change the engine, pick a model under Runs on.`
               : (!claudeCode && !cli) ||
                   (!codexReady && !codex) ||
                   (!cursorReady && !cursor) ||

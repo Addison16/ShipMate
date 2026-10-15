@@ -6,6 +6,12 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Outages at OpenAI and other AI services are ridden out**: when a service has a short
+  outage (like OpenAI's Cloudflare "Error 520"), is overloaded, rate-limits you or drops the
+  connection, Shipmate now keeps retrying for about 90 seconds instead of 14, so most hiccups
+  never show. If it still fails, the chat says so in one plain line (for example "OpenAI is
+  having trouble right now…") with the raw error behind "More details", instead of a wall of
+  JSON. Discord, Telegram, Slack and routine results get the same short line.
 - **Tidier chat header on phones**: the open chat's name and who answers now sit in the empty
   middle of the top bar, so the row below only has Back, the project tag, Hands-free, Start
   fresh and a "more" button (Pin, Rename, Delete). The project tag no longer covers the title.

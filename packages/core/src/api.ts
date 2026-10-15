@@ -1580,7 +1580,8 @@ export type ServerEvent =
   | { type: "status"; conversationId: string; busy: boolean }
   /** Crew roster changed (recruit, edit, retire); refetch /api/crew. */
   | { type: "crew_changed" }
-  | { type: "error"; conversationId?: string; message: string }
+  /** `detail` is the raw provider text behind a short message, shown behind "More details". */
+  | { type: "error"; conversationId?: string; message: string; detail?: string }
   /** A crew member wants to run a consequential tool; show a card with allow/deny/always. */
   | { type: "approval_request"; approval: ApprovalDto }
   /** Decided (here or on another tab); remove the card. */

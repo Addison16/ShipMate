@@ -173,6 +173,9 @@ describe("timelineReducer", () => {
   it("records errors for this conversation and global ones", () => {
     expect(run([{ type: "error", message: "boom" }]).error).toBe("boom");
     expect(run([{ type: "error", conversationId: "other", message: "x" }]).error).toBeNull();
+    const failed = run([{ type: "error", message: "OpenAI is having trouble", detail: "520 {}" }]);
+    expect(failed.errorDetail).toBe("520 {}");
+    expect(timelineReducer(failed, { type: "dismissError" }).errorDetail).toBeNull();
   });
 
   it("catches up with a reply that kept going while the page was closed", () => {

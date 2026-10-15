@@ -6,6 +6,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useReducer,
   useRef,
@@ -962,8 +963,8 @@ function Thread({
             />
             {state.error && (
               <div className="flex items-start gap-2">
-                <div className="flex-1">
-                  <ErrorText>{state.error}</ErrorText>
+                <div className="min-w-0 flex-1">
+                  <ChatError message={state.error} detail={state.errorDetail} />
                 </div>
                 <Button
                   size="sm"
@@ -1374,5 +1375,40 @@ function Snippet({ text }: { text: string }) {
         );
       })}
     </>
+  );
+}
+
+/** Why the last reply failed, with the provider's own words behind "More details". */
+function ChatError({ message, detail }: { message: string; detail: string | null }) {
+  const [open, setOpen] = useState(false);
+  const detailId = useId();
+  return (
+    <div>
+      <ErrorText>{message}</ErrorText>
+      {detail && (
+        <>
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={detailId}
+            onClick={() => setOpen((o) => !o)}
+            className={cx(
+              "mt-1 rounded px-1 text-xs font-medium text-slate-600 underline underline-offset-2 dark:text-slate-300",
+              focusRing,
+            )}
+          >
+            {open ? "Hide details" : "More details"}
+          </button>
+          {open && (
+            <pre
+              id={detailId}
+              className="mt-1 max-h-48 overflow-auto rounded border border-slate-200 bg-slate-50 p-2 font-mono text-xs break-all whitespace-pre-wrap text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+            >
+              {detail}
+            </pre>
+          )}
+        </>
+      )}
+    </div>
   );
 }

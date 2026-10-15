@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   applyManifestForm,
   cleanList,
+  effectiveEngine,
   engineFor,
+  engineName,
   hasToolGroup,
   otherCliTools,
   readManifestForm,
@@ -154,6 +156,17 @@ describe("helper agents and engine", () => {
     expect(engineFor("codex/gpt-6.1-sol")).toBe("codex-cli");
     expect(engineFor("claude-code/opus")).toBe("claude-code-cli");
     expect(engineFor("chatgpt/gpt-6.1-sol")).toBe("pi");
+  });
+
+  it("runs crew on the crew default's CLI when the default is a subscription model", () => {
+    const onDefault = { backend: "pi" as const, model: "default" };
+    expect(effectiveEngine(onDefault, "claude-code/sonnet")).toBe("claude-code-cli");
+    expect(effectiveEngine(onDefault, "codex/gpt-6.1-sol")).toBe("codex-cli");
+    expect(effectiveEngine(onDefault, "chatgpt/gpt-6.1-sol")).toBe("pi");
+    expect(
+      effectiveEngine({ backend: "pi", model: "chatgpt/gpt-6.1-sol" }, "claude-code/sonnet"),
+    ).toBe("pi");
+    expect(engineName("claude-code-cli")).toBe("Claude Code");
   });
 
   it("writes Codex's sandbox into crew.yaml", () => {

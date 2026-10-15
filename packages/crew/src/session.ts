@@ -70,6 +70,19 @@ export interface CrewSession {
   dispose: () => void;
 }
 
+/**
+ * How pi retries a model call that failed for a temporary reason (an outage like a Cloudflare
+ * 520, a rate limit, a dropped connection): waits of 2, 4, 8, 16, 30 and 30 seconds, so about
+ * 90 seconds in all. That rides out a provider's usual "retry after 60 seconds" without leaving
+ * a chat hanging. pi's default (3 tries, 14 seconds) gave up during short OpenAI outages.
+ */
+export const MODEL_RETRY = {
+  enabled: true,
+  maxRetries: 6,
+  baseDelayMs: 2_000,
+  maxAgentDelayMs: 30_000,
+} as const;
+
 /** Split `provider/model-id` (the model id itself may contain slashes, e.g. OpenRouter). */
 export function splitModelRef(ref: string): { provider: string; id: string } | undefined {
   const i = ref.indexOf("/");
@@ -193,7 +206,7 @@ export async function createCrewSession(options: CreateCrewSessionOptions): Prom
     customTools,
     resourceLoader,
     sessionManager,
-    settingsManager: SettingsManager.inMemory({}),
+    settingsManager: SettingsManager.inMemory({ retry: MODEL_RETRY }),
   });
   if (mcpServers.length) await session.bindExtensions({});
 

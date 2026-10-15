@@ -11,6 +11,17 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   Codex's own image tool on your plan, with no API key. It needs ChatGPT Plus or higher and Codex
   signed in with ChatGPT. Pictures count against the plan, not your spending caps. An agent asked
   for a picture with nothing set up now says where to set it up.
+- **The Engine field tells the truth**: an agent on the crew default showed "Shipmate (pi)"
+  even when the default was a Claude subscription model, so its turns really ran on Claude
+  Code. The Engine field now shows the engine it actually runs on and says why. In the model
+  picker, choices that move an agent to another engine are marked (for example "Claude
+  subscription · switches to Claude Code"), so picking one is never a surprise.
+- **Outages at OpenAI and other AI services are ridden out**: when a service has a short
+  outage (like OpenAI's Cloudflare "Error 520"), is overloaded, rate-limits you or drops the
+  connection, Shipmate now keeps retrying for about 90 seconds instead of 14, so most hiccups
+  never show. If it still fails, the chat says so in one plain line (for example "OpenAI is
+  having trouble right now…") with the raw error behind "More details", instead of a wall of
+  JSON. Discord, Telegram, Slack and routine results get the same short line.
 - **Tidier chat header on phones**: the open chat's name and who answers now sit in the empty
   middle of the top bar, so the row below only has Back, the project tag, Hands-free, Start
   fresh and a "more" button (Pin, Rename, Delete). The project tag no longer covers the title.

@@ -71,6 +71,7 @@ import type { EverydayTools } from "./everyday.js";
 import type { AttachmentService } from "./files/service.js";
 import { toDto as toAttachmentDto } from "./files/service.js";
 import { GeminiCliTurns, geminiModels } from "./gemini-cli-turn.js";
+import { ModelError, serviceName, toModelError } from "./model-errors.js";
 import { modelList, modelPrice } from "./model-price.js";
 import { petHost } from "./pets/host.js";
 import type { PetService } from "./pets/service.js";
@@ -756,6 +757,7 @@ export class Bridge {
           type: "error",
           conversationId,
           message: err instanceof Error ? err.message : String(err),
+          ...(err instanceof ModelError ? { detail: err.detail } : {}),
         });
       }
     } finally {
@@ -1353,7 +1355,8 @@ export class Bridge {
           oneOff: options.consultFor !== undefined,
         });
       } catch (err) {
-        throw withPartial(err, stream.text);
+        const service = codex ? "OpenAI" : cursor ? "Cursor" : gemini ? "Gemini" : "Claude";
+        throw withPartial(toModelError(err, service), stream.text);
       } finally {
         grant?.revoke();
         await this.#closeStream(conv, crewRow.id, stream);
@@ -1432,7 +1435,13 @@ export class Bridge {
     try {
       await session.prompt(prompt, images);
       const failure = lastError(session);
-      if (failure && !run.aborted) throw new Error(failure);
+      if (failure && !run.aborted) {
+        // pi has already retried temporary failures (see MODEL_RETRY in @shipmate/crew).
+        throw toModelError(
+          new Error(failure),
+          serviceName((session.session.model ?? own).provider),
+        );
+      }
     } catch (err) {
       throw withPartial(err, stream.text || final);
     } finally {

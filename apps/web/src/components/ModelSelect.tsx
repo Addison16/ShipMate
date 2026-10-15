@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
 import { useThemeText } from "../appearance.js";
 import { CLAUDE_CODE_MODELS, readBackend, withBackend } from "../lib/claude-cli.js";
+import { type Engine, effectiveEngine, engineFor, engineName } from "../lib/crew-manifest.js";
 import {
   CLAUDE_CODE_PROVIDER,
   CODEX_PROVIDER,
@@ -35,6 +36,7 @@ export function ModelSelect({
   codexModels,
   cursorModels,
   geminiModels,
+  engine,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -52,6 +54,8 @@ export function ModelSelect({
   cursorModels?: ReadonlyArray<ModelChoice>;
   /** Gemini CLI models to offer (`gemini-cli/<id>`), when it has a key or login. */
   geminiModels?: ReadonlyArray<ModelChoice>;
+  /** The engine it runs on now; choices that would move it to another engine say so. */
+  engine?: Engine;
 }) {
   const t = useThemeText();
   const groups = groupByProvider(
@@ -82,6 +86,12 @@ export function ModelSelect({
   const [provider, setProvider] = useState(valueProvider);
   useEffect(() => setProvider(valueProvider), [valueProvider]);
   const choices: ModelChoice[] = groups.get(provider) ?? [];
+  // Picking a Claude subscription, Codex, Cursor or Gemini CLI model moves the crew member to
+  // that CLI (and back), so the option says so rather than switching the Engine silently.
+  const moves = (ref: string | undefined) => {
+    const to = ref ? engineFor(ref) : undefined;
+    return engine && to && to !== engine ? ` · switches to ${engineName(to)}` : "";
+  };
 
   const pickProvider = (p: string) => {
     setProvider(p);
@@ -106,11 +116,13 @@ export function ModelSelect({
             <option value={CREW_DEFAULT}>
               {t("Crew default")}
               {crewDefault ? ` (${crewDefault})` : ""}
+              {crewDefault ? moves(crewDefault) : ""}
             </option>
           )}
           {[...groups.keys()].map((p) => (
             <option key={p} value={p}>
               {providerLabel(p)}
+              {moves(groups.get(p)?.[0]?.ref)}
             </option>
           ))}
         </SelectField>
@@ -158,6 +170,10 @@ export function CrewModelSelect({
   const t = useThemeText();
   const onCli = readBackend(crew.manifestYaml) === "claude-code-cli";
   const saved = readModel(crew.manifestYaml);
+  const running = effectiveEngine(
+    { backend: readBackend(crew.manifestYaml), model: saved },
+    crewDefault,
+  );
   // On Claude Code a non-Claude model in crew.yaml means "the CLI's own default": show the
   // Claude subscription with no model picked yet.
   const value =
@@ -193,11 +209,14 @@ export function CrewModelSelect({
         models={models}
         crewDefault={crewDefault}
         claudeCode={claudeCode || onCli}
+        engine={running}
         disabled={readOnly || busy}
         hint={t(
-          onCli
+          running === "claude-code-cli"
             ? "Runs on your Claude subscription through Claude Code. Not available in Shipyard projects."
-            : "Crew default follows the model picked in Settings → General. Pick a provider and model to give this crew member its own.",
+            : running !== "pi"
+              ? `Runs on ${engineName(running)}. Not available in Shipyard projects.`
+              : "Crew default follows the model picked in Settings → General. Pick a provider and model to give this crew member its own.",
         )}
       />
       <ErrorText>{error}</ErrorText>

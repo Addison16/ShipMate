@@ -234,6 +234,31 @@ export function engineFor(model: string): Engine {
   return "pi";
 }
 
+/** An engine's name as the Engine field shows it. */
+export function engineName(engine: Engine): string {
+  return {
+    pi: "Shipmate",
+    "claude-code-cli": "Claude Code",
+    "codex-cli": "Codex",
+    "cursor-cli": "Cursor",
+    "gemini-cli": "Gemini CLI",
+  }[engine];
+}
+
+/**
+ * The engine a crew member's turns really run on. On the crew default, a subscription model as
+ * the default moves its turns to that CLI, whatever the saved engine says (see the server's
+ * onCrewDefault).
+ */
+export function effectiveEngine(
+  form: Pick<ManifestForm, "backend" | "model">,
+  crewDefault: string,
+): Engine {
+  if (form.model !== "default") return form.backend;
+  const viaDefault = engineFor(crewDefault);
+  return viaDefault === "pi" ? form.backend : viaDefault;
+}
+
 export type CodexSandbox = "read-only" | "workspace-write" | "danger-full-access";
 
 /** Codex's sandbox choices, in plain words. */

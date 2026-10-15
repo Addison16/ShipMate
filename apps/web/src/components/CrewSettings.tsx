@@ -28,7 +28,9 @@ import {
   type CursorMode,
   cleanList,
   type Engine,
+  effectiveEngine,
   engineFor,
+  engineName,
   GEMINI_MODES,
   type GeminiMode,
   hasToolGroup,
@@ -324,6 +326,9 @@ function ManifestFields({
           ? GEMINI_PROVIDER
           : null;
 
+  // On the crew default, a Claude subscription (or other CLI) default runs it on that CLI.
+  const running = effectiveEngine(form, crewDefault);
+
   const builtin = new Set(BUILTIN_TOOLS.map((tool) => tool.id));
   const otherTools = form.tools.filter((tool) => !builtin.has(tool));
   const installedIds = (servers.data ?? []).filter((s) => s.installed).map((s) => s.id);
@@ -399,15 +404,17 @@ function ManifestFields({
         <SelectField
           label="Engine"
           disabled={readOnly}
-          value={form.backend}
+          value={running}
           onChange={(e) => patch(switchEngine(form, e.target.value as Engine))}
           hint={
-            (!claudeCode && !cli) ||
-            (!codexReady && !codex) ||
-            (!cursorReady && !cursor) ||
-            (!geminiReady && !gemini)
-              ? "To use Claude Code, Codex, Cursor or Gemini CLI, set it up on the Providers page first."
-              : undefined
+            running !== form.backend
+              ? `${t("Crew default")} (${crewDefault}) runs on ${engineName(running)}. To use Shipmate, pick a model under Runs on.`
+              : (!claudeCode && !cli) ||
+                  (!codexReady && !codex) ||
+                  (!cursorReady && !cursor) ||
+                  (!geminiReady && !gemini)
+                ? "To use Claude Code, Codex, Cursor or Gemini CLI, set it up on the Providers page first."
+                : undefined
           }
         >
           <option value="pi">Shipmate (pi)</option>
@@ -442,6 +449,7 @@ function ManifestFields({
           codexModels={codexModels}
           cursorModels={cursorModels}
           geminiModels={geminiModels}
+          engine={running}
           disabled={readOnly}
           hint={
             cli

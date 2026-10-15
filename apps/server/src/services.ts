@@ -216,6 +216,8 @@ export async function createServices(
   const current = await settings.get();
   await crew.boot({ name: current.captainName });
   await providers.sync();
+  // Asks local servers for their context sizes without holding up boot.
+  void providers.refreshContexts();
   await shipyard.loadEndpoint();
 
   const discord = new DiscordService({

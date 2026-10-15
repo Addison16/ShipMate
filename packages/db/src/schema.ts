@@ -121,6 +121,10 @@ export const providers = pgTable("providers", {
   secretRef: text("secret_ref"),
   /** Model ids for self-hosted kinds (ollama, openai-compatible), probed or typed in. */
   models: jsonb("models").$type<string[]>().notNull().default([]),
+  /** Self-hosted kinds: context size the owner set for every model; null means ask the server. */
+  contextWindow: integer("context_window"),
+  /** Self-hosted kinds: context size per model id, as the server last reported it. */
+  modelContexts: jsonb("model_contexts").$type<Record<string, number>>().notNull().default({}),
   enabled: boolean("enabled").notNull().default(true),
   createdAt: createdAt(),
 });

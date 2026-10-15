@@ -19,7 +19,9 @@ import {
   Badge,
   Button,
   Card,
+  cx,
   ErrorText,
+  focusRing,
   Muted,
   Page,
   PageHeader,
@@ -352,12 +354,101 @@ function ProviderCard({
               {provider.models.length ? provider.models.join(", ") : "none"}
             </p>
           )}
+          {owner && (
+            <ContextSize
+              provider={provider}
+              busy={busy !== null}
+              onSave={(contextWindow) =>
+                void run("context", () => api.updateProvider(provider.id, { contextWindow }))
+              }
+            />
+          )}
         </div>
       )}
       <div className="mt-3">
         <ErrorText>{error}</ErrorText>
       </div>
     </Card>
+  );
+}
+
+/** `524288` → `512K`. */
+function tokenSize(n: number): string {
+  return n >= 1024 ? `${Math.round(n / 1024)}K` : String(n);
+}
+
+/** How much chat each model on a self-hosted server holds, and the owner's override. */
+function ContextSize({
+  provider,
+  busy,
+  onSave,
+}: {
+  provider: ProviderDto;
+  busy: boolean;
+  onSave: (contextWindow: number | null) => void;
+}) {
+  const [text, setText] = useState(provider.contextWindow ? String(provider.contextWindow) : "");
+  const value = text.trim() ? Number(text.trim()) : null;
+  const valid = value === null || (Number.isInteger(value) && value >= 1024);
+  const dirty = value !== provider.contextWindow;
+  return (
+    <div className="pt-2">
+      <form
+        className="space-y-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (valid && dirty) onSave(value);
+        }}
+      >
+        <TextField
+          className="max-w-xs"
+          label="Context size (tokens)"
+          hint="How much chat a model can hold. Leave blank to use what the server reports."
+          inputMode="numeric"
+          placeholder="From the server"
+          value={text}
+          onChange={(e) => setText(e.target.value.replace(/[^0-9]/g, ""))}
+        />
+        <Button type="submit" size="sm" disabled={busy || !valid || !dirty}>
+          Save size
+        </Button>
+      </form>
+      {!valid && <ErrorText>Use a whole number of at least 1024.</ErrorText>}
+      {provider.models.length > 0 && (
+        <details className="mt-1">
+          <summary
+            className={cx(
+              "cursor-pointer rounded text-sm font-medium text-slate-600 dark:text-slate-300",
+              focusRing,
+            )}
+          >
+            More details
+          </summary>
+          <div className="mt-2 space-y-2 text-sm text-slate-600 dark:text-slate-300">
+            <ul className="space-y-1">
+              {provider.models.map((m) => {
+                const reported = provider.modelContexts[m];
+                const size = provider.contextWindow ?? reported ?? provider.defaultContextWindow;
+                const source = provider.contextWindow
+                  ? "set here"
+                  : reported
+                    ? "from the server"
+                    : "the server didn't say, so Shipmate plays safe";
+                return (
+                  <li key={m} className="break-words">
+                    <span className="font-mono text-xs">{m}</span>: {tokenSize(size)} ({source})
+                  </li>
+                );
+              })}
+            </ul>
+            <p>
+              Long chats are summarised to fit. Too high and the server may drop the start of the
+              chat; too low and long chats end early.
+            </p>
+          </div>
+        </details>
+      )}
+    </div>
   );
 }
 

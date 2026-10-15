@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { friendlyModelError, ModelError, serviceName, toModelError } from "./model-errors.js";
+import {
+  contextFullError,
+  friendlyModelError,
+  ModelError,
+  serviceName,
+  toModelError,
+} from "./model-errors.js";
 
 const CLOUDFLARE_520 =
   'OpenAI API error (520): 520 {"type":"https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-520/","title":"Error 520: Web server is returning an unknown error","status":520,"retryable":true,"retry_after":60}';
@@ -56,5 +62,47 @@ describe("serviceName", () => {
     expect(serviceName("openai-codex")).toBe("ChatGPT");
     expect(serviceName("openai")).toBe("OpenAI");
     expect(serviceName("lm-studio")).toBe("The AI service");
+  });
+});
+
+describe("contextFullError", () => {
+  const reply = (over: Record<string, unknown>) =>
+    ({
+      role: "assistant",
+      content: [],
+      stopReason: "stop",
+      usage: { input: 32000, output: 1 },
+      ...over,
+    }) as unknown as Parameters<typeof contextFullError>[0];
+  const strata = { name: "Strata", contextWindow: 32768 };
+
+  it("explains a blank reply cut off by a full context", () => {
+    const err = contextFullError(reply({ stopReason: "length" }), strata);
+    expect(err).toBeInstanceOf(ModelError);
+    expect(err?.message).toBe(
+      "This chat is too long for Strata (it holds about 32K tokens). Tap Start fresh to keep going. If the model can hold more, raise its context size on the Providers page.",
+    );
+  });
+
+  it("explains a server's own context-overflow error", () => {
+    const err = contextFullError(
+      reply({
+        stopReason: "error",
+        errorMessage: "400 This model's maximum context length is 32768 tokens",
+      }),
+      strata,
+    );
+    expect(err?.detail).toMatch(/maximum context length/);
+  });
+
+  it("leaves real replies and other errors alone", () => {
+    const text = [{ type: "text", text: "Here is the rest" }];
+    expect(
+      contextFullError(reply({ stopReason: "length", content: text }), strata),
+    ).toBeUndefined();
+    expect(contextFullError(reply({}), strata)).toBeUndefined();
+    expect(
+      contextFullError(reply({ stopReason: "error", errorMessage: "fetch failed" }), strata),
+    ).toBeUndefined();
   });
 });

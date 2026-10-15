@@ -184,6 +184,19 @@ describe.skipIf(!db)("Shipmate server", () => {
     await api("DELETE", `/api/providers/${res.json().provider.id}`);
     const ollama = await api("POST", "/api/providers", { kind: "ollama", models: ["qwen3:8b"] });
     expect(ollama.json().provider.baseUrl).toBe("http://localhost:11434/v1");
+    expect(ollama.json().provider).toMatchObject({
+      contextWindow: null,
+      modelContexts: {},
+      defaultContextWindow: 32768,
+    });
+    const id = ollama.json().provider.id;
+    const sized = await api("PATCH", `/api/providers/${id}`, { contextWindow: 131072 });
+    expect(sized.json().provider.contextWindow).toBe(131072);
+    expect((await api("PATCH", `/api/providers/${id}`, { contextWindow: 10 })).statusCode).toBe(
+      400,
+    );
+    const cleared = await api("PATCH", `/api/providers/${id}`, { contextWindow: null });
+    expect(cleared.json().provider.contextWindow).toBeNull();
     const kinds = (await api("GET", "/api/providers")).json().kinds;
     expect(kinds.find((k: { kind: string }) => k.kind === "claude-code-cli").auth).toBe("external");
     const cli = await api("POST", "/api/providers", { kind: "claude-code-cli" });

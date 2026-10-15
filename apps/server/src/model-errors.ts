@@ -1,4 +1,8 @@
-import { isRetryableAssistantError } from "@earendil-works/pi-ai";
+import {
+  type AssistantMessage,
+  isContextOverflow,
+  isRetryableAssistantError,
+} from "@earendil-works/pi-ai";
 
 /**
  * A model call that failed for a reason on the provider's side (an outage, a rate limit, a
@@ -59,4 +63,36 @@ export function toModelError(err: unknown, service: string): unknown {
   if (!(err instanceof Error) || err instanceof ModelError) return err;
   const friendly = friendlyModelError(err.message, service);
   return friendly ? Object.assign(friendly, { stack: err.stack }) : err;
+}
+
+/** `32768` → `32K`, `524288` → `512K`. */
+function tokenSize(n: number): string {
+  return n >= 1024 ? `${Math.round(n / 1024)}K` : String(n);
+}
+
+/**
+ * The chat no longer fits the model, and pi's own summarising did not make room. A local server
+ * either says so (an error) or, more often, is asked for a reply only a token or two long and
+ * stops with nothing to show. Both end the turn with a plain next step instead of a blank reply.
+ */
+export function contextFullError(
+  message: AssistantMessage,
+  model: { name: string; contextWindow: number } | undefined,
+): ModelError | undefined {
+  const nothingSaid = !message.content.some(
+    (c) => (c.type === "text" && c.text.trim()) || c.type === "toolCall",
+  );
+  const full =
+    (message.stopReason === "length" && nothingSaid) ||
+    (message.stopReason === "error" && isContextOverflow(message, model?.contextWindow));
+  if (!full) return undefined;
+  const size = model?.contextWindow
+    ? ` (it holds about ${tokenSize(model.contextWindow)} tokens)`
+    : "";
+  const name = model?.name ?? "this model";
+  return new ModelError(
+    `This chat is too long for ${name}${size}. Tap Start fresh to keep going. If the model can hold more, raise its context size on the Providers page.`,
+    message.errorMessage ||
+      `The model stopped after ${message.usage?.output ?? 0} tokens because the chat filled its context window.`,
+  );
 }

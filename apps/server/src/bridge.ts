@@ -71,7 +71,7 @@ import type { EverydayTools } from "./everyday.js";
 import type { AttachmentService } from "./files/service.js";
 import { toDto as toAttachmentDto } from "./files/service.js";
 import { GeminiCliTurns, geminiModels } from "./gemini-cli-turn.js";
-import { ModelError, serviceName, toModelError } from "./model-errors.js";
+import { contextFullError, ModelError, serviceName, toModelError } from "./model-errors.js";
 import { modelList, modelPrice } from "./model-price.js";
 import { petHost } from "./pets/host.js";
 import type { PetService } from "./pets/service.js";
@@ -1434,6 +1434,8 @@ export class Bridge {
     });
     try {
       await session.prompt(prompt, images);
+      const full = contextFull(session);
+      if (full && !run.aborted) throw full;
       const failure = lastError(session);
       if (failure && !run.aborted) {
         // pi has already retried temporary failures (see MODEL_RETRY in @shipmate/crew).
@@ -1814,6 +1816,8 @@ export class Bridge {
     try {
       if (signal?.aborted) throw new Error("stopped");
       await session.prompt(task);
+      const full = contextFull(session);
+      if (full && !run.aborted) throw full;
       const failure = lastError(session);
       if (failure && !run.aborted) throw new Error(failure);
       return final;
@@ -2376,6 +2380,13 @@ function sessionKey(slug: string, mode: SessionMode | undefined): string {
   // A consult is the Captain's second session in the run, so it never collides with the main
   // one, which may be waiting on the delegate that asked.
   return "consultFor" in mode ? `${slug}#consult` : `${slug}#helper:${mode.helper}`;
+}
+
+/** The turn ended blank because the chat outgrew the model's context (see contextFullError). */
+function contextFull(session: CrewSession): ModelError | undefined {
+  const last = [...session.session.messages].reverse().find((m) => m.role === "assistant");
+  if (last?.role !== "assistant") return undefined;
+  return contextFullError(last, session.session.model ?? session.model);
 }
 
 function lastError(session: CrewSession): string | undefined {

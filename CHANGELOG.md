@@ -6,6 +6,14 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Local models use their real context size**: Shipmate told pi every local model held 32K
+  tokens, whatever it could really hold. Once a chat grew near that, pi asked the model for a
+  reply only a token long and the chat went blank. Shipmate now asks the server how much each
+  model holds (llama.cpp, vLLM, LM Studio and Ollama say so) and uses that, keeping 32K only
+  when the server doesn't say. Each local provider on the Providers page has a "Context size"
+  box to set it yourself. Long chats on small models are summarised earlier so they keep fitting,
+  and a chat that truly no longer fits now says so and suggests Start fresh instead of
+  answering with nothing.
 - **Pictures on your ChatGPT plan**: Settings, Photos and voice, Pictures and pets has a new
   choice, "Your ChatGPT plan (through Codex)". Every agent and pet can then make pictures with
   Codex's own image tool on your plan, with no API key. It needs ChatGPT Plus or higher and Codex

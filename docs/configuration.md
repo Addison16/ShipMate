@@ -88,6 +88,7 @@ can also pick a sandbox host in **Settings → Shipyard sandbox**, which overrid
 | `SHIPMATE_BROWSER_PATH` | `/usr/bin/chromium` | The Chromium the browser MCP server drives. The image ships it; outside Docker, leave it unset and Playwright uses its own download. |
 | `SHIPMATE_CODEX_BIN` | `codex` | Path of the Codex CLI, for the Codex engine (ChatGPT plan). The image ships it. |
 | `CODEX_HOME` | `/data/codex` | Where the Codex CLI keeps its sign-in. Set by the image so it survives updates. |
+| `SHIPMATE_CLI_UID`, `SHIPMATE_CLI_GID` | `1500` | The unprivileged user Shipmate runs the Codex CLI as when Docker blocks Codex's own sandbox (it needs user namespaces, which Docker's default security profile refuses). That user owns `/data/codex`, can't open Shipmate's private folders (`pi`, `claude`, `cursor`, `gemini`, `mcp`, `files`, `backups`), `.secret` or the built-in database, and can only change a crew member's folder when its Codex setting allows edits. It can read other crew folders. Set by the image. |
 | `SHIPMATE_CURSOR_BIN` | `cursor-agent` | Path of the Cursor CLI, for the Cursor engine. Unset, Shipmate uses the copy `install-cursor` downloaded (`/data/cursor/cli/cursor-agent`). |
 | `SHIPMATE_CURSOR_HOME` | `/data/cursor` | The Cursor CLI's home: its sign-in, chats and the downloaded CLI. |
 | `CURSOR_API_KEY` | unset | A Cursor API key for the Cursor engine instead of a sign-in. Its use then counts as API spend. |

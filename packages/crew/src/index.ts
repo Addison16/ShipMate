@@ -26,6 +26,7 @@ export {
 } from "./claude-cli.js";
 export {
   CODEX_MCP_TOKEN_ENV,
+  CODEX_SANDBOX_ERROR,
   CODEX_SIGN_IN_COMMAND,
   CODEX_SIGN_IN_HINT,
   type CodexCliEvent,
@@ -38,6 +39,7 @@ export {
   codexCliBin,
   codexCliStatus,
   codexHome,
+  codexSandboxWorks,
   runCodexCli,
 } from "./codex-cli.js";
 export {

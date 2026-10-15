@@ -9,7 +9,6 @@ import {
   codexCliStatus,
   codexHome,
   MemoryStore,
-  runCodexCli,
   splitModelRef,
 } from "@shipmate/crew";
 import { conversations, type Db } from "@shipmate/db";
@@ -17,6 +16,7 @@ import { eq } from "drizzle-orm";
 import { HttpError } from "./auth.js";
 import { CLI_WORKDIR, type CliTurnInput, shipmateToolName } from "./claude-cli-turn.js";
 import { CLI_MCP_SERVER } from "./cli-mcp.js";
+import { runCodex } from "./codex-run.js";
 import { planModelIds } from "./services/chatgpt.js";
 import type { Billing } from "./services/usage.js";
 import { summarize } from "./summarize.js";
@@ -187,17 +187,21 @@ export class CodexCliTurns {
       const billing = codexCliStatus()
         .then((s): Billing => (s.authMethod === "chatgpt" ? "subscription" : "api"))
         .catch((): Billing => "api");
-      const result = await runCodexCli({
-        cwd,
-        prompt: input.prompt,
-        instructions: this.#instructions(input),
-        ...(resume ? { resume } : {}),
-        ...(model ? { model } : {}),
-        ...(input.mcp ? { mcp: input.mcp } : {}),
-        settings: folder.manifest.codex ?? { sandbox: "read-only" },
-        signal: controller.signal,
-        onEvent,
-      });
+      const settings = folder.manifest.codex ?? { sandbox: "read-only" };
+      const result = await runCodex(
+        {
+          cwd,
+          prompt: input.prompt,
+          instructions: this.#instructions(input),
+          ...(resume ? { resume } : {}),
+          ...(model ? { model } : {}),
+          ...(input.mcp ? { mcp: input.mcp } : {}),
+          settings,
+          signal: controller.signal,
+          onEvent,
+        },
+        (settings.sandbox ?? "read-only") !== "read-only",
+      );
 
       if (!input.oneOff && result.sessionId && result.sessionId !== resume) {
         conv.sessionFiles = { ...conv.sessionFiles, [key]: result.sessionId };

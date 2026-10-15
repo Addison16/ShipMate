@@ -74,6 +74,13 @@ export interface CodexCliRunOptions {
   settings?: Partial<CodexCliSettings>;
   /** Shipmate's per-turn tool server (streamable HTTP, bearer token). */
   mcp?: { url: string; token: string };
+  /**
+   * Skip Codex's own sandbox (`danger-full-access`), for hosts where it cannot start (see
+   * codexSandboxWorks). The caller isolates the run another way, e.g. with `runAs`.
+   */
+  unsandboxed?: boolean;
+  /** Run the CLI as this Linux user (Shipmate itself runs as root in Docker). */
+  runAs?: { uid: number; gid: number };
   /** Defaults to codexCliBin(). */
   bin?: string;
   /** Defaults to process.env without Shipmate's own secrets. */
@@ -99,14 +106,16 @@ export const CODEX_PERMISSION_PROFILE = "shipmate";
 export function codexCliArgs(
   options: Pick<
     CodexCliRunOptions,
-    "cwd" | "instructions" | "resume" | "model" | "settings" | "mcp"
+    "cwd" | "instructions" | "resume" | "model" | "settings" | "mcp" | "unsandboxed"
   > & {
     /** More folders Codex may read, e.g. where the codex binary is installed. */
     readable?: string[];
   },
 ): string[] {
   const args = ["exec", "--json", "--skip-git-repo-check"];
-  const sandbox = options.settings?.sandbox ?? "read-only";
+  const sandbox = options.unsandboxed
+    ? "danger-full-access"
+    : (options.settings?.sandbox ?? "read-only");
   if (sandbox === "danger-full-access") args.push("--sandbox", sandbox);
   else {
     const folders: Record<string, string> = {
@@ -213,6 +222,7 @@ function runOnce(options: CodexCliRunOptions): Promise<CodexCliResult> {
       child = spawn(bin, codexCliArgs({ ...options, readable }), {
         cwd: options.cwd,
         env,
+        ...(options.runAs ? { uid: options.runAs.uid, gid: options.runAs.gid } : {}),
         stdio: ["pipe", "pipe", "pipe"],
         // Its own process group, so cancelling also stops the commands it started.
         detached: process.platform !== "win32",
@@ -459,6 +469,41 @@ function signalTree(child: ChildProcess, sig: NodeJS.Signals) {
       // already gone
     }
   }
+}
+
+// ---------- sandbox ----------
+
+/**
+ * Codex's sandbox on Linux is bubblewrap, which needs user namespaces. Docker's default security
+ * profile (and some kernels) refuse those, and then every turn fails with "bwrap: No permissions
+ * to create a new namespace".
+ */
+export const CODEX_SANDBOX_ERROR = /bwrap|create (a )?new namespace|fs sandbox helper failed/i;
+
+/**
+ * Whether Codex's own sandbox starts here: runs `true` inside it with Shipmate's profile. Only
+ * the known namespace failure counts as "no"; any other failure (a timeout, an odd CLI version)
+ * keeps the sandbox on, so a hiccup never turns it off.
+ */
+export async function codexSandboxWorks(
+  options: { bin?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {},
+): Promise<boolean> {
+  const bin = options.bin ?? codexCliBin(options.env);
+  const run = await capture(
+    bin,
+    [
+      "sandbox",
+      "-c",
+      `default_permissions=${toml(CODEX_PERMISSION_PROFILE)}`,
+      "-c",
+      `permissions.${CODEX_PERMISSION_PROFILE}.filesystem={${toml(":minimal")}=${toml("read")}}`,
+      "--",
+      "true",
+    ],
+    options.env ?? childEnv(),
+    options.timeoutMs ?? 30_000,
+  );
+  return run.code === 0 || !CODEX_SANDBOX_ERROR.test(run.output);
 }
 
 // ---------- status ----------

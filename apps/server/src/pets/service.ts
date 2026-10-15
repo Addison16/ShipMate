@@ -4,6 +4,7 @@ import type { SecretVault } from "@shipmate/providers";
 import { eq } from "drizzle-orm";
 import { HttpError } from "../auth.js";
 import type { SettingsService } from "../services/settings.js";
+import type { CodexPainter } from "./codex.js";
 import type { PetExt } from "./files.js";
 import { isPng, tidyPetPicture } from "./png.js";
 
@@ -14,11 +15,15 @@ const SETTINGS_KEY = "pets";
 const KEY_REF = "pets:custom";
 /** Pictures take a while, more so on a home server. */
 const PAINT_TIMEOUT_MS = 180_000;
+/** Codex's image tool says it can take a few minutes. */
+const CODEX_PAINT_TIMEOUT_MS = 300_000;
 const MAX_PICTURE_BYTES = 20 * 1024 * 1024;
 /** OpenAI's image model; any other server gets the model typed in, or its own default. */
 export const DEFAULT_OPENAI_IMAGE_MODEL = "gpt-image-1";
 /** What OpenAI charges for one medium-quality 1024x1024 gpt-image-1 picture. */
 export const OPENAI_PICTURE_USD = 0.042;
+/** How pictures made on a ChatGPT plan through Codex show on the cost page. */
+export const CODEX_PICTURE_MODEL = "chatgpt-plan";
 
 interface Stored {
   source: PetImageSource;
@@ -52,6 +57,7 @@ export class PetService {
     private readonly vault: SecretVault,
     private readonly settings: SettingsService,
     private readonly fetchImpl: PetFetch = fetch,
+    private readonly codex?: CodexPainter,
   ) {}
 
   async config(): Promise<PetSettingsDto> {
@@ -60,6 +66,7 @@ export class PetService {
     return {
       ...stored,
       hasKey: Boolean(await this.#secret(KEY_REF)),
+      codexSignedIn: (await this.codex?.signedIn()) ?? false,
       providers: rows
         .filter((r) => IMAGE_KINDS.includes(r.kind))
         .map((r) => ({ id: r.id, label: r.label, kind: r.kind })),
@@ -122,6 +129,10 @@ export class PetService {
           ? { paints: true, painter: `made by the ${p.label} provider.` }
           : { paints: false, painter: draw };
       }
+      case "codex":
+        return this.codex
+          ? { paints: true, painter: "made on the owner's ChatGPT plan, through Codex." }
+          : { paints: false, painter: draw };
       case "custom":
         return c.baseUrl
           ? { paints: true, painter: `made by the image server at ${new URL(c.baseUrl).host}.` }
@@ -133,7 +144,7 @@ export class PetService {
 
   /** Make a picture of `look` with the configured image model. Throws a readable error. */
   async paint(look: string, signal?: AbortSignal): Promise<{ bytes: Uint8Array; ext: PetExt }> {
-    const bytes = await this.#generate(picturePrompt(look), true, signal);
+    const bytes = await this.#generate(await this.config(), picturePrompt(look), true, signal);
     if (isPng(bytes)) return { bytes: tidyPetPicture(bytes), ext: "png" };
     const ext = sniff(bytes);
     if (!ext) throw new Error("the image model sent something that is not a picture");
@@ -147,11 +158,21 @@ export class PetService {
   async picture(
     prompt: string,
     signal?: AbortSignal,
-  ): Promise<{ bytes: Uint8Array; ext: PetExt; model: string; costUsd: number }> {
+  ): Promise<{
+    bytes: Uint8Array;
+    ext: PetExt;
+    model: string;
+    costUsd: number;
+    billing: "api" | "subscription";
+  }> {
     const c = await this.config();
-    const bytes = await this.#generate(prompt, false, signal);
+    // One read of the settings, so the picture and its billing come from the same source.
+    const bytes = await this.#generate(c, prompt, false, signal);
     const ext = isPng(bytes) ? "png" : sniff(bytes);
     if (!ext) throw new Error("the image model sent something that is not a picture");
+    if (c.source === "codex") {
+      return { bytes, ext, model: CODEX_PICTURE_MODEL, costUsd: 0, billing: "subscription" };
+    }
     const { base } = await this.#endpoint(c);
     const openai = base.startsWith(OPENAI_BASE);
     return {
@@ -160,16 +181,28 @@ export class PetService {
       model: c.model || (openai ? DEFAULT_OPENAI_IMAGE_MODEL : "default"),
       // OpenAI's price for one medium 1024px picture; other servers (often local) are not priced.
       costUsd: openai ? OPENAI_PICTURE_USD : 0,
+      billing: "api",
     };
   }
 
-  async #generate(prompt: string, sticker: boolean, signal?: AbortSignal): Promise<Uint8Array> {
-    const c = await this.config();
+  async #generate(
+    c: Stored,
+    prompt: string,
+    sticker: boolean,
+    signal?: AbortSignal,
+  ): Promise<Uint8Array> {
+    const timeout = AbortSignal.timeout(
+      c.source === "codex" ? CODEX_PAINT_TIMEOUT_MS : PAINT_TIMEOUT_MS,
+    );
+    const abort = signal ? AbortSignal.any([signal, timeout]) : timeout;
+    if (c.source === "codex" && this.codex) {
+      const bytes = await this.codex.paint(prompt, sticker, abort);
+      if (bytes.length > MAX_PICTURE_BYTES) throw new Error("the picture is too large");
+      return bytes;
+    }
     if (c.source !== "provider" && c.source !== "custom") {
       throw new Error("no image model is set up");
     }
-    const timeout = AbortSignal.timeout(PAINT_TIMEOUT_MS);
-    const abort = signal ? AbortSignal.any([signal, timeout]) : timeout;
     const { base, key } = await this.#endpoint(c);
     return this.#paintWithImagesApi(base, key, c.model, prompt, sticker, abort);
   }

@@ -1191,7 +1191,7 @@ export class Bridge {
       ? {
           make: async (description, signal) => {
             if (!(await pets.painter()).paints) {
-              return `No image model is set up, so you cannot make pictures yet. Tell ${user.displayName} that an owner can pick one under Settings, Photos and voice.`;
+              return `No picture maker is set up, so you cannot make pictures yet. Tell ${user.displayName} in one short sentence that an owner can pick one under Settings, Photos and voice, Pictures and pets (an OpenAI key, a local image server, or their ChatGPT plan through Codex).`;
             }
             let made: Awaited<ReturnType<PetService["picture"]>>;
             const startedAt = performance.now();
@@ -1220,7 +1220,7 @@ export class Bridge {
                 cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: made.costUsd },
               },
               performance.now() - startedAt,
-              "api",
+              made.billing,
             );
             await showPicture({ name: `picture.${made.ext}`, data: Buffer.from(made.bytes) });
             return "The picture is shown on your reply. Say in one short sentence what it shows. Do not add a link or an image tag.";

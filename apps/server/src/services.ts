@@ -22,6 +22,7 @@ import { AttachmentService } from "./files/service.js";
 import { ReleaseChecker } from "./health/releases.js";
 import { HealthService } from "./health/service.js";
 import { Updater } from "./health/updater.js";
+import { type CodexPainter, codexPainter } from "./pets/codex.js";
 import { type PetFetch, PetService } from "./pets/service.js";
 import { PushService } from "./push/service.js";
 import type { PushFetch } from "./push/webpush.js";
@@ -117,6 +118,8 @@ export async function createServices(
     googleFetch?: GoogleFetch;
     /** Stand-in for image models (tests). */
     petFetch?: PetFetch;
+    /** Stand-in for pictures made through the Codex CLI (tests). */
+    codexPainter?: CodexPainter;
   } = {},
 ): Promise<Services> {
   const vault = new SecretVault(config.SHIPMATE_SECRET);
@@ -169,7 +172,13 @@ export async function createServices(
   });
   const watches = new WatchService(db, db.$client, crew, bridge, audit, emit, config.SHIPMATE_URL);
   bridge.attachWatches(watches);
-  const pets = new PetService(db, vault, settings, options.petFetch);
+  const pets = new PetService(
+    db,
+    vault,
+    settings,
+    options.petFetch,
+    options.codexPainter ?? codexPainter(config.dirs.root),
+  );
   bridge.attachPets(pets);
   const profiles = new ProfileService(db, settings);
   bridge.attachEveryday(

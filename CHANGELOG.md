@@ -6,6 +6,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Pictures on your ChatGPT plan**: Settings, Photos and voice, Pictures and pets has a new
+  choice, "Your ChatGPT plan (through Codex)". Every agent and pet can then make pictures with
+  Codex's own image tool on your plan, with no API key. It needs ChatGPT Plus or higher and Codex
+  signed in with ChatGPT. Pictures count against the plan, not your spending caps. An agent asked
+  for a picture with nothing set up now says where to set it up.
 - **The Engine field tells the truth**: an agent on the crew default showed "Shipmate (pi)"
   even when the default was a Claude subscription model, so its turns really ran on Claude
   Code. The Engine field now shows the engine it actually runs on and says why. In the model

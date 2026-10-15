@@ -1097,7 +1097,10 @@ function MoreMenu({ items }: { items: MenuItem[] }) {
       if (!box.current?.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key !== "Escape") return;
+      setOpen(false);
+      // Back to the button, so the keyboard does not lose its place.
+      box.current?.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")?.focus();
     };
     document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKey);

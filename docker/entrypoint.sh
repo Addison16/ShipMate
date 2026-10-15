@@ -40,7 +40,8 @@ chmod 700 "$PGDATA"
 
 if [ ! -s "$PGDATA/PG_VERSION" ]; then
   echo "shipmate: setting up the bundled database in $PGDATA"
-  # Socket only, so trust is safe: nothing outside this container can connect.
+  # Socket only, so trust is safe: nothing outside this container can connect, and inside it
+  # only root and postgres may (unix_socket_permissions below), not the shipmate-cli user.
   as_postgres "$PGBIN/initdb" -D "$PGDATA" -U shipmate --auth=trust \
     --encoding=UTF8 --locale=C.UTF-8 >/dev/null
 elif [ "$(cat "$PGDATA/PG_VERSION")" != "$PG_MAJOR" ]; then
@@ -68,7 +69,7 @@ fi
 # Started fresh each time, so the log only holds this run (warnings and errors).
 as_postgres sh -c ': > "$1"' sh "$PGDATA/server.log"
 if ! as_postgres "$PGBIN/pg_ctl" -D "$PGDATA" -w -t 120 -l "$PGDATA/server.log" start \
-  -o "-c listen_addresses='' -c unix_socket_directories=$SOCKET_DIR -c log_min_messages=warning" \
+  -o "-c listen_addresses='' -c unix_socket_directories=$SOCKET_DIR -c unix_socket_permissions=0700 -c log_min_messages=warning" \
   >/dev/null; then
   echo "shipmate: the bundled database did not start:" >&2
   cat "$PGDATA/server.log" >&2

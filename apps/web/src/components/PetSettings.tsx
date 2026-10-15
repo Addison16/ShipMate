@@ -12,7 +12,19 @@ const HINTS: Record<PetImageSource, string> = {
   draw: "Simple pet drawings. Works with any model. No other pictures.",
   provider: "Uses a provider's key. Costs a few cents a picture with OpenAI.",
   custom: "Any server with an OpenAI-style images API, such as LocalAI.",
+  codex: "Uses Codex's image tool. Needs ChatGPT Plus or higher.",
 };
+
+/** Why a source can't be picked yet, or null. */
+function blocked(id: PetImageSource, d: PetSettingsDto): string | null {
+  if (id === "provider" && d.providers.length === 0) {
+    return "Add an OpenAI or OpenAI-compatible provider first.";
+  }
+  if (id === "codex" && !d.codexSignedIn) {
+    return "Sign Codex in with ChatGPT first, under Models and providers.";
+  }
+  return null;
+}
 
 /** Settings → Photos and voice: where pet pictures and `make_picture` pictures come from. */
 export function PetSettings() {
@@ -90,7 +102,9 @@ function PetSettingsForm({ captain }: { captain: string }) {
           <fieldset className="grid gap-2 sm:grid-cols-2">
             <legend className="sr-only">Pictures come from</legend>
             {PET_SOURCES.map((s) => {
-              const off = s.id === "provider" && d.providers.length === 0;
+              // The saved choice stays pickable, so a lapsed sign-in can't hide it.
+              const why = s.id === d.source ? null : blocked(s.id, d);
+              const off = why !== null;
               return (
                 <label
                   key={s.id}
@@ -120,7 +134,7 @@ function PetSettingsForm({ captain }: { captain: string }) {
                       {s.id === "draw" ? `${captain} draws them (no setup)` : s.label}
                     </span>
                     <span className="block text-xs text-slate-500 dark:text-slate-400">
-                      {off ? "Add an OpenAI or OpenAI-compatible provider first." : HINTS[s.id]}
+                      {why ?? HINTS[s.id]}
                     </span>
                   </span>
                 </label>
@@ -162,7 +176,20 @@ function PetSettingsForm({ captain }: { captain: string }) {
             </div>
           )}
 
-          {source !== "draw" && (
+          {source === "codex" && !d.codexSignedIn && (
+            <p className="text-sm text-amber-800 dark:text-amber-300">
+              Codex isn't signed in with ChatGPT, so pictures will fail. Sign it in under{" "}
+              <a
+                className="text-accent-700 underline dark:text-accent-300"
+                href={href("/providers")}
+              >
+                Models and providers
+              </a>
+              .
+            </p>
+          )}
+
+          {(source === "provider" || source === "custom") && (
             <details className="text-sm">
               <summary
                 className={cx(
@@ -190,9 +217,7 @@ function PetSettingsForm({ captain }: { captain: string }) {
                   >
                     Models and providers
                   </a>{" "}
-                  {t(
-                    "to add keys. A ChatGPT plan can't be used here, since OpenAI only allows its sign-in for chat. Crew on the Codex engine make pictures with the plan instead.",
-                  )}
+                  {t("to add keys.")}
                 </p>
               </div>
             </details>

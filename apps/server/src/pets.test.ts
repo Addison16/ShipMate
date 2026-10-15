@@ -103,6 +103,7 @@ describe.skipIf(!db)("building a pet with the Captain", () => {
   let t: Awaited<ReturnType<typeof testApp>>;
   let cookie = "";
   let painted = 0;
+  const codexPaints: Array<{ prompt: string; transparent: boolean }> = [];
   const api = (method: "GET" | "POST" | "PUT", url: string, body?: unknown) =>
     t.app.inject({
       method,
@@ -129,6 +130,13 @@ describe.skipIf(!db)("building a pet with the Captain", () => {
         const b64 = Buffer.from(encodePng(disc(64))).toString("base64");
         return new Response(JSON.stringify({ data: [{ b64_json: b64 }] }), { status: 200 });
       }) as typeof fetch,
+      codexPainter: {
+        signedIn: async () => true,
+        paint: async (prompt, transparent) => {
+          codexPaints.push({ prompt, transparent });
+          return encodePng(disc(64));
+        },
+      },
     });
     const setup = await t.app.inject({
       method: "POST",
@@ -269,7 +277,7 @@ describe.skipIf(!db)("building a pet with the Captain", () => {
       },
     ]);
     await turn("draw a lighthouse", async () => {});
-    expect(results[0]).toContain("No image model is set up");
+    expect(results[0]).toContain("No picture maker is set up");
 
     await api("PUT", "/api/pets/settings", { source: "custom", baseUrl: "http://images.local/v1" });
     const before = painted;
@@ -293,5 +301,23 @@ describe.skipIf(!db)("building a pet with the Captain", () => {
     // Counted in usage, so caps see it (an image server is not priced).
     const events = await t.app.db.select().from(usageEvents);
     expect(events.filter((e) => e.model === "images/default")).toHaveLength(1);
+  });
+
+  it("makes pictures on the owner's ChatGPT plan through Codex, counted as the plan", async () => {
+    const settings = (await api("PUT", "/api/pets/settings", { source: "codex" })).json();
+    expect(settings).toMatchObject({ source: "codex", codexSignedIn: true });
+    t.faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("make_picture", { description: "a red sailboat" })]),
+      fauxAssistantMessage("Here is your sailboat."),
+    ]);
+    const { messages } = await turn("draw a sailboat", async () => {});
+    expect(codexPaints.at(-1)).toEqual({ prompt: "a red sailboat", transparent: false });
+    expect(messages.at(-1).meta.attachments).toMatchObject([{ kind: "image" }]);
+    const rows = (await t.app.db.select().from(usageEvents)).filter(
+      (e) => e.model === "images/chatgpt-plan",
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ billing: "subscription" });
+    expect(rows[0]?.costMicroUsd).toBe(0);
   });
 });

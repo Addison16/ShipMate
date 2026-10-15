@@ -48,6 +48,7 @@ export async function testApp(
     voiceFetch?: VoiceFetch;
     googleFetch?: typeof fetch;
     petFetch?: typeof fetch;
+    codexPainter?: import("./pets/codex.js").CodexPainter;
     /** Extra config variables (e.g. SHIPMATE_UPDATE_CHECK). */
     env?: Record<string, string>;
   } = {},
@@ -86,6 +87,7 @@ export async function testApp(
     ...(options.voiceFetch ? { voiceFetch: options.voiceFetch } : {}),
     ...(options.googleFetch ? { googleFetch: options.googleFetch } : {}),
     ...(options.petFetch ? { petFetch: options.petFetch } : {}),
+    ...(options.codexPainter ? { codexPainter: options.codexPainter } : {}),
   });
   await app.ready();
   return { app, faux, config };

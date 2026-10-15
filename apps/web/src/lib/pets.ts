@@ -39,6 +39,7 @@ export const PET_SOURCES: Array<{ id: PetImageSource; label: string }> = [
   { id: "draw", label: "The Captain draws them (no setup)" },
   { id: "provider", label: "A provider (OpenAI or OpenAI-compatible)" },
   { id: "custom", label: "An image server (local or hosted)" },
+  { id: "codex", label: "Your ChatGPT plan (through Codex)" },
 ];
 
 /** A pet draft shown in a conversation, read defensively from `meta.petPreview`. */

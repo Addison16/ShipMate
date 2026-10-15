@@ -38,13 +38,12 @@ With "The Captain draws them", the crew can't make other pictures.
 | The Captain draws them (default) | The chat model draws the pet as a simple SVG. No setup, works with any model. |
 | A provider | Uses an OpenAI or OpenAI-compatible provider's `/images/generations` and key. With OpenAI the default model is `gpt-image-1` (a few cents a picture). |
 | An image server | Any OpenAI-style `/images/generations` server, such as [LocalAI](https://localai.io) running Stable Diffusion on your own hardware. Optional API key. |
+| Your ChatGPT plan (through Codex) | Runs the official Codex CLI once per picture and uses its own image tool, so pictures count against your plan's Codex allowance (faster than text does). Needs ChatGPT Plus or higher, and Codex signed in with ChatGPT (`docker exec -it shipmate codex login --device-auth`). Pictures can take a minute or two. |
 
 If a picture fails for any reason, the Captain is told why and draws the pet itself.
 
-A ChatGPT plan can't be used here. OpenAI documents Sign in with ChatGPT for chat only, and
-Shipmate only uses subscriptions the way their terms allow. Use an OpenAI API key or a local image
-server instead. Crew on the Codex engine make pictures with a ChatGPT plan through Codex's own
-image tool.
+The ChatGPT plan choice only goes through Codex, OpenAI's own tool, and never touches the
+ChatGPT sign-in itself. Crew on the Codex engine always use Codex's image tool directly.
 
 Image models are asked for a sticker-style character on a plain background. Shipmate clears a
 plain background so the pet stands on its own, and stores it small (384 pixels) so it loads fast

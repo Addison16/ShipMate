@@ -26,10 +26,10 @@ export interface PetPreviewMeta {
  * - draw: the Captain draws an SVG itself (always works, no image model needed);
  * - provider: a configured OpenAI or OpenAI-compatible provider's /images endpoint and key;
  * - custom: any OpenAI-compatible image server (e.g. a local one) at baseUrl.
- * There is no ChatGPT-plan option: OpenAI documents Sign in with ChatGPT for chat only, and
- * Shipmate only uses subscriptions in documented ways.
+ * - codex: the person's ChatGPT plan, through the official Codex CLI's own image tool (it must
+ *   be signed in with ChatGPT; paid plans only). Shipmate never handles the ChatGPT login itself.
  */
-export type PetImageSource = "draw" | "provider" | "custom";
+export type PetImageSource = "draw" | "provider" | "custom" | "codex";
 
 /** GET /api/pets/settings (owner) → PetSettingsDto. Keys are never returned. */
 export interface PetSettingsDto {
@@ -41,6 +41,8 @@ export interface PetSettingsDto {
   hasKey: boolean;
   /** Providers whose key can be reused for pictures. */
   providers: Array<{ id: string; label: string; kind: string }>;
+  /** Whether the Codex CLI is signed in with a ChatGPT account (the `codex` source). */
+  codexSignedIn: boolean;
 }
 
 /**

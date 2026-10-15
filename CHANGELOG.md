@@ -6,6 +6,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Pictures on your ChatGPT plan**: Settings, Photos and voice, Pictures and pets has a new
+  choice, "Your ChatGPT plan (through Codex)". Every agent and pet can then make pictures with
+  Codex's own image tool on your plan, with no API key. It needs ChatGPT Plus or higher and Codex
+  signed in with ChatGPT. Pictures count against the plan, not your spending caps. An agent asked
+  for a picture with nothing set up now says where to set it up.
 - **Tidier chat header on phones**: the open chat's name and who answers now sit in the empty
   middle of the top bar, so the row below only has Back, the project tag, Hands-free, Start
   fresh and a "more" button (Pin, Rename, Delete). The project tag no longer covers the title.

@@ -144,7 +144,7 @@ export class PetService {
 
   /** Make a picture of `look` with the configured image model. Throws a readable error. */
   async paint(look: string, signal?: AbortSignal): Promise<{ bytes: Uint8Array; ext: PetExt }> {
-    const bytes = await this.#generate(picturePrompt(look), true, signal);
+    const bytes = await this.#generate(await this.config(), picturePrompt(look), true, signal);
     if (isPng(bytes)) return { bytes: tidyPetPicture(bytes), ext: "png" };
     const ext = sniff(bytes);
     if (!ext) throw new Error("the image model sent something that is not a picture");
@@ -166,7 +166,8 @@ export class PetService {
     billing: "api" | "subscription";
   }> {
     const c = await this.config();
-    const bytes = await this.#generate(prompt, false, signal);
+    // One read of the settings, so the picture and its billing come from the same source.
+    const bytes = await this.#generate(c, prompt, false, signal);
     const ext = isPng(bytes) ? "png" : sniff(bytes);
     if (!ext) throw new Error("the image model sent something that is not a picture");
     if (c.source === "codex") {
@@ -184,8 +185,12 @@ export class PetService {
     };
   }
 
-  async #generate(prompt: string, sticker: boolean, signal?: AbortSignal): Promise<Uint8Array> {
-    const c = await this.config();
+  async #generate(
+    c: Stored,
+    prompt: string,
+    sticker: boolean,
+    signal?: AbortSignal,
+  ): Promise<Uint8Array> {
     const timeout = AbortSignal.timeout(
       c.source === "codex" ? CODEX_PAINT_TIMEOUT_MS : PAINT_TIMEOUT_MS,
     );

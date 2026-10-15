@@ -16,7 +16,7 @@ import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { onCrewDefault } from "./claude-cli-turn.js";
 import { codexModelFromRef, codexModels, newCodexImages } from "./codex-cli-turn.js";
-import { runCodex, setCodexSandboxAvailable } from "./codex-run.js";
+import { CodexUnsandboxedError, runCodex, setCodexSandboxAvailable } from "./codex-run.js";
 import { planModelIds } from "./services/chatgpt.js";
 import { callCost } from "./services/usage.js";
 import { TEST_DATABASE_URL, testApp } from "./testing.js";
@@ -329,15 +329,18 @@ describe("codex-cli backend where Docker blocks Codex's sandbox", () => {
     setCodexSandboxAvailable(undefined);
 
     const before = calls().length;
-    const result = await runCodex(
-      { cwd: work, prompt: "hello", settings: { sandbox: "read-only" } },
-      false,
-    );
+    const run = runCodex({ cwd: work, prompt: "hello", settings: { sandbox: "read-only" } }, false);
+    if (!root) {
+      // Not root: no other user to hand Codex to, so it refuses rather than run unsandboxed.
+      await expect(run).rejects.toThrow(CodexUnsandboxedError);
+      expect(calls()).toHaveLength(before);
+      return;
+    }
+    const result = await run;
     expect(result.isError).toBe(false);
     const call = calls()[before];
     expect(call?.args.slice(3, 5)).toEqual(["--sandbox", "danger-full-access"]);
     expect(call?.args.join(" ")).not.toContain("permissions.");
-    if (!root) return;
     expect(call).toMatchObject({ uid: 1500, home });
     expect(statSync(join(home, "auth.json")).uid).toBe(1500);
     // Read-only: the crew folder stays root's; a crew member that may edit gets it.

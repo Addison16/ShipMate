@@ -28,6 +28,7 @@ import {
 import { NavIcon } from "../components/icons.js";
 import { PetDock } from "../components/Pet.js";
 import { TimelineView } from "../components/Timeline.js";
+import { TopBarTitle } from "../components/TopBar.js";
 import {
   Badge,
   Button,
@@ -93,23 +94,23 @@ function ConversationTags({
             href={href(`/shipyard/${c.projectId}`)}
             title={t("Open the project in the Shipyard")}
             className={cx(
-              "inline-flex max-w-40 items-center truncate rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 hover:underline dark:bg-amber-900/50 dark:text-amber-100",
+              "inline-flex min-w-0 max-w-40 items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 hover:underline dark:bg-amber-900/50 dark:text-amber-100",
               focusRing,
             )}
           >
-            {projectName}
+            <span className="truncate">{projectName}</span>
           </a>
         ) : (
-          <span className="inline-flex max-w-40 items-center truncate rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">
-            {projectName}
+          <span className="inline-flex min-w-0 max-w-40 items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">
+            <span className="truncate">{projectName}</span>
           </span>
         ))}
     </>
   );
 }
 
-/** Thread header buttons: a 36px square tap target on phones, a labelled button from sm up. */
-const headerAction = "max-sm:size-9 max-sm:p-0";
+/** Thread header buttons: a 36px square tap target until 2xl, a labelled button from there. */
+const headerAction = "shrink-0 max-2xl:size-9 max-2xl:p-0";
 
 export function BridgePage({ conversationId }: { conversationId: string | null }) {
   const conversations = useResource(() => api.listConversations().then((r) => r.conversations));
@@ -725,6 +726,11 @@ function Thread({
   }
 
   const rows = Math.min(8, Math.max(1, text.split("\n").length));
+  const subtitle = member
+    ? conversation?.kind === "direct"
+      ? `${crewName(member.name)} · ${t(member.role)}`
+      : `${crewName(member.name)} · brings in the right ${words.crewMember}`
+    : null;
 
   return (
     <>
@@ -763,30 +769,32 @@ function Thread({
           <>
             <div className="flex min-w-0 flex-1 items-center gap-2.5">
               {member && (
-                <span className="hidden sm:contents">
+                <span className="hidden md:contents">
                   <Avatar name={crewName(member.name)} />
                 </span>
               )}
-              <div className="min-w-0">
+              <div className="hidden min-w-0 md:block">
                 <div className="flex min-w-0 items-center gap-2">
                   <h1 className="min-w-0 truncate font-semibold">{title}</h1>
-                  <span className="flex shrink-0 items-center gap-1.5">{tags}</span>
+                  <span className="flex min-w-0 items-center gap-1.5 overflow-hidden [&>*]:min-w-0">
+                    {tags}
+                  </span>
                 </div>
-                {member && (
-                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                    {conversation?.kind === "direct"
-                      ? `${crewName(member.name)} · ${t(member.role)}`
-                      : `${crewName(member.name)} · brings in the right ${words.crewMember}`}
-                  </p>
+                {subtitle && (
+                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">{subtitle}</p>
                 )}
               </div>
+              {/* Phones: the title is up in the top bar, so this row only has the tags. */}
+              <span className="flex min-w-0 items-center gap-1.5 overflow-hidden md:hidden [&>*]:min-w-0">
+                {tags}
+              </span>
               {member && (
                 <a
                   href={href(`/crew/${member.slug}`)}
                   title={`${crewName(member.name)}'s settings`}
                   aria-label={`${crewName(member.name)}'s settings`}
                   className={cx(
-                    "hidden shrink-0 rounded p-1 text-slate-400 transition-colors sm:block hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200",
+                    "hidden shrink-0 rounded p-1 text-slate-400 transition-colors md:block hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200",
                     focusRing,
                   )}
                 >
@@ -799,6 +807,7 @@ function Thread({
                 size="sm"
                 variant={handsFree ? "primary" : "ghost"}
                 aria-pressed={handsFree}
+                className="shrink-0"
                 title="Read replies aloud and send what you say right away"
                 onClick={() => setHandsFree(!handsFree)}
               >
@@ -807,7 +816,7 @@ function Thread({
             )}
             {conversation?.surface === "web" && (
               <>
-                {/* Icons only on phones, so the chat's title keeps the room. */}
+                {/* Icons only until there is room for words, so the title keeps its space. */}
                 <Button
                   size="sm"
                   variant="ghost"
@@ -819,43 +828,67 @@ function Thread({
                   onClick={() => void startFresh()}
                 >
                   <FreshGlyph />
-                  <span className="sr-only sm:not-sr-only">Start fresh</span>
+                  <span className="sr-only 2xl:not-sr-only">Start fresh</span>
                 </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className={headerAction}
-                  aria-pressed={conversation.pinned}
-                  onClick={() => void togglePin()}
-                >
-                  <NavIcon name="pin" size={16} />
-                  <span className="sr-only sm:not-sr-only">
+                {/* Pin, rename and delete: in a menu until the header is wide enough for all. */}
+                <span className="2xl:hidden">
+                  <MoreMenu
+                    items={[
+                      {
+                        label: conversation.pinned ? "Unpin" : "Pin",
+                        icon: "pin",
+                        onSelect: () => void togglePin(),
+                      },
+                      {
+                        label: "Rename",
+                        icon: "pencil",
+                        onSelect: () => setRenaming(conversation.title ?? ""),
+                      },
+                      {
+                        label: "Delete",
+                        icon: "trash",
+                        danger: true,
+                        onSelect: () => void remove(),
+                      },
+                    ]}
+                  />
+                </span>
+                <span className="hidden items-center gap-2 2xl:flex">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    aria-pressed={conversation.pinned}
+                    onClick={() => void togglePin()}
+                  >
+                    <NavIcon name="pin" size={16} />
                     {conversation.pinned ? "Unpin" : "Pin"}
-                  </span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className={headerAction}
-                  onClick={() => setRenaming(conversation.title ?? "")}
-                >
-                  <NavIcon name="pencil" size={16} />
-                  <span className="sr-only sm:not-sr-only">Rename</span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className={headerAction}
-                  onClick={() => void remove()}
-                >
-                  <NavIcon name="trash" size={16} />
-                  <span className="sr-only sm:not-sr-only">Delete</span>
-                </Button>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setRenaming(conversation.title ?? "")}
+                  >
+                    <NavIcon name="pencil" size={16} />
+                    Rename
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => void remove()}>
+                    <NavIcon name="trash" size={16} />
+                    Delete
+                  </Button>
+                </span>
               </>
             )}
           </>
         )}
       </div>
+      <TopBarTitle>
+        <h1 className="truncate text-[15px] font-semibold leading-tight">{title}</h1>
+        {subtitle && (
+          <p className="truncate text-xs leading-tight text-slate-500 dark:text-slate-400">
+            {subtitle}
+          </p>
+        )}
+      </TopBarTitle>
 
       <div
         ref={scroller}
@@ -1045,6 +1078,86 @@ function withWhom(
   if (c.kind !== "direct") return captainName;
   const member = crew.find((m) => m.slug === c.crewSlug);
   return member ? crewName(member.name) : (c.crewSlug ?? t("Crew member"));
+}
+
+type MenuItem = {
+  label: string;
+  icon: "pin" | "pencil" | "trash";
+  danger?: boolean;
+  onSelect: () => void;
+};
+
+/** A "more" button that opens a short list of actions below it. */
+function MoreMenu({ items }: { items: MenuItem[] }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!box.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    box.current?.querySelector<HTMLButtonElement>("[role=menuitem]")?.focus();
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  return (
+    <div ref={box} className="relative">
+      <Button
+        size="sm"
+        variant="ghost"
+        className={headerAction}
+        aria-label="More"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <DotsGlyph />
+      </Button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute top-full right-0 z-30 mt-1 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg animate-page-in dark:border-slate-700 dark:bg-slate-900"
+        >
+          {items.map((it) => (
+            <button
+              key={it.label}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                it.onSelect();
+              }}
+              className={cx(
+                "flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800",
+                focusRing,
+                it.danger ? "text-red-700 dark:text-red-300" : "text-slate-700 dark:text-slate-200",
+              )}
+            >
+              <NavIcon name={it.icon} size={16} />
+              {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DotsGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <circle cx="5" cy="12" r="2" />
+      <circle cx="12" cy="12" r="2" />
+      <circle cx="19" cy="12" r="2" />
+    </svg>
+  );
 }
 
 function FreshGlyph() {

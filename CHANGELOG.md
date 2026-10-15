@@ -6,6 +6,10 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Tidier chat header on phones**: the open chat's name and who answers now sit in the empty
+  middle of the top bar, so the row below only has Back, the project tag, Hands-free, Start
+  fresh and a "more" button (Pin, Rename, Delete). The project tag no longer covers the title.
+  Narrow desktop windows use the same "more" button.
 - **Theme names show everywhere**: after switching themes, question cards still said "Captain
   asked", and agent pages, settings, help text, routines and phone notifications kept the old
   ship words. They now all use your theme's names, including the coordinator's stock name and

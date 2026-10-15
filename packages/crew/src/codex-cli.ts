@@ -480,7 +480,11 @@ function signalTree(child: ChildProcess, sig: NodeJS.Signals) {
  */
 export const CODEX_SANDBOX_ERROR = /bwrap|create (a )?new namespace|fs sandbox helper failed/i;
 
-/** Whether Codex's own sandbox starts here: runs `true` inside it with Shipmate's profile. */
+/**
+ * Whether Codex's own sandbox starts here: runs `true` inside it with Shipmate's profile. Only
+ * the known namespace failure counts as "no"; any other failure (a timeout, an odd CLI version)
+ * keeps the sandbox on, so a hiccup never turns it off.
+ */
 export async function codexSandboxWorks(
   options: { bin?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {},
 ): Promise<boolean> {
@@ -499,7 +503,7 @@ export async function codexSandboxWorks(
     options.env ?? childEnv(),
     options.timeoutMs ?? 30_000,
   );
-  return run.code === 0;
+  return run.code === 0 || !CODEX_SANDBOX_ERROR.test(run.output);
 }
 
 // ---------- status ----------

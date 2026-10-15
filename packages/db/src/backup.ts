@@ -248,7 +248,12 @@ export async function createBackup(
       yield Buffer.alloc(1024); // end of archive
     }
 
-    await pipeline(Readable.from(entries()), createGzip(), createWriteStream(partial));
+    await pipeline(
+      Readable.from(entries()),
+      createGzip(),
+      // A backup holds the whole database: only Shipmate's own user may read it.
+      createWriteStream(partial, { mode: 0o600 }),
+    );
     await rename(partial, outFile);
     const { size } = await stat(outFile);
     return { file: outFile, sizeBytes: size, manifest };

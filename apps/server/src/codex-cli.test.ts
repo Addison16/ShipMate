@@ -35,6 +35,7 @@ const log = (o) => process.env.FAKE_CODEX_LOG && fs.appendFileSync(process.env.F
 if (args[0] === "--version") { console.log("codex-cli 9.9.9"); process.exit(0); }
 if (args[0] === "sandbox") {
   if (process.env.FAKE_CODEX_NO_SANDBOX === "1") { console.error("bwrap: No permissions to create a new namespace"); process.exit(1); }
+  if (process.env.FAKE_CODEX_NO_SANDBOX === "other") { console.error("Error: something unrelated"); process.exit(1); }
   process.exit(0);
 }
 if (args[0] === "login") {
@@ -344,14 +345,29 @@ describe("codex-cli backend where Docker blocks Codex's sandbox", () => {
     expect(statSync(join(data, "pi")).mode & 0o077).toBe(0);
     await runCodex({ cwd: work, prompt: "hello", settings: { sandbox: "workspace-write" } }, true);
     expect(statSync(work).uid).toBe(1500);
+    // Modes left open while it could edit don't let it keep writing once it's read-only again.
+    writeFileSync(join(work, "notes.md"), "hi");
+    chmodSync(join(work, "notes.md"), 0o666);
+    chmodSync(work, 0o777);
     await runCodex({ cwd: work, prompt: "hello", settings: { sandbox: "read-only" } }, false);
     expect(statSync(work).uid).toBe(0);
+    expect(statSync(work).mode & 0o022).toBe(0);
+    expect(statSync(join(work, "notes.md")).mode & 0o777).toBe(0o644);
+    // A private folder made after the first run is closed on the next one.
+    mkdirSync(join(data, "backups"), { mode: 0o755 });
+    chmodSync(join(data, "backups"), 0o755);
+    await runCodex({ cwd: work, prompt: "hello", settings: { sandbox: "read-only" } }, false);
+    expect(statSync(join(data, "backups")).mode & 0o077).toBe(0);
   });
 
-  it("keeps Codex's own sandbox where it works", async () => {
+  it.each([
+    ["where it works", undefined],
+    ["when its check fails for another reason", "other"],
+  ])("keeps Codex's own sandbox %s", async (_, failure) => {
     process.env.SHIPMATE_CODEX_BIN = fakeBin;
     process.env.FAKE_CODEX_LOG = logFile;
-    delete process.env.FAKE_CODEX_NO_SANDBOX;
+    if (failure) process.env.FAKE_CODEX_NO_SANDBOX = failure;
+    else delete process.env.FAKE_CODEX_NO_SANDBOX;
     setCodexSandboxAvailable(undefined);
     const before = calls().length;
     await runCodex({ cwd: dir, prompt: "hello", settings: { sandbox: "read-only" } }, false);

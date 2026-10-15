@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import { useThemeWords, useUpdateAppearance } from "../appearance.js";
+import { useThemeText, useThemeWords, useUpdateAppearance } from "../appearance.js";
 import { ApprovalsProvider } from "../approvals.js";
 import { isAdmin, useAuth, useUser } from "../auth.js";
 import {
@@ -436,12 +436,12 @@ function TabBar({ current }: { current: string }) {
 }
 
 function NotFound() {
-  const words = useThemeWords();
+  const t = useThemeText();
   return (
     <div className="p-8 text-sm text-slate-500">
       Nothing here.{" "}
       <a className="text-accent-700 underline dark:text-accent-300" href={href("/bridge")}>
-        Back to the {words.bridge}
+        {t("Back to the Bridge")}
       </a>
     </div>
   );

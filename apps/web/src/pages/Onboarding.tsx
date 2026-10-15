@@ -9,7 +9,7 @@ import {
 } from "@shipmate/core";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api.js";
-import { useCrewName, useThemeWords, useUpdateAppearance } from "../appearance.js";
+import { useCrewName, useThemeText, useThemeWords, useUpdateAppearance } from "../appearance.js";
 import { useAuth } from "../auth.js";
 import { AppearanceSettings } from "../components/AppearanceSettings.js";
 import { Avatar } from "../components/Avatar.js";
@@ -473,11 +473,13 @@ function useShipmateUse() {
 
 function PurposeStep({ nav }: { nav: StepNav }) {
   const use = useShipmateUse();
+  const t = useThemeText();
   return (
     <>
       <StepHeader eyebrow="First things first" title="What will you use Shipmate for?">
-        This decides what the guide asks next and which crew members it suggests. You can change it
-        later in Settings.
+        {t(
+          "This decides what the guide asks next and which crew members it suggests. You can change it later in Settings.",
+        )}
       </StepHeader>
       <ErrorText>{use.error}</ErrorText>
       {use.loading && use.data === null && <Loading />}
@@ -615,6 +617,7 @@ function ModelStep({ nav }: { nav: StepNav }) {
   const models = useResource(() => api.listModels().then((r) => r.models));
   const providers = useResource(() => api.listProviders());
   const settings = useResource(() => api.getSettings());
+  const t = useThemeText();
   const [route, setRoute] = useState<ModelRoute | null>(null);
   const [defaultModel, setDefaultModel] = useState<string | null>(null);
   // The Claude subscription is not a provider: it runs crew members through the official CLI.
@@ -675,8 +678,9 @@ function ModelStep({ nav }: { nav: StepNav }) {
   return (
     <>
       <StepHeader eyebrow="Give the crew a brain" title="Connect an AI model">
-        The crew thinks with a language model. Pick how you want to run it. You can add more later
-        on the Providers page, and each crew member can use a different one.
+        {t(
+          "The crew thinks with a language model. Pick how you want to run it. You can add more later on the Providers page, and each crew member can use a different one.",
+        )}
       </StepHeader>
 
       {available.length > 0 && (
@@ -742,11 +746,13 @@ function ModelStep({ nav }: { nav: StepNav }) {
             className="mt-0.5 size-4 accent-accent-700"
           />
           <span>
-            <span className="block font-medium">Run the Captain on your Claude subscription</span>
+            <span className="block font-medium">
+              {t("Run the Captain on your Claude subscription")}
+            </span>
             <span className="block text-slate-600 dark:text-slate-400">
-              Claude Code is signed in. The Captain will answer through it, and so will the starter
-              crew you bring aboard next. The Captain still hands your messages to the right crew
-              member.
+              {t(
+                "Claude Code is signed in. The Captain will answer through it, and so will the starter crew members you bring aboard next. The Captain still hands your messages to the right crew member.",
+              )}
             </span>
           </span>
         </label>
@@ -755,7 +761,9 @@ function ModelStep({ nav }: { nav: StepNav }) {
         <div className="mt-3 max-w-md">
           <SelectField
             label="Claude model"
-            hint="Opus is the most capable, Sonnet is quick and capable, Haiku is fastest and uses the least of your plan. Change it per crew member any time."
+            hint={t(
+              "Opus is the most capable, Sonnet is quick and capable, Haiku is fastest and uses the least of your plan. Change it per crew member any time.",
+            )}
             value={claudeModel}
             onChange={(e) => setCliModel(e.target.value)}
           >
@@ -777,7 +785,7 @@ function ModelStep({ nav }: { nav: StepNav }) {
             models={available}
           />
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            The Captain and new crew members use this until you choose otherwise.
+            {t("The Captain and new crew members use this until you choose otherwise.")}
           </p>
         </div>
       )}
@@ -930,13 +938,16 @@ function CaptainForm({
 
 function HouseholdStep({ nav }: { nav: StepNav }) {
   const data = useResource(() => api.getProfile());
+  const t = useThemeText();
   const work = data.data?.household.use === "work";
   return (
     <>
       <StepHeader eyebrow="So nobody asks twice" title="A few basics">
         {work
           ? "Where you're based and when you work, so reminders and briefings land at the right time. All of it is optional and stays on your server."
-          : "Your town and timezone are enough to start. Every crew member reads this, and all of it is optional and stays on your server."}
+          : t(
+              "Your town and timezone are enough to start. Every crew member reads this, and all of it is optional and stays on your server.",
+            )}
       </StepHeader>
       <ErrorText>{data.error}</ErrorText>
       {data.loading && !data.data && <Loading />}
@@ -1180,6 +1191,8 @@ function InviteForm() {
 
 function CrewStep({ nav }: { nav: StepNav }) {
   const use = useShipmateUse();
+  const t = useThemeText();
+  const crewName = useCrewName();
   const [result, setResult] = useState<InstallStartersResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
@@ -1217,8 +1230,9 @@ function CrewStep({ nav }: { nav: StepNav }) {
   return (
     <>
       <StepHeader eyebrow="Fill the ship" title="Bring aboard a starter crew">
-        Ready-made crew members, each with one job and the tools for it. The Captain delegates to
-        them. Their scheduled routines start paused so nothing runs until you say so.
+        {t(
+          "Ready-made crew members, each with one job and the tools for it. The Captain delegates to them. Their scheduled routines start paused so nothing runs until you say so.",
+        )}
       </StepHeader>
       {result ? (
         <>
@@ -1228,10 +1242,10 @@ function CrewStep({ nav }: { nav: StepNav }) {
                 key={c.slug}
                 className="flex items-center gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-800"
               >
-                <Avatar name={c.name} />
+                <Avatar name={crewName(c.name)} />
                 <div>
-                  <p className="font-medium">{c.name}</p>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">{c.role}</p>
+                  <p className="font-medium">{crewName(c.name)}</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">{t(c.role)}</p>
                 </div>
               </li>
             ))}
@@ -1283,11 +1297,13 @@ function CrewStep({ nav }: { nav: StepNav }) {
 
 function ConnectStep({ nav }: { nav: StepNav }) {
   const [tab, setTab] = useState<BridgeTab | null>(null);
+  const t = useThemeText();
   return (
     <>
       <StepHeader eyebrow="Stay in touch" title="Reach the crew from anywhere">
-        Get a ping when a crew member needs your approval or a routine finishes, and chat from the
-        apps you already use. Add Shipmate to your phone's home screen for an app-like feel.
+        {t(
+          "Get a ping when a crew member needs your approval or a routine finishes, and chat from the apps you already use. Add Shipmate to your phone's home screen for an app-like feel.",
+        )}
       </StepHeader>
       <PushSettings />
       <div className="mt-6">
@@ -1296,16 +1312,16 @@ function ConnectStep({ nav }: { nav: StepNav }) {
           Optional. Each one needs a bot you create in that app; the steps are inside.
         </p>
         <div className="grid gap-2 sm:grid-cols-3">
-          {BRIDGE_TABS.map((t) => (
+          {BRIDGE_TABS.map((b) => (
             <ChoiceCard
-              key={t.id}
-              selected={tab === t.id}
-              onSelect={() => setTab(tab === t.id ? null : t.id)}
-              title={t.label}
+              key={b.id}
+              selected={tab === b.id}
+              onSelect={() => setTab(tab === b.id ? null : b.id)}
+              title={b.label}
             >
-              {t.id === "discord" && "A channel per crew member on your server."}
-              {t.id === "telegram" && "Message the crew from a Telegram bot."}
-              {t.id === "slack" && "Mention the crew in your workspace."}
+              {b.id === "discord" && t("A channel per crew member on your server.")}
+              {b.id === "telegram" && "Message the crew from a Telegram bot."}
+              {b.id === "slack" && "Mention the crew in your workspace."}
             </ChoiceCard>
           ))}
         </div>
@@ -1330,12 +1346,14 @@ function ShipyardStep({ nav }: { nav: StepNav }) {
   const [added, setAdded] = useState<ProjectDto[]>([]);
   const [adding, setAdding] = useState(false);
   const status = shipyard.data?.status;
+  const t = useThemeText();
 
   return (
     <>
       <StepHeader eyebrow="Optional: for code" title="Put the crew to work on GitHub">
-        The Shipyard lets a crew member plan features, fix issues and review pull requests on your
-        repositories, working in a throwaway sandbox. Skip this if you only want help at home.
+        {t(
+          "The Shipyard lets a crew member plan features, fix issues and review pull requests on your repositories, working in a throwaway sandbox. Skip this if you only want help at home.",
+        )}
       </StepHeader>
       <ErrorText>{shipyard.error ?? crew.error}</ErrorText>
       {status && (

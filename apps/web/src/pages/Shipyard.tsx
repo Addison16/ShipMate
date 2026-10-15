@@ -9,7 +9,7 @@ import type {
 } from "@shipmate/core";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { api, errorMessage } from "../api.js";
-import { useThemeWords } from "../appearance.js";
+import { useCrewName, useThemeText, useThemeWords } from "../appearance.js";
 import { isAdmin, useUser } from "../auth.js";
 import { CopyField } from "../components/CopyField.js";
 import { NavIcon } from "../components/icons.js";
@@ -112,11 +112,13 @@ function CrewSelect({
   onChange: (slug: string) => void;
   disabled?: boolean;
 }) {
+  const t = useThemeText();
+  const crewName = useCrewName();
   const list = workers(crew);
   const known = list.some((c) => c.slug === value);
   return (
     <SelectField
-      label="Crew member"
+      label={t("Crew member")}
       hint="Who works on this project. The Shipwright is the default coder."
       value={value}
       disabled={disabled}
@@ -125,7 +127,7 @@ function CrewSelect({
       {!known && value && <option value={value}>{value}</option>}
       {list.map((c) => (
         <option key={c.slug} value={c.slug}>
-          {c.name} ({c.role})
+          {crewName(c.name)} ({t(c.role)})
         </option>
       ))}
     </SelectField>
@@ -134,8 +136,9 @@ function CrewSelect({
 
 function StatusBanner({ status }: { status: ShipyardStatusDto | null }) {
   const user = useUser();
+  const t = useThemeText();
   if (!status || status.available) return null;
-  const code = (t: string) => <code className="font-mono text-xs">{t}</code>;
+  const code = (text: string) => <code className="font-mono text-xs">{text}</code>;
   return (
     <div
       role="status"
@@ -144,8 +147,9 @@ function StatusBanner({ status }: { status: ShipyardStatusDto | null }) {
       <p className="font-medium">Code cannot run right now.</p>
       {status.reason && <p className="mt-1">{status.reason}</p>}
       <p className="mt-1">
-        Crew members run code in a sandbox container, started through a Docker-compatible API. Any
-        one of these works:
+        {t(
+          "Crew members run code in a sandbox container, started through a Docker-compatible API. Any one of these works:",
+        )}
       </p>
       <ul className="mt-1 list-disc space-y-0.5 pl-5">
         <li>
@@ -166,7 +170,7 @@ function StatusBanner({ status }: { status: ShipyardStatusDto | null }) {
           <>
             Choose and test one under{" "}
             <a href={href("/settings/sandbox")} className="underline underline-offset-2">
-              Settings → Shipyard sandbox
+              {t("Settings → Shipyard sandbox")}
             </a>
             .
           </>
@@ -200,11 +204,16 @@ const TOKEN_HINT = (
 function ProjectList() {
   const user = useUser();
   const words = useThemeWords();
+  const t = useThemeText();
+  const displayName = useCrewName();
   const admin = isAdmin(user);
   const shipyard = useResource(() => api.getShipyard());
   const crew = useCrew();
   const [adding, setAdding] = useState(false);
-  const crewName = (slug: string) => crew.find((c) => c.slug === slug)?.name ?? slug;
+  const crewName = (slug: string) => {
+    const name = crew.find((c) => c.slug === slug)?.name;
+    return name ? displayName(name) : slug;
+  };
   const projects = shipyard.data?.projects ?? [];
 
   return (
@@ -248,7 +257,9 @@ function ProjectList() {
           }
         >
           {admin
-            ? "Add a GitHub repository or a local folder and a crew member can plan features, fix issues and review pull requests."
+            ? t(
+                "Add a GitHub repository or a local folder and a crew member can plan features, fix issues and review pull requests.",
+              )
             : "Ask an admin to add one."}
         </EmptyState>
       )}
@@ -278,7 +289,7 @@ function ProjectList() {
                 </p>
                 <dl className="mt-2 space-y-1 text-xs text-slate-500 dark:text-slate-400">
                   <div className="flex gap-1.5">
-                    <dt>Crew:</dt>
+                    <dt>{t("Crew member:")}</dt>
                     <dd>{crewName(p.crewSlug)}</dd>
                   </div>
                   <div className="flex gap-1.5">
@@ -465,6 +476,8 @@ function ProjectDetail({ id, tab: tabParam }: { id: string; tab: string | null }
   const detail = useResource(() => api.getProject(id).then((r) => r.project), [id]);
   const shipyard = useResource(() => api.getShipyard().then((r) => r.status));
   const crew = useCrew();
+  const t = useThemeText();
+  const displayName = useCrewName();
   const project = detail.data;
   const jobs = useJobs(id, project?.provider === "github");
 
@@ -472,7 +485,7 @@ function ProjectDetail({ id, tab: tabParam }: { id: string; tab: string | null }
     return (
       <Page wide>
         <a href={href("/shipyard")} className={cx(linkClass, "text-sm")}>
-          ← Shipyard
+          ← {t("Shipyard")}
         </a>
         <div className="mt-4">
           {detail.error ? <ErrorText>{detail.error}</ErrorText> : <Loading />}
@@ -482,15 +495,16 @@ function ProjectDetail({ id, tab: tabParam }: { id: string; tab: string | null }
   }
 
   const github = project.provider === "github";
-  const tabs = TABS.filter((t) => (!t.github || github) && (!t.admin || admin));
-  const tab: Tab = tabs.find((t) => t.id === tabParam)?.id ?? tabs[0].id;
-  const crewName = crew.find((c) => c.slug === project.crewSlug)?.name ?? project.crewSlug;
+  const tabs = TABS.filter((x) => (!x.github || github) && (!x.admin || admin));
+  const tab: Tab = tabs.find((x) => x.id === tabParam)?.id ?? tabs[0].id;
+  const ownerCrew = crew.find((c) => c.slug === project.crewSlug);
+  const crewName = ownerCrew ? displayName(ownerCrew.name) : project.crewSlug;
   const url = repoUrl(project.repo);
 
   return (
     <Page wide>
       <a href={href("/shipyard")} className={cx(linkClass, "text-sm")}>
-        ← Shipyard
+        ← {t("Shipyard")}
       </a>
       <header className="mt-2 mb-4">
         <h1 className="text-2xl font-semibold tracking-tight">{project.name}</h1>
@@ -520,23 +534,23 @@ function ProjectDetail({ id, tab: tabParam }: { id: string; tab: string | null }
         aria-label="Project sections"
         className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800"
       >
-        {tabs.map((t) => (
+        {tabs.map((item) => (
           <a
-            key={t.id}
+            key={item.id}
             role="tab"
-            id={`tab-${t.id}`}
-            aria-selected={tab === t.id}
-            aria-controls={`panel-${t.id}`}
-            href={href(`/shipyard/${project.id}/${t.id}`)}
+            id={`tab-${item.id}`}
+            aria-selected={tab === item.id}
+            aria-controls={`panel-${item.id}`}
+            href={href(`/shipyard/${project.id}/${item.id}`)}
             className={cx(
               "-mb-px border-b-2 px-3 py-2 text-sm font-medium whitespace-nowrap",
               focusRing,
-              tab === t.id
+              tab === item.id
                 ? "border-accent-700 text-accent-800 dark:border-accent-400 dark:text-accent-200"
                 : "border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100",
             )}
           >
-            {t.label}
+            {item.label}
           </a>
         ))}
       </div>
@@ -964,10 +978,13 @@ function JobsBoard({
   project: ProjectDto;
   onChange: () => void;
 }) {
+  const crewName = useCrewName();
   const board = jobsForBoard(jobs);
   if (!board.length && !error) return null;
-  const nameOf = (slug: string | null) =>
-    (slug && crew.find((c) => c.slug === slug)?.name) || slug || "the reviewer";
+  const nameOf = (slug: string | null) => {
+    const name = slug && crew.find((c) => c.slug === slug)?.name;
+    return (name && crewName(name)) || slug || "the reviewer";
+  };
   return (
     <section aria-labelledby="jobs-heading" className="mb-6">
       <h2 id="jobs-heading" className="mb-2 text-sm font-semibold">
@@ -1342,8 +1359,11 @@ function JobSettingsCard({
   };
   const changes = jobSettingsChanges(project, form);
   const dirty = typeof changes === "string" || Object.keys(changes).length > 0;
+  const t = useThemeText();
+  const crewName = useCrewName();
   const reviewers = workers(crew).filter((c) => c.slug !== project.crewSlug);
-  const ownerName = crew.find((c) => c.slug === project.crewSlug)?.name ?? project.crewSlug;
+  const owner = crew.find((c) => c.slug === project.crewSlug);
+  const ownerName = owner ? crewName(owner.name) : project.crewSlug;
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -1383,7 +1403,7 @@ function JobSettingsCard({
             <option value="">No crew review</option>
             {reviewers.map((c) => (
               <option key={c.slug} value={c.slug}>
-                {c.name} ({c.role})
+                {crewName(c.name)} ({t(c.role)})
               </option>
             ))}
           </SelectField>
@@ -1437,6 +1457,7 @@ function WebhookCard({
   project: ProjectDto;
   onChange: (p: ProjectDto) => void;
 }) {
+  const t = useThemeText();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   async function rotate() {
@@ -1469,8 +1490,8 @@ function WebhookCard({
       <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
         Lets the crew react as things happen: new and labelled issues start jobs, failed CI goes
         back to be fixed, and comments and reviews reach the conversation that opened the pull
-        request. Watches can run on these events too. Without a webhook, Shipmate checks GitHub
-        every minute for jobs and their CI instead.
+        request. {t("Watches can run on these events too.")} Without a webhook, Shipmate checks
+        GitHub every minute for jobs and their CI instead.
       </p>
       {project.webhookUrl ? (
         <div className="space-y-4">

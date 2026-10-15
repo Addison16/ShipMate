@@ -1,5 +1,7 @@
+import { STOCK_CAPTAIN_NAME } from "@shipmate/core";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useCrewName, useThemeText, useThemeWords } from "../appearance.js";
 import { useAuth, useUser } from "../auth.js";
 import { AppearanceSettings } from "../components/AppearanceSettings.js";
 import { BackupSettings } from "../components/BackupSettings.js";
@@ -120,9 +122,10 @@ function SettingsSectionPage({
   children: ReactNode;
 }) {
   const user = useUser();
+  const t = useThemeText();
   return (
     <Page>
-      <PageHeader title={title} />
+      <PageHeader title={t(title)} />
       {ownerOnly && user.role !== "owner" ? (
         <Muted>Only the owner can change these.</Muted>
       ) : (
@@ -135,6 +138,7 @@ function SettingsSectionPage({
 /** #/settings: every section as a tile with a one-line hint, grouped, with a filter box. */
 function SettingsOverview() {
   const user = useUser();
+  const t = useThemeText();
   const [query, setQuery] = useState("");
   const sections = searchDestinations(visibleSections(user), query);
   const grouped = query.trim() ? [{ group: null, items: sections }] : groupSections(sections);
@@ -167,7 +171,7 @@ function SettingsOverview() {
           <section key={g.group ?? "results"}>
             {g.group && (
               <h2 className="mb-2 text-[11px] font-semibold tracking-wider text-accent-700 uppercase dark:text-accent-300">
-                {g.group}
+                {t(g.group)}
               </h2>
             )}
             <ul className="grid gap-2 sm:grid-cols-2">
@@ -184,9 +188,9 @@ function SettingsOverview() {
                       <NavIcon name={s.icon} />
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-sm font-medium">{s.label}</span>
+                      <span className="block text-sm font-medium">{t(s.label)}</span>
                       <span className="block text-xs text-slate-500 dark:text-slate-400">
-                        {s.hint}
+                        {t(s.hint)}
                       </span>
                     </span>
                   </a>
@@ -210,6 +214,9 @@ function groupSections(sections: SettingsSection[]) {
 function InstanceSettings() {
   const user = useUser();
   const owner = user.role === "owner";
+  const t = useThemeText();
+  const words = useThemeWords();
+  const crewName = useCrewName();
   const settings = useResource(() => api.getSettings());
   const models = useResource(() => api.listModels().then((r) => r.models));
   // The Claude subscription is not a provider: it can still be the crew default when signed in.
@@ -232,10 +239,11 @@ function InstanceSettings() {
 
   useEffect(() => {
     if (settings.data) {
-      setCaptainName(settings.data.captainName);
+      // The stock name shows as the style's word and saves back as the stock name.
+      setCaptainName(crewName(settings.data.captainName));
       setDefaultModel(settings.data.defaultModel);
     }
-  }, [settings.data]);
+  }, [settings.data, crewName]);
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -243,8 +251,9 @@ function InstanceSettings() {
     setError(null);
     setSaved(false);
     try {
+      const picked = captainName.trim();
       const next = await api.updateSettings({
-        captainName: captainName.trim(),
+        captainName: picked === words.captain ? STOCK_CAPTAIN_NAME : picked,
         defaultModel,
       });
       settings.setData(next);
@@ -267,15 +276,17 @@ function InstanceSettings() {
         <form onSubmit={save} className="space-y-4">
           <TextField
             label="Coordinator name"
-            hint={`The coordinator crew member (${settings.data.captainSlug}) runs the Bridge.`}
+            hint={t(`The coordinator crew member (${settings.data.captainSlug}) runs the Bridge.`)}
             required
             disabled={!owner}
             value={captainName}
             onChange={(e) => setCaptainName(e.target.value)}
           />
           <ModelSelect
-            label="Crew default model"
-            hint="Every crew member set to Crew default uses this, and follows it when you change it. A crew member can still get its own model on its page."
+            label={t("Crew default model")}
+            hint={t(
+              "Every crew member set to Crew default uses this, and follows it when you change it. A crew member can still get its own model on its page.",
+            )}
             value={defaultModel}
             onChange={setDefaultModel}
             models={models.data}
@@ -303,8 +314,8 @@ function InstanceSettings() {
             <div className="flex flex-wrap items-center gap-3 text-sm">
               <span className="text-slate-600 dark:text-slate-400">
                 {ownModel.length === 1
-                  ? `${ownModel[0]?.name} has its own model.`
-                  : `${ownModel.length} crew members have their own model.`}
+                  ? `${crewName(ownModel[0]?.name ?? "")} has its own model.`
+                  : t(`${ownModel.length} crew members have their own model.`)}
               </span>
               <Button
                 type="button"
@@ -377,6 +388,7 @@ function DefaultModelNotice({
 function SetupGuide() {
   const user = useUser();
   const { setOnboarding } = useAuth();
+  const t = useThemeText();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   if (user.role !== "owner") return null;
@@ -397,8 +409,9 @@ function SetupGuide() {
     <Card>
       <h2 className="mb-1 font-semibold">Setup guide</h2>
       <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-        Walk through the first-launch steps again: model, Captain, home, starter crew, notifications
-        and the Shipyard. Everything you set up stays; each step can be skipped.
+        {t(
+          "Walk through the first-launch steps again: model, Captain, home, starter crew, notifications and the Shipyard. Everything you set up stays; each step can be skipped.",
+        )}
       </p>
       <ErrorText>{error}</ErrorText>
       <Button onClick={() => void restart()} disabled={busy}>

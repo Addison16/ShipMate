@@ -194,6 +194,81 @@ export function themeWords(
   return out;
 }
 
+const PLAIN_PAGES = new Set<string>([
+  THEME_WORDS.bridge.default,
+  THEME_WORDS.watches.default,
+  THEME_WORDS.shipyard.default,
+]);
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/** "agent" → "agents", "ally" → "allies", "boss" → "bosses". */
+const plural = (s: string) => {
+  if (/[^aeiou]y$/i.test(s)) return `${s.slice(0, -1)}ies`;
+  if (/(ss|x|z|ch|sh)$/i.test(s)) return `${s}es`;
+  return /s$/i.test(s) ? s : `${s}s`;
+};
+/** One of a plural page name: "Routines" → "Routine", "Activities" → "Activity". */
+export function singular(s: string): string {
+  if (/[^aeiou]ies$/i.test(s)) return `${s.slice(0, -3)}y`;
+  if (/(ss|x|z|ch|sh)es$/i.test(s)) return s.slice(0, -2);
+  if (/[^s]s$/i.test(s)) return s.slice(0, -1);
+  return s;
+}
+const article = (s: string) => (/^[aeiou]/i.test(s) ? "an" : "a");
+const cased = (like: string, s: string) => (/^[A-Z]/.test(like) ? capitalize(s) : s);
+
+const DETERMINERS = "a|an|another|the|this|each|that";
+// Longest phrases first; one pass, so a theme word that contains a ship word is not rewritten.
+const SHIP_WORDS = new RegExp(
+  [
+    "\\b(?<art>[Aa]) crew member\\b(?!s)",
+    "\\b(?<members>[Cc]rew members)\\b",
+    "\\b(?<member>[Cc]rew member)\\b",
+    "\\b(?<the>[Tt]he) (?<thePage>Bridge|Watches|Shipyard)\\b",
+    "\\b(?<page>Bridge|Watches|Shipyard)\\b",
+    `\\b(?<det>${DETERMINERS}|${DETERMINERS.replace(/\b\w/g, (c) => c.toUpperCase())}) watch\\b`,
+    "\\b(?<captain>Captain)\\b",
+    "\\b(?<crew>Crew)\\b",
+  ].join("|"),
+  "g",
+);
+
+/**
+ * Puts the theme's words into a sentence written with the nautical ones (Captain, Crew, crew
+ * member, Bridge, Watches, Shipyard, and "a watch" or "the watch"), so help text and labels
+ * follow the theme too. Lowercase "crew" on its own is left alone: it reads fine in any theme
+ * ("the crew tools").
+ */
+export function themeText(text: string, words: ThemeWordMap): string {
+  const member = words.crewMember;
+  const page: Record<string, string> = {
+    Bridge: words.bridge,
+    Watches: words.watches,
+    Shipyard: words.shipyard,
+  };
+  return text.replace(SHIP_WORDS, (match, ...rest) => {
+    const g = rest.at(-1) as Record<string, string | undefined>;
+    // "a crew member" → "an agent"
+    if (g.art) return `${cased(g.art, article(member))} ${member}`;
+    if (g.members) return cased(g.members, plural(member));
+    if (g.member) return cased(g.member, member);
+    // The plain words read as names ("in the Shipyard" → "in Projects"); a theme's own words
+    // keep "the" ("on the Tavern").
+    if (g.the && g.thePage) {
+      const to = page[g.thePage] ?? g.thePage;
+      return PLAIN_PAGES.has(to) ? to : `${g.the} ${to}`;
+    }
+    if (g.page) return page[g.page] ?? g.page;
+    // One watch, after a word that makes it a noun ("a watch", "the watch's page").
+    if (g.det) {
+      const one = singular(words.watches).toLowerCase();
+      return `${cased(g.det, /^an?$/i.test(g.det) ? article(one) : g.det.toLowerCase())} ${one}`;
+    }
+    if (g.captain) return words.captain;
+    if (g.crew) return words.crew;
+    return match;
+  });
+}
+
 // ---------- palettes ----------
 
 const TAILWIND_NEUTRALS: Record<Exclude<ThemeNeutral, "tinted">, string[]> = {

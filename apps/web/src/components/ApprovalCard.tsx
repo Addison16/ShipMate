@@ -1,5 +1,6 @@
 import type { ApprovalDto } from "@shipmate/core";
 import { type FormEvent, useId, useState } from "react";
+import { useCrewName, useThemeText } from "../appearance.js";
 import { useApprovals } from "../approvals.js";
 import { resolutionLabel } from "../lib/approvals.js";
 import { formatTime } from "../lib/format.js";
@@ -11,6 +12,9 @@ import { Button, cx, ErrorText, focusRing } from "./ui.js";
  */
 export function ApprovalCard({ approval, compact }: { approval: ApprovalDto; compact?: boolean }) {
   const { pending, answering, resolved, errors, answer } = useApprovals();
+  const crewName = useCrewName();
+  const t = useThemeText();
+  const who = crewName(approval.crew.name);
   const [open, setOpen] = useState(false);
   const detailId = useId();
   const isPending = pending.some((a) => a.id === approval.id);
@@ -29,10 +33,10 @@ export function ApprovalCard({ approval, compact }: { approval: ApprovalDto; com
         <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" aria-hidden="true" />
         <span className="max-w-[80%] text-center">
           {everyTime ? (
-            approval.summary
+            t(approval.summary)
           ) : (
             <>
-              <span className="font-mono">{approval.toolName}</span> for {approval.crew.name}
+              <span className="font-mono">{approval.toolName}</span> for {who}
             </>
           )}
           :{" "}
@@ -46,7 +50,7 @@ export function ApprovalCard({ approval, compact }: { approval: ApprovalDto; com
                   : undefined,
             )}
           >
-            {resolutionLabel(r, approval.crew.name, everyTime)}
+            {resolutionLabel(r, who, everyTime)}
           </span>
         </span>
         <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" aria-hidden="true" />
@@ -56,7 +60,7 @@ export function ApprovalCard({ approval, compact }: { approval: ApprovalDto; com
 
   return (
     <section
-      aria-label={`Approval needed: ${approval.crew.name} wants to run ${approval.toolName}`}
+      aria-label={`Approval needed: ${who} wants to run ${approval.toolName}`}
       className={cx(
         "rounded-lg border border-amber-300 bg-amber-50 text-sm dark:border-amber-800 dark:bg-amber-950/40",
         compact ? "p-3" : "p-4",
@@ -65,10 +69,10 @@ export function ApprovalCard({ approval, compact }: { approval: ApprovalDto; com
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="font-medium text-amber-950 dark:text-amber-100">
           {everyTime ? (
-            `${approval.crew.name} is asking first`
+            `${who} is asking first`
           ) : (
             <>
-              {approval.crew.name} wants to run{" "}
+              {who} wants to run{" "}
               <span className="font-mono text-[0.95em]">{approval.toolName}</span>
             </>
           )}
@@ -78,7 +82,9 @@ export function ApprovalCard({ approval, compact }: { approval: ApprovalDto; com
         </time>
       </div>
       {approval.summary && (
-        <p className="mt-1 break-words text-amber-900 dark:text-amber-100/90">{approval.summary}</p>
+        <p className="mt-1 break-words text-amber-900 dark:text-amber-100/90">
+          {t(approval.summary)}
+        </p>
       )}
       {approval.detail && (
         <div className="mt-2">
@@ -115,7 +121,7 @@ export function ApprovalCard({ approval, compact }: { approval: ApprovalDto; com
         </Button>
         {!everyTime && (
           <Button size="sm" disabled={busy} onClick={() => void answer(approval.id, "always")}>
-            Always allow for {approval.crew.name}
+            Always allow for {who}
           </Button>
         )}
         <Button
@@ -142,6 +148,7 @@ export function ApprovalCard({ approval, compact }: { approval: ApprovalDto; com
 /** A crew member's question: tap a choice, type your own answer, or skip it. */
 function QuestionCard({ approval, compact }: { approval: ApprovalDto; compact?: boolean }) {
   const { answering, errors, answer } = useApprovals();
+  const who = useCrewName()(approval.crew.name);
   const [own, setOwn] = useState<string | null>(null);
   const ownId = useId();
   const busy = answering.includes(approval.id);
@@ -156,16 +163,14 @@ function QuestionCard({ approval, compact }: { approval: ApprovalDto; compact?: 
 
   return (
     <section
-      aria-label={`${approval.crew.name} asks: ${question.text}`}
+      aria-label={`${who} asks: ${question.text}`}
       className={cx(
         "animate-fade-in rounded-xl border border-accent-200 bg-accent-50/70 text-sm dark:border-accent-800 dark:bg-accent-950/30",
         compact ? "p-3" : "p-4",
       )}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <p className="text-xs font-semibold text-accent-800 dark:text-accent-200">
-          {approval.crew.name} asks
-        </p>
+        <p className="text-xs font-semibold text-accent-800 dark:text-accent-200">{who} asks</p>
         <time className="text-xs text-slate-600 dark:text-slate-300">
           {formatTime(approval.createdAt)}
         </time>

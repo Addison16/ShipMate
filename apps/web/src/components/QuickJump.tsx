@@ -1,3 +1,4 @@
+import type { CrewDto } from "@shipmate/core";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   useEffect,
@@ -6,7 +7,7 @@ import {
   useState,
 } from "react";
 import { api } from "../api.js";
-import { useThemeWords } from "../appearance.js";
+import { useCrewName, useThemeText, useThemeWords } from "../appearance.js";
 import { useUser } from "../auth.js";
 import {
   canSee,
@@ -79,9 +80,11 @@ export function QuickJumpButton({ onOpen }: { onOpen: () => void }) {
 export function QuickJump({ onClose }: { onClose: () => void }) {
   const user = useUser();
   const words = useThemeWords();
+  const t = useThemeText();
+  const crewName = useCrewName();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
-  const [crew, setCrew] = useState<Result[]>([]);
+  const [crew, setCrew] = useState<CrewDto[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -92,18 +95,7 @@ export function QuickJump({ onClose }: { onClose: () => void }) {
       .listCrew()
       .then(({ crew }) => {
         if (!live) return;
-        setCrew(
-          crew.map((c) => ({
-            id: `crew:${c.slug}`,
-            path: `/crew/${c.slug}`,
-            label: c.name,
-            hint: c.role,
-            icon: "crew",
-            access: "all",
-            keywords: [c.slug],
-            where: "Crew member",
-          })),
-        );
+        setCrew(crew);
       })
       .catch(() => {});
     return () => {
@@ -118,10 +110,27 @@ export function QuickJump({ onClose }: { onClose: () => void }) {
         where: "Page",
       })),
       { ...SETTINGS_HOME, where: "Page" },
-      ...visibleSections(user).map((s) => ({ ...s, where: `Settings · ${s.group}` })),
-      ...crew,
+      ...visibleSections(user).map((s) => ({
+        ...s,
+        label: t(s.label),
+        hint: t(s.hint),
+        keywords: s.label === t(s.label) ? s.keywords : [...s.keywords, s.label.toLowerCase()],
+        where: `Settings · ${t(s.group)}`,
+      })),
+      ...crew.map(
+        (c): Result => ({
+          id: `crew:${c.slug}`,
+          path: `/crew/${c.slug}`,
+          label: crewName(c.name),
+          hint: t(c.role),
+          icon: "crew",
+          access: "all",
+          keywords: [c.slug],
+          where: t("Crew member"),
+        }),
+      ),
     ],
-    [user, crew, words],
+    [user, crew, words, t, crewName],
   );
   const results = useMemo(() => searchDestinations(all, query).slice(0, 12), [all, query]);
 
@@ -168,7 +177,7 @@ export function QuickJump({ onClose }: { onClose: () => void }) {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Search Shipmate"
+        aria-label={`Search ${words.appName}`}
         className="relative w-full max-w-lg animate-scale-in overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
       >
         <div className="flex items-center gap-2 border-b border-slate-200 px-4 dark:border-slate-800">
@@ -183,7 +192,7 @@ export function QuickJump({ onClose }: { onClose: () => void }) {
             aria-controls="quick-jump-results"
             aria-activedescendant={results[active] ? `quick-jump-${active}` : undefined}
             aria-label="Where to?"
-            placeholder="Where to? Try “Discord”, “password” or a crew member"
+            placeholder={t("Where to? Try “Discord”, “password” or a crew member")}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);

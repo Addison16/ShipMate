@@ -1,4 +1,5 @@
 import type { ConversationDto, ConversationSearchResultDto, CrewDto } from "@shipmate/core";
+import { singular } from "@shipmate/core";
 import {
   type FormEvent,
   type KeyboardEvent,
@@ -11,7 +12,7 @@ import {
   useState,
 } from "react";
 import { api, errorMessage } from "../api.js";
-import { useCrewName, useThemeWords } from "../appearance.js";
+import { useCrewName, useThemeText, useThemeWords } from "../appearance.js";
 import { useApprovals } from "../approvals.js";
 import { useUser } from "../auth.js";
 import { ApprovalCard } from "../components/ApprovalCard.js";
@@ -46,11 +47,16 @@ import { useResource } from "../lib/useResource.js";
 import { href, navigate } from "../router.js";
 import { socket, useServerEvents, useSocketState } from "../ws.js";
 
-function conversationTitle(c: ConversationDto, crew: CrewDto[]): string {
+function conversationTitle(
+  c: ConversationDto,
+  crew: CrewDto[],
+  crewName: (name: string) => string,
+  t: (text: string) => string,
+): string {
   if (c.title) return c.title;
   if (c.kind === "direct") {
     const member = crew.find((m) => m.slug === c.crewSlug);
-    return member?.name ?? c.crewSlug ?? "Crew member";
+    return member ? crewName(member.name) : (c.crewSlug ?? t("Crew member"));
   }
   return "New chat";
 }
@@ -74,8 +80,9 @@ function ConversationTags({
   linkProject?: boolean;
 }) {
   const words = useThemeWords();
+  const t = useThemeText();
   // A watch's run is labelled with the theme's word for watches, in the singular.
-  const surface = c.surface === "watch" ? words.watches.replace(/s$/, "") : surfaceLabel(c.surface);
+  const surface = c.surface === "watch" ? singular(words.watches) : surfaceLabel(c.surface);
   const projectName = c.projectId ? (projectNames.get(c.projectId) ?? "Project") : null;
   return (
     <>
@@ -84,7 +91,7 @@ function ConversationTags({
         (linkProject ? (
           <a
             href={href(`/shipyard/${c.projectId}`)}
-            title="Open the project in the Shipyard"
+            title={t("Open the project in the Shipyard")}
             className={cx(
               "inline-flex max-w-40 items-center truncate rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 hover:underline dark:bg-amber-900/50 dark:text-amber-100",
               focusRing,
@@ -175,6 +182,7 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
 
   const canDirect = directCandidates(crewList).length > 0;
   const crewName = useCrewName();
+  const t = useThemeText();
   const captainName = crewName(crewList.find((m) => m.captain)?.name ?? "Captain");
 
   return (
@@ -266,8 +274,8 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
                     {!c.pinned && i > 0 && all[i - 1]?.pinned && <ListLabel>Recent</ListLabel>}
                     <ConversationRow
                       c={c}
-                      title={conversationTitle(c, crewList)}
-                      who={withWhom(c, crewList, captainName)}
+                      title={conversationTitle(c, crewList, crewName, t)}
+                      who={withWhom(c, crewList, captainName, crewName, t)}
                       active={c.id === conversationId}
                       projectNames={projectNames}
                       onRenamed={(next) =>
@@ -298,7 +306,7 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
               key={conversationId}
               conversationId={conversationId}
               conversation={current}
-              title={current ? conversationTitle(current, crewList) : ""}
+              title={current ? conversationTitle(current, crewList, crewName, t) : ""}
               crew={crewList}
               member={
                 current?.kind === "direct"
@@ -545,6 +553,7 @@ function Thread({
 }) {
   const words = useThemeWords();
   const crewName = useCrewName();
+  const t = useThemeText();
   const user = useUser();
   const socketState = useSocketState();
   // Chats from Discord, Telegram or Slack (opened from search) are shown, not continued. A
@@ -755,7 +764,7 @@ function Thread({
             <div className="flex min-w-0 flex-1 items-center gap-2.5">
               {member && (
                 <span className="hidden sm:contents">
-                  <Avatar name={member.name} />
+                  <Avatar name={crewName(member.name)} />
                 </span>
               )}
               <div className="min-w-0">
@@ -766,7 +775,7 @@ function Thread({
                 {member && (
                   <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                     {conversation?.kind === "direct"
-                      ? `${member.name} · ${member.role}`
+                      ? `${crewName(member.name)} · ${t(member.role)}`
                       : `${crewName(member.name)} · brings in the right ${words.crewMember}`}
                   </p>
                 )}
@@ -774,8 +783,8 @@ function Thread({
               {member && (
                 <a
                   href={href(`/crew/${member.slug}`)}
-                  title={`${member.name}'s settings`}
-                  aria-label={`${member.name}'s settings`}
+                  title={`${crewName(member.name)}'s settings`}
+                  aria-label={`${crewName(member.name)}'s settings`}
                   className={cx(
                     "hidden shrink-0 rounded p-1 text-slate-400 transition-colors sm:block hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200",
                     focusRing,
@@ -804,7 +813,9 @@ function Thread({
                   variant="ghost"
                   className={headerAction}
                   disabled={state.busy || resetting}
-                  title="Start fresh: the crew forget this chat so far, and the messages stay here. You can also type /new."
+                  title={t(
+                    "Start fresh: the crew members forget this chat so far, and the messages stay here. You can also type /new.",
+                  )}
                   onClick={() => void startFresh()}
                 >
                   <FreshGlyph />
@@ -864,19 +875,19 @@ function Thread({
               className="mt-6 border-none bg-transparent dark:bg-transparent"
               icon={
                 member && conversation?.kind === "direct" ? (
-                  <Avatar name={member.name} size="lg" />
+                  <Avatar name={crewName(member.name)} size="lg" />
                 ) : (
                   <NavIcon name="bridge" size={22} />
                 )
               }
               title={
                 member && conversation?.kind === "direct"
-                  ? `This is your chat with ${member.name}`
+                  ? `This is your chat with ${crewName(member.name)}`
                   : "No messages yet"
               }
             >
               {member && conversation?.kind === "direct"
-                ? `${member.role}. Ask a question, think something through, or hand over a job.`
+                ? `${t(member.role)}. Ask a question, think something through, or hand over a job.`
                 : `Say hello. Ask for anything, and the right ${words.crewMember} picks it up.`}
             </EmptyState>
           )}
@@ -970,7 +981,7 @@ function Thread({
                   state.busy
                     ? `${member ? crewName(member.name) : `The ${words.crew.toLowerCase()}`} is working…`
                     : conversation?.kind === "direct" && member
-                      ? `Message ${member.name}`
+                      ? `Message ${crewName(member.name)}`
                       : `Message the ${words.crew.toLowerCase()}`
                 }
                 className={cx(
@@ -1024,9 +1035,16 @@ function ListLabel({ children }: { children: ReactNode }) {
 }
 
 /** Who a conversation is with: its crew member, or the Captain for a bridge chat. */
-function withWhom(c: ConversationDto, crew: CrewDto[], captainName: string): string {
+function withWhom(
+  c: ConversationDto,
+  crew: CrewDto[],
+  captainName: string,
+  crewName: (name: string) => string,
+  t: (text: string) => string,
+): string {
   if (c.kind !== "direct") return captainName;
-  return crew.find((m) => m.slug === c.crewSlug)?.name ?? c.crewSlug ?? "Crew member";
+  const member = crew.find((m) => m.slug === c.crewSlug);
+  return member ? crewName(member.name) : (c.crewSlug ?? t("Crew member"));
 }
 
 function FreshGlyph() {
@@ -1148,6 +1166,8 @@ function SearchResults({
   crewList: CrewDto[];
   projectNames: Map<string, string>;
 }) {
+  const crewName = useCrewName();
+  const t = useThemeText();
   return (
     <div
       className="relative min-h-0 flex-1 overflow-y-auto p-2 md:pb-[calc(0.5rem+var(--safe-bottom))]"
@@ -1190,7 +1210,9 @@ function SearchResults({
               <span className="flex items-baseline justify-between gap-2">
                 <span className="flex min-w-0 items-center gap-1 text-sm font-medium">
                   {r.conversation.pinned && <PinGlyph />}
-                  <span className="truncate">{conversationTitle(r.conversation, crewList)}</span>
+                  <span className="truncate">
+                    {conversationTitle(r.conversation, crewList, crewName, t)}
+                  </span>
                 </span>
                 <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
                   {formatTime(r.conversation.updatedAt)}
@@ -1204,7 +1226,7 @@ function SearchResults({
                   key={m.messageId}
                   className="mt-1 line-clamp-3 block text-xs text-slate-600 dark:text-slate-300"
                 >
-                  <span className="font-medium">{m.author}: </span>
+                  <span className="font-medium">{crewName(m.author)}: </span>
                   <Snippet text={m.snippet} />
                 </span>
               ))}

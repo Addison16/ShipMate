@@ -1,6 +1,7 @@
 import type { ChatGptStatusDto } from "@shipmate/core";
 import { type FormEvent, useState } from "react";
 import { errorMessage } from "../api.js";
+import { useThemeText } from "../appearance.js";
 import { useUser } from "../auth.js";
 import { callbackProblem, chatgptApi, planLabel } from "../lib/chatgpt.js";
 import { useResource } from "../lib/useResource.js";
@@ -16,6 +17,7 @@ export function ChatGptCard({ onChanged }: { onChanged: () => Promise<void> }) {
 
 function ChatGptCardInner({ onChanged }: { onChanged: () => Promise<void> }) {
   const status = useResource(() => chatgptApi.status());
+  const t = useThemeText();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [pasted, setPasted] = useState("");
@@ -65,8 +67,9 @@ function ChatGptCardInner({ onChanged }: { onChanged: () => Promise<void> }) {
             {s?.lastError && <Badge tone="warn">needs attention</Badge>}
           </div>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Crew use OpenAI models through the signed-in person's ChatGPT plan, so usage counts
-            against that plan's limits instead of an API bill.
+            {t(
+              "Crew use OpenAI models through the signed-in person's ChatGPT plan, so usage counts against that plan's limits instead of an API bill.",
+            )}
           </p>
         </div>
         {s?.signedIn && (
@@ -75,7 +78,9 @@ function ChatGptCardInner({ onChanged }: { onChanged: () => Promise<void> }) {
             variant="danger"
             disabled={busy !== null}
             onClick={() => {
-              if (window.confirm("Sign out of ChatGPT? Crew using its models will stop working.")) {
+              if (
+                window.confirm(t("Sign out of ChatGPT? Crew using its models will stop working."))
+              ) {
                 void run("signout", () => chatgptApi.signOut(), true);
               }
             }}
@@ -101,7 +106,7 @@ function ChatGptCardInner({ onChanged }: { onChanged: () => Promise<void> }) {
                 : "none listed yet"}
             </p>
             <Muted>
-              Tokens stay on the server and renew automatically when a crew member needs one.
+              {t("Tokens stay on the server and renew automatically when a crew member needs one.")}
             </Muted>
             {s.lastError && (
               <ErrorText>

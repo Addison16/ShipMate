@@ -1,5 +1,6 @@
 import type { CursorCliStatusDto } from "@shipmate/core";
 import { useEffect } from "react";
+import { useThemeText } from "../appearance.js";
 import { isAdmin, useUser } from "../auth.js";
 import { describeStatus } from "../lib/claude-cli.js";
 import { cursorCliApi } from "../lib/cursor-cli.js";
@@ -27,6 +28,7 @@ function CursorCliStatusCard({
 }: {
   onStatus: ((status: CursorCliStatusDto) => void) | undefined;
 }) {
+  const t = useThemeText();
   const res = useResource(() => cursorCliApi.status().then((r) => r.cursorCli));
   const s = res.data;
   useEffect(() => {
@@ -51,7 +53,7 @@ function CursorCliStatusCard({
         <>
           <p className="text-sm text-slate-600 dark:text-slate-300">
             {s.signedIn
-              ? "Ready. Pick Cursor as a crew member's engine on their Crew page."
+              ? t("Ready. Pick Cursor as a crew member's engine on their Crew page.")
               : !s.installed
                 ? "Run crew through Cursor on your Cursor plan. Install it once on the Docker host (a large download):"
                 : "Run crew through Cursor on your Cursor plan. Sign in once on the Docker host:"}

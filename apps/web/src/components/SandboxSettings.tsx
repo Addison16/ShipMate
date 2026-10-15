@@ -1,6 +1,7 @@
 import type { SandboxCheckDto } from "@shipmate/core";
 import { type FormEvent, useEffect, useState } from "react";
 import { errorMessage } from "../api.js";
+import { useThemeText } from "../appearance.js";
 import { useUser } from "../auth.js";
 import {
   type SandboxForm,
@@ -58,6 +59,7 @@ function CheckResult({ check }: { check: SandboxCheckDto }) {
 
 function SandboxSettingsCard() {
   const current = useResource(() => sandboxApi.get().then((r) => r.sandbox));
+  const t = useThemeText();
   const [form, setForm] = useState<SandboxForm>(sandboxForm(null));
   const [errors, setErrors] = useState<Partial<Record<keyof SandboxForm, string>>>({});
   const [error, setError] = useState<string | null>(null);
@@ -107,7 +109,7 @@ function SandboxSettingsCard() {
   return (
     <Card>
       <div className="mb-1 flex items-center gap-2">
-        <h2 className="font-semibold">Shipyard sandbox</h2>
+        <h2 className="font-semibold">{t("Shipyard sandbox")}</h2>
         {d && (
           <Badge>
             {d.mode === "env" ? "from environment" : d.mode === "socket" ? "socket" : "remote host"}
@@ -115,9 +117,9 @@ function SandboxSettingsCard() {
         )}
       </div>
       <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-        Where crew members run code. Shipmate starts one sandbox container per project through a
-        Docker-compatible API: the Docker socket, rootless Podman's socket, or a Docker or Podman
-        host elsewhere on your network. Code never runs outside a sandbox.
+        {t(
+          "Where crew members run code. Shipmate starts one sandbox container per project through a Docker-compatible API: the Docker socket, rootless Podman's socket, or a Docker or Podman host elsewhere on your network. Code never runs outside a sandbox.",
+        )}
       </p>
       <ErrorText>{current.error}</ErrorText>
       {d && (

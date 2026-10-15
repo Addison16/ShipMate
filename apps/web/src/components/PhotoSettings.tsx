@@ -1,6 +1,7 @@
 import type { SettingsDto } from "@shipmate/core";
 import { useEffect, useState } from "react";
 import { api, errorMessage, request } from "../api.js";
+import { useThemeText } from "../appearance.js";
 import { useUser } from "../auth.js";
 import { useResource } from "../lib/useResource.js";
 import { Button, Card, ErrorText, SelectField } from "./ui.js";
@@ -8,6 +9,7 @@ import { Button, Card, ErrorText, SelectField } from "./ui.js";
 /** Settings → Photos: which model looks at photos when a crew member's own cannot. */
 export function PhotoSettings() {
   const owner = useUser().role === "owner";
+  const t = useThemeText();
   const settings = useResource(() => api.getSettings());
   const models = useResource(() => api.listModels().then((r) => r.models));
   const [value, setValue] = useState("");
@@ -36,8 +38,9 @@ export function PhotoSettings() {
     <Card>
       <h2 className="mb-1 font-semibold">Photos</h2>
       <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-        Photos sent in chat go to the crew member's own model when it can see images. When it can't,
-        this model takes that one message, and the chat says so.
+        {t(
+          "Photos sent in chat go to the crew member's own model when it can see images. When it can't, this model takes that one message, and the chat says so.",
+        )}
       </p>
       <ErrorText>{settings.error ?? models.error}</ErrorText>
       {settings.data && models.data && (

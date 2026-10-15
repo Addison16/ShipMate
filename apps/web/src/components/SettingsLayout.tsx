@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useThemeText } from "../appearance.js";
 import { useUser } from "../auth.js";
 import { SETTINGS_GROUPS, visibleSections } from "../lib/nav.js";
 import { href } from "../router.js";
@@ -11,6 +12,7 @@ import { cx, focusRing } from "./ui.js";
  */
 export function SettingsLayout({ current, children }: { current: string; children: ReactNode }) {
   const user = useUser();
+  const t = useThemeText();
   const sections = visibleSections(user);
   return (
     <div className="flex min-h-full">
@@ -34,7 +36,7 @@ export function SettingsLayout({ current, children }: { current: string; childre
             return (
               <div key={group}>
                 <p className="px-3 pb-1 text-[11px] font-semibold tracking-wider text-slate-500 uppercase dark:text-slate-400">
-                  {group}
+                  {t(group)}
                 </p>
                 <ul className="space-y-0.5">
                   {items.map((s) => {
@@ -61,7 +63,7 @@ export function SettingsLayout({ current, children }: { current: string; childre
                           >
                             <NavIcon name={s.icon} size={16} />
                           </span>
-                          {s.label}
+                          {t(s.label)}
                         </a>
                       </li>
                     );

@@ -1,6 +1,7 @@
 import type { UsageResponse, UsageTotals } from "@shipmate/core";
 import { type ReactNode, useState } from "react";
 import { api } from "../api.js";
+import { useCrewName, useThemeText } from "../appearance.js";
 import { isAdmin, useUser } from "../auth.js";
 import {
   Badge,
@@ -349,6 +350,8 @@ const usd = (dollars: number | null) => (dollars === null ? "No cap" : `$${dolla
 
 export function UsagePage() {
   const user = useUser();
+  const t = useThemeText();
+  const crewName = useCrewName();
   const admin = isAdmin(user);
   const [month, setMonth] = useState(currentMonth());
   const [scope, setScope] = useState<"me" | "all">("me");
@@ -517,11 +520,11 @@ export function UsagePage() {
             </Table>
           </Section>
 
-          <Section title="By crew member" empty={data.byCrew.length === 0}>
+          <Section title={t("By crew member")} empty={data.byCrew.length === 0}>
             <Table>
               <thead>
                 <tr>
-                  <th className={nameTh}>Crew member</th>
+                  <th className={nameTh}>{t("Crew member")}</th>
                   <TotalsHead subs={subs} />
                   <CapHead />
                 </tr>
@@ -529,7 +532,7 @@ export function UsagePage() {
               <tbody>
                 {data.byCrew.map((c) => (
                   <tr key={c.slug ?? "none"}>
-                    <td className={name}>{c.name}</td>
+                    <td className={name}>{crewName(c.name)}</td>
                     <TotalsCells t={c} subs={subs} />
                     <CapCells
                       spent={c.costMicroUsd}
@@ -542,7 +545,7 @@ export function UsagePage() {
             </Table>
             {scope === "me" && data.byCrew.some((c) => c.capUsd !== null) && (
               <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                Crew ceilings count everyone's spend; "Used" here shows only yours.
+                {t('Crew member ceilings count everyone\'s spend; "Used" here shows only yours.')}
               </p>
             )}
           </Section>

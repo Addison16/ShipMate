@@ -1,5 +1,6 @@
 import type { ClaudeCliStatusDto } from "@shipmate/core";
 import { Fragment, useEffect } from "react";
+import { useThemeText } from "../appearance.js";
 import { isAdmin, useUser } from "../auth.js";
 import { claudeCliApi, describeStatus } from "../lib/claude-cli.js";
 import { useResource } from "../lib/useResource.js";
@@ -60,6 +61,7 @@ function ClaudeCliStatusCard({
   onStatus: ((status: ClaudeCliStatusDto) => void) | undefined;
 }) {
   const res = useResource(() => claudeCliApi.status().then((r) => r.claudeCli));
+  const t = useThemeText();
   const s = res.data;
   useEffect(() => {
     if (s) onStatus?.(s);
@@ -82,7 +84,7 @@ function ClaudeCliStatusCard({
         <>
           <p className="text-sm text-slate-600 dark:text-slate-300">
             {s.signedIn
-              ? "Ready. Pick Claude subscription as a crew member's model on their Crew page."
+              ? t("Ready. Pick Claude subscription as a crew member's model on their Crew page.")
               : "Use your own Claude plan for your crew. Sign in once on the Docker host:"}
           </p>
           {!s.signedIn && (

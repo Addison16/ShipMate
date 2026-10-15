@@ -1,6 +1,7 @@
 import type { ListDetailDto, ListDto, ListItemDto, ListKind } from "@shipmate/core";
 import { type FormEvent, useRef, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useThemeText } from "../appearance.js";
 import { isAdmin, useUser } from "../auth.js";
 import { NavIcon } from "../components/icons.js";
 import {
@@ -157,6 +158,7 @@ function ListCard({
 }
 
 function ListIndex() {
+  const t = useThemeText();
   const lists = useResource(() => api.listLists().then((r) => r.lists));
   useServerEvents((ev) => {
     if (ev.type === "list_changed") void lists.reload();
@@ -187,7 +189,9 @@ function ListIndex() {
       <PageHeader
         icon="lists"
         title="Lists"
-        description="Groceries, to-dos, packing and bills. Shared lists are for the whole household; the crew read and update them too."
+        description={t(
+          "Groceries, to-dos, packing and bills. Shared lists are for the whole household; crew members read and update them too.",
+        )}
       />
       <div className="grid gap-6 lg:grid-cols-[1fr_18rem]">
         <div>
@@ -195,7 +199,7 @@ function ListIndex() {
           {lists.loading && !lists.data && <LoadingCards count={4} />}
           {lists.data && all.length === 0 && (
             <EmptyState icon={<NavIcon name="lists" size={22} />} title="No lists yet">
-              Start one here, or ask the crew: "add milk to the grocery list".
+              {t('Start one here, or ask a crew member: "add milk to the grocery list".')}
             </EmptyState>
           )}
           <ul className="stagger grid gap-3 sm:grid-cols-2">
@@ -241,7 +245,7 @@ function ListIndex() {
                 onChange={(e) => setShared(!e.target.checked)}
                 className="mt-0.5 size-4 accent-accent-700"
               />
-              <span>Private: only you (and crew working for you) can see it</span>
+              <span>{t("Private: only you (and crew members working for you) can see it")}</span>
             </label>
             <ErrorText>{error}</ErrorText>
             <Button type="submit" variant="primary" disabled={busy || !name.trim()}>

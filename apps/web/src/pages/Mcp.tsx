@@ -1,6 +1,7 @@
 import type { CreateCustomMcpRequest, CrewDto, McpServerDto } from "@shipmate/core";
 import { type FormEvent, useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useCrewName, useThemeText } from "../appearance.js";
 import { isAdmin, useUser } from "../auth.js";
 import { GoogleMcpSetup } from "../components/GoogleMcpSetup.js";
 import {
@@ -57,6 +58,7 @@ const GROUPS: Array<{
 
 export function McpPage() {
   const user = useUser();
+  const t = useThemeText();
   const owner = user.role === "owner";
   const admin = isAdmin(user);
   const servers = useResource(() => api.listMcp().then((r) => r.servers));
@@ -82,7 +84,9 @@ export function McpPage() {
       <PageHeader
         icon="mcp"
         title="MCP servers"
-        description="Tools crew members can use. Each server runs only with the secrets it declares, and a crew member only sees the servers in its manifest."
+        description={t(
+          "Tools crew members can use. Each server runs only with the secrets it declares, and a crew member only sees the servers in its manifest.",
+        )}
         actions={
           owner &&
           !adding && (
@@ -96,7 +100,9 @@ export function McpPage() {
         {!owner && (
           <Muted>
             {admin
-              ? "Only the owner can install servers and set their secrets. You can choose which crew members use each server."
+              ? t(
+                  "Only the owner can install servers and set their secrets. You can choose which crew members use each server.",
+                )
               : "Only the owner can change MCP servers."}
           </Muted>
         )}
@@ -175,7 +181,12 @@ function ServerCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [panel, setPanel] = useState<"secrets" | "crews" | null>(null);
-  const crewName = (slug: string) => crew.find((c) => c.slug === slug)?.name ?? slug;
+  const t = useThemeText();
+  const displayName = useCrewName();
+  const crewName = (slug: string) => {
+    const name = crew.find((c) => c.slug === slug)?.name;
+    return name ? displayName(name) : slug;
+  };
   const canUninstall = owner && s.tier !== "core" && s.installed;
 
   async function act(fn: () => Promise<unknown>) {
@@ -199,7 +210,7 @@ function ServerCard({
     const msg =
       s.tier === "custom"
         ? `Remove the custom server "${s.name}"?`
-        : `Uninstall "${s.name}"? Crew members lose access to it.`;
+        : `Uninstall "${s.name}"? ${t("Crew members lose access to it.")}`;
     if (!window.confirm(msg)) return;
     void act(async () => {
       await api.uninstallMcp(s.id);
@@ -246,8 +257,8 @@ function ServerCard({
       )}
       {s.tags.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
-          {s.tags.map((t) => (
-            <Badge key={t}>{t}</Badge>
+          {s.tags.map((tag) => (
+            <Badge key={tag}>{tag}</Badge>
           ))}
         </div>
       )}
@@ -256,7 +267,7 @@ function ServerCard({
         {s.transport === "http" ? s.url : [s.command, ...s.args].filter(Boolean).join(" ")}
       </p>
       <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-        Used by: {s.crews.length ? s.crews.map(crewName).join(", ") : "no crew members"}
+        Used by: {s.crews.length ? s.crews.map(crewName).join(", ") : t("no crew members")}
       </p>
       {s.secrets.length > 0 && !s.google && (
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -299,7 +310,7 @@ function ServerCard({
               aria-expanded={panel === "crews"}
               onClick={() => setPanel(panel === "crews" ? null : "crews")}
             >
-              Assign to crew
+              {t("Assign to Crew")}
             </Button>
           )}
           {canUninstall && (
@@ -437,6 +448,8 @@ function CrewAssign({
   onSaved: (s: McpServerDto) => void;
   onClose: () => void;
 }) {
+  const t = useThemeText();
+  const crewName = useCrewName();
   const [picked, setPicked] = useState<string[]>(server.crews);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -464,7 +477,7 @@ function CrewAssign({
     >
       <fieldset>
         <legend className="mb-1 text-sm font-medium">
-          Crew members that can use {server.name}
+          {t("Crew members that can use")} {server.name}
         </legend>
         <div className="grid gap-1 sm:grid-cols-2">
           {candidates.map((c) => (
@@ -479,7 +492,7 @@ function CrewAssign({
                 }
                 className="size-4 accent-accent-700"
               />
-              {c.name}
+              {crewName(c.name)}
             </label>
           ))}
         </div>

@@ -1,4 +1,6 @@
+import { singular } from "@shipmate/core";
 import { useEffect, useId, useRef, useState } from "react";
+import { useCrewName, useThemeText, useThemeWords } from "../appearance.js";
 import { useApprovals } from "../approvals.js";
 import { approvalPath } from "../lib/approvals.js";
 import { formatTime } from "../lib/format.js";
@@ -11,6 +13,11 @@ import { cx, focusRing } from "./ui.js";
  */
 export function ApprovalTray({ variant }: { variant: "sidebar" | "topbar" }) {
   const { pending } = useApprovals();
+  const crewName = useCrewName();
+  const t = useThemeText();
+  const words = useThemeWords();
+  // "Open routine": the theme's word for a watch, in the singular.
+  const watch = singular(words.watches).toLowerCase();
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -95,12 +102,12 @@ export function ApprovalTray({ variant }: { variant: "sidebar" | "topbar" }) {
                     <span className="flex items-baseline justify-between gap-2">
                       <span className="truncate text-sm font-medium">
                         {a.question ? (
-                          `${a.crew.name} asks`
+                          `${crewName(a.crew.name)} asks`
                         ) : a.everyTime ? (
-                          `${a.crew.name} is asking first`
+                          `${crewName(a.crew.name)} is asking first`
                         ) : (
                           <>
-                            {a.crew.name}: <span className="font-mono">{a.toolName}</span>
+                            {crewName(a.crew.name)}: <span className="font-mono">{a.toolName}</span>
                           </>
                         )}
                       </span>
@@ -109,10 +116,10 @@ export function ApprovalTray({ variant }: { variant: "sidebar" | "topbar" }) {
                       </span>
                     </span>
                     <span className="block truncate text-xs text-slate-600 dark:text-slate-300">
-                      {a.summary}
+                      {t(a.summary)}
                     </span>
                     <span className="block text-xs text-accent-700 dark:text-accent-300">
-                      {a.conversationId ? "Open conversation" : "Open watch"}
+                      {a.conversationId ? "Open conversation" : `Open ${watch}`}
                     </span>
                   </button>
                 </li>

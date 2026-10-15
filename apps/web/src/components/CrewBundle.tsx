@@ -1,6 +1,7 @@
 import type { CrewImportPreviewDto } from "@shipmate/core";
 import { type ChangeEvent, type FormEvent, useState } from "react";
 import { ApiError, api, errorMessage } from "../api.js";
+import { useCrewName, useThemeText } from "../appearance.js";
 import { checkCrewFile, redactedNotice } from "../lib/crew-bundle.js";
 import { href, navigate } from "../router.js";
 import { Avatar } from "./Avatar.js";
@@ -78,6 +79,8 @@ export function ExportCrewButton({ slug }: { slug: string }) {
 
 /** Import a shared crew member from a file or an https link; it lands awaiting review. */
 export function ImportCrewPage() {
+  const t = useThemeText();
+  const crewName = useCrewName();
   const [url, setUrl] = useState("");
   const [preview, setPreview] = useState<CrewImportPreviewDto | null>(null);
   const [slug, setSlug] = useState("");
@@ -132,10 +135,10 @@ export function ImportCrewPage() {
         href={href("/crew")}
         className="text-sm text-accent-700 hover:underline dark:text-accent-300"
       >
-        ← Crew
+        ← {t("Crew")}
       </a>
       <PageHeader
-        title="Import a crew member"
+        title={t("Import a crew member")}
         description="From a .shipmate-crew.json file someone shared, or a link to one. You see everything before it comes aboard, and it waits for review before first use."
       />
       <Card>
@@ -185,10 +188,10 @@ export function ImportCrewPage() {
         <Card className="mt-6">
           <form onSubmit={confirm} className="space-y-4">
             <div className="flex items-start gap-3">
-              <Avatar name={preview.name} size="lg" />
+              <Avatar name={crewName(preview.name)} size="lg" />
               <div className="min-w-0">
-                <h2 className="text-lg font-semibold">{preview.name}</h2>
-                <p className="text-sm text-slate-600 dark:text-slate-300">{preview.role}</p>
+                <h2 className="text-lg font-semibold">{crewName(preview.name)}</h2>
+                <p className="text-sm text-slate-600 dark:text-slate-300">{t(preview.role)}</p>
                 <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">
                   {preview.model}
                   {preview.backend === "claude-code-cli" && " · Claude Code CLI"}
@@ -216,9 +219,9 @@ export function ImportCrewPage() {
                 <dt className="font-medium">Tools</dt>
                 <dd className="mt-1 flex flex-wrap gap-1">
                   {preview.tools.length ? (
-                    preview.tools.map((t) => (
-                      <Badge key={t} tone={t === "bash" ? "warn" : "neutral"}>
-                        {t}
+                    preview.tools.map((tool) => (
+                      <Badge key={tool} tone={tool === "bash" ? "warn" : "neutral"}>
+                        {tool}
                       </Badge>
                     ))
                   ) : (
@@ -286,8 +289,9 @@ export function ImportCrewPage() {
               onChange={(e) => setSlug(e.target.value)}
             />
             <Notice>
-              It arrives awaiting review: approve it on its Crew page before first use. Its skills
-              wait on the Skills page.
+              {t(
+                "It arrives awaiting review: approve it on its Crew page before first use. Its skills wait on the Skills page.",
+              )}
             </Notice>
             <div className="flex gap-2">
               <Button type="submit" variant="primary" disabled={busy || !slug.trim()}>

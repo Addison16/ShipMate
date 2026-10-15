@@ -4,6 +4,7 @@ import {
   DEFAULT_THEME_WORDS,
   STOCK_CAPTAIN_NAME,
   type ThemeWordMap,
+  themeText,
   themeWords,
   type UserPreferences,
 } from "@shipmate/core";
@@ -46,6 +47,15 @@ const ThemeContext = createContext<ActiveTheme>({ theme: null, words: DEFAULT_TH
 /** The custom theme in use (null for none) and the app's words for it. */
 export const useActiveTheme = () => useContext(ThemeContext);
 export const useThemeWords = () => useContext(ThemeContext).words;
+
+/**
+ * Rewrites text written with the nautical words (Captain, Crew, crew member, Bridge, Watches,
+ * Shipyard) into the words this person sees: `t("Ask the Captain")`.
+ */
+export function useThemeText(): (text: string) => string {
+  const words = useThemeWords();
+  return useCallback((text: string) => themeText(text, words), [words]);
+}
 
 /**
  * A crew member's display name as this person sees it: a coordinator still on the stock name

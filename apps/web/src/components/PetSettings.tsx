@@ -1,7 +1,7 @@
 import type { PetImageSource, PetSettingsDto } from "@shipmate/core";
 import { type FormEvent, useEffect, useState } from "react";
 import { errorMessage } from "../api.js";
-import { useThemeWords } from "../appearance.js";
+import { useThemeText, useThemeWords } from "../appearance.js";
 import { useUser } from "../auth.js";
 import { PET_SOURCES, petsApi } from "../lib/pets.js";
 import { useResource } from "../lib/useResource.js";
@@ -33,6 +33,7 @@ export function PetSettings() {
 }
 
 function PetSettingsForm({ captain }: { captain: string }) {
+  const t = useThemeText();
   const settings = useResource(() => petsApi.settings());
   const [source, setSource] = useState<PetImageSource>("draw");
   const [providerId, setProviderId] = useState("");
@@ -189,8 +190,9 @@ function PetSettingsForm({ captain }: { captain: string }) {
                   >
                     Models and providers
                   </a>{" "}
-                  to add keys. A ChatGPT plan can't be used here, since OpenAI only allows its
-                  sign-in for chat. Crew on the Codex engine make pictures with the plan instead.
+                  {t(
+                    "to add keys. A ChatGPT plan can't be used here, since OpenAI only allows its sign-in for chat. Crew on the Codex engine make pictures with the plan instead.",
+                  )}
                 </p>
               </div>
             </details>

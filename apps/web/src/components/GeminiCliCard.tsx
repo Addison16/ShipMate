@@ -1,6 +1,7 @@
 import type { GeminiCliStatusDto } from "@shipmate/core";
 import { type FormEvent, useEffect, useState } from "react";
 import { errorMessage } from "../api.js";
+import { useThemeText } from "../appearance.js";
 import { isAdmin, useUser } from "../auth.js";
 import { geminiCliApi } from "../lib/gemini-cli.js";
 import { useResource } from "../lib/useResource.js";
@@ -45,6 +46,7 @@ function GeminiCliStatusCard({
   onStatus: ((status: GeminiCliStatusDto) => void) | undefined;
   owner: boolean;
 }) {
+  const t = useThemeText();
   const res = useResource(() => geminiCliApi.status().then((r) => r.geminiCli));
   const s = res.data;
   const [key, setKey] = useState("");
@@ -92,7 +94,7 @@ function GeminiCliStatusCard({
         <>
           <p className="text-sm text-slate-600 dark:text-slate-300">
             {s.signedIn
-              ? "Ready. Pick Gemini CLI as a crew member's engine on their Crew page."
+              ? t("Ready. Pick Gemini CLI as a crew member's engine on their Crew page.")
               : "Run crew through Google's Gemini CLI."}
           </p>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{GEMINI_PLAN_NOTE}</p>

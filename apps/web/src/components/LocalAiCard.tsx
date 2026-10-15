@@ -1,6 +1,7 @@
 import type { LocalAiStatusDto, LocalModelPullDto } from "@shipmate/core";
 import { type FormEvent, useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { useThemeText } from "../appearance.js";
 import {
   formatSize,
   isInstalled,
@@ -26,6 +27,7 @@ export function LocalAiCard({
   onUsed?: (ref: string) => void;
   heading?: boolean;
 }) {
+  const t = useThemeText();
   const [url, setUrl] = useState<string | null>(null);
   const status = useResource(() => api.localAi(url ?? undefined).then((r) => r.localAi), [url]);
   const data = status.data;
@@ -152,7 +154,7 @@ export function LocalAiCard({
                     checked={makeDefault}
                     onChange={(e) => setMakeDefault(e.target.checked)}
                   />
-                  Make it the default model (crew without a working model use it)
+                  {t("Make it the default model (crew members without a working model use it)")}
                 </label>
               </section>
             )}
@@ -199,8 +201,9 @@ export function LocalAiCard({
                 </div>
               )}
               <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                Crew call tools, so pick a model that supports them. Downloads keep going if you
-                leave this page.
+                {t(
+                  "Crew call tools, so pick a model that supports them. Downloads keep going if you leave this page.",
+                )}
               </p>
             </section>
           </>
@@ -209,7 +212,7 @@ export function LocalAiCard({
         {used && (
           <Notice>
             Ollama is set up with {used}
-            {makeDefault ? ", now the default model" : ""}. Crew can use it right away.
+            {makeDefault ? ", now the default model" : ""}. {t("Crew can use it right away.")}
           </Notice>
         )}
       </div>

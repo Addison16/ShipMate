@@ -199,6 +199,7 @@ export async function createServices(
     secret: config.SHIPMATE_SECRET,
     publicUrl: config.SHIPMATE_URL,
     extraHosts: (process.env.SHIPMATE_PUSH_HOSTS ?? "").split(","),
+    wordsFor: (userId) => themes.wordsFor(userId),
     ...(options.pushFetch ? { fetch: options.pushFetch } : {}),
   });
   bridge.tap((userId, event) => push.handle(userId, event));

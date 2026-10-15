@@ -6,7 +6,7 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import { MemoryStore } from "./memory.js";
 import { CrewRegistry } from "./registry.js";
-import { createCrewSession } from "./session.js";
+import { createCrewSession, MODEL_RETRY } from "./session.js";
 import { type CaptainHost, captainTools, memoryTools } from "./tools.js";
 
 const template = new URL("../../../templates/crew/captain", import.meta.url).pathname;
@@ -192,4 +192,32 @@ describe("createCrewSession", () => {
     );
     expect(existsSync(join(dir, "notes.txt"))).toBe(true);
   });
+
+  it("retries a provider outage (Cloudflare 520) and still answers", async () => {
+    const { root, runtime, faux, captain } = await setup();
+    faux.setResponses([
+      fauxAssistantMessage([], {
+        stopReason: "error",
+        errorMessage: 'OpenAI API error (520): 520 {"title":"Error 520","retryable":true}',
+      }),
+      fauxAssistantMessage("Back online."),
+    ]);
+    const s = await createCrewSession({
+      crew: captain,
+      agentDir: root,
+      modelRuntime: runtime,
+      inMemory: true,
+    });
+    const retries: Array<{ attempt: number; maxAttempts: number }> = [];
+    s.subscribe((e) => {
+      if (e.type === "auto_retry_start") {
+        retries.push({ attempt: e.attempt, maxAttempts: e.maxAttempts });
+      }
+    });
+    await s.prompt("hello");
+    const last = s.session.messages.at(-1);
+    s.dispose();
+    expect(retries).toEqual([{ attempt: 1, maxAttempts: MODEL_RETRY.maxRetries }]);
+    expect(last?.role === "assistant" && last.stopReason).toBe("stop");
+  }, 10_000);
 });

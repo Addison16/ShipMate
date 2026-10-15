@@ -40,6 +40,8 @@ export interface TimelineState {
   items: TimelineItem[];
   busy: boolean;
   error: string | null;
+  /** The provider's raw text behind a short `error`, for "More details". */
+  errorDetail: string | null;
   seq: number;
 }
 
@@ -54,6 +56,7 @@ export const initialTimeline: TimelineState = {
   items: [],
   busy: false,
   error: null,
+  errorDetail: null,
   seq: 0,
 };
 
@@ -113,7 +116,7 @@ export function timelineReducer(state: TimelineState, action: TimelineAction): T
       return { ...state, items: [...action.messages.map(msgItem), ...live] };
     }
     case "dismissError":
-      return { ...state, error: null };
+      return { ...state, error: null, errorDetail: null };
     case "event":
       return applyEvent(state, action.event);
     default:
@@ -133,7 +136,7 @@ function applyEvent(state: TimelineState, ev: ServerEvent): TimelineState {
   }
   if (ev.type === "error") {
     if (ev.conversationId && ev.conversationId !== state.conversationId) return state;
-    return { ...state, error: ev.message };
+    return { ...state, error: ev.message, errorDetail: ev.detail ?? null };
   }
   if (!("conversationId" in ev) || ev.conversationId !== state.conversationId) return state;
 

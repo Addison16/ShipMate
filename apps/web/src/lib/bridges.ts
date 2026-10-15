@@ -102,6 +102,7 @@ oauth_config:
       - chat:write
       - chat:write.customize
       - commands
+      - files:write
       - groups:history
       - groups:read
       - im:history

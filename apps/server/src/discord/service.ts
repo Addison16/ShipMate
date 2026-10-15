@@ -6,6 +6,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { HttpError, type UserRow } from "../auth.js";
 import type { Bridge } from "../bridge.js";
 import { watchReportText } from "../chat/core.js";
+import type { ReadFile } from "../chat/pictures.js";
 import type { ApprovalService } from "../services/approvals.js";
 import type { CrewService } from "../services/crew.js";
 import type { WatchReport } from "../services/watches.js";
@@ -24,11 +25,20 @@ const webhookRef = (slug: string) => `discord:webhook:${slug}`;
 const GUILD_KEY = "discord.guildId";
 const APP_KEY = "discord.applicationId";
 
-/** ManageChannels | ViewChannel | SendMessages | ManageMessages | EmbedLinks |
+/** ManageChannels | ViewChannel | SendMessages | ManageMessages | EmbedLinks | AttachFiles |
  * ReadMessageHistory | AddReactions | ManageWebhooks. ManageMessages removes `!link` messages
- * (they hold a code); AddReactions marks a message that arrived while the crew was busy. */
+ * (they hold a code); AddReactions marks a message that arrived while the crew was busy;
+ * AttachFiles posts crew pictures. */
 export const BOT_PERMISSIONS =
-  (1 << 4) + (1 << 10) + (1 << 11) + (1 << 13) + (1 << 14) + (1 << 16) + (1 << 6) + (1 << 29);
+  (1 << 4) +
+  (1 << 10) +
+  (1 << 11) +
+  (1 << 13) +
+  (1 << 14) +
+  (1 << 15) +
+  (1 << 16) +
+  (1 << 6) +
+  (1 << 29);
 
 export const inviteUrl = (applicationId: string) =>
   `https://discord.com/oauth2/authorize?client_id=${applicationId}&scope=bot%20applications.commands&permissions=${BOT_PERMISSIONS}`;
@@ -43,6 +53,8 @@ export interface DiscordServiceDeps {
   bridge: Bridge;
   approvals: ApprovalService;
   port: DiscordClientPort;
+  /** A stored file's bytes, to post crew pictures; omit to post text only. */
+  readFile?: ReadFile;
   log?: (message: string, err?: unknown) => void;
 }
 
@@ -80,6 +92,7 @@ export class DiscordService {
       {
         target: (id) => this.#target(id),
         webhook: (channelId) => this.#webhook(channelId),
+        ...(deps.readFile ? { readFile: deps.readFile } : {}),
         userByDiscordId: (id) => this.#userByDiscordId(id),
         userName: async (id) => {
           const [u] = await deps.db.select().from(users).where(eq(users.id, id)).limit(1);

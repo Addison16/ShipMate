@@ -1,4 +1,5 @@
 import type { ApprovalDecision, ApprovalDto, ServerEvent } from "@shipmate/core";
+import { loadPictures, type Picture, type ReadFile, replyPictures } from "../chat/pictures.js";
 import {
   answerTyped,
   cardDetail,
@@ -10,7 +11,14 @@ import {
   type RelayApprovals,
   type TypedAnswer,
 } from "../chat/relay.js";
-import type { BotButton, DiscordClientPort, DiscordEvent, DiscordWebhook } from "./port.js";
+import {
+  type BotButton,
+  DISCORD_FILE_LIMIT,
+  DISCORD_FILES_PER_MESSAGE,
+  type DiscordClientPort,
+  type DiscordEvent,
+  type DiscordWebhook,
+} from "./port.js";
 import { DISCORD_LIMIT, splitMessage } from "./split.js";
 
 /** Discord's typing indicator lasts about ten seconds, so refresh it a little sooner. */
@@ -33,6 +41,8 @@ export interface RelayLookup {
   /** The Shipmate user linked to this Discord account, reloaded each time. */
   userByDiscordId(discordUserId: string): Promise<{ id: string } | null>;
   userName(userId: string): Promise<string>;
+  /** A stored file's bytes, for a reply's pictures; omit to post text only. */
+  readFile?: ReadFile;
 }
 
 export type { RelayApprovals };
@@ -75,10 +85,21 @@ export class DiscordRelay {
     switch (event.type) {
       case "message": {
         const author = event.message.author;
-        if (author.kind !== "crew" || !event.message.content.trim()) return;
-        this.#withTarget(event.conversationId, (t) =>
-          this.#post(t, author.name, event.message.content, true),
-        );
+        if (author.kind !== "crew") return;
+        const text = event.message.content.trim() ? event.message.content : "";
+        const read = this.lookup.readFile;
+        const pictures = read ? replyPictures(event.message) : [];
+        if (!text && !pictures.length) return;
+        this.#withTarget(event.conversationId, async (t) => {
+          if (text) await this.#post(t, author.name, text, true);
+          if (!pictures.length || !read) return;
+          const loaded = await loadPictures(userId, pictures, {
+            read,
+            maxBytes: DISCORD_FILE_LIMIT,
+            log: this.log,
+          });
+          if (loaded.length) await this.#postPictures(t, author.name, loaded, !text);
+        });
         return;
       }
       case "handoff": {
@@ -218,6 +239,42 @@ export class DiscordRelay {
         await this.port.sendWebhook(webhook, { content, username, mentionUserIds });
       } else {
         await this.port.sendBotMessage(t.channelId, { content, mentionUserIds });
+      }
+    }
+  }
+
+  /** Pictures after the text, in as few messages as Discord's limits allow. */
+  async #postPictures(t: RelayTarget, username: string, pictures: Picture[], alone: boolean) {
+    const webhook = await this.lookup.webhook(t.channelId);
+    const batches: Picture[][] = [];
+    let size = 0;
+    for (const p of pictures) {
+      const last = batches.at(-1);
+      if (
+        last &&
+        last.length < DISCORD_FILES_PER_MESSAGE &&
+        size + p.data.length <= DISCORD_FILE_LIMIT
+      ) {
+        last.push(p);
+        size += p.data.length;
+      } else {
+        batches.push([p]);
+        size = p.data.length;
+      }
+    }
+    for (const [i, batch] of batches.entries()) {
+      // A picture-only reply addresses the person, like a text reply does.
+      const mention = alone && i === 0;
+      const label = webhook ? "" : `**${username}:**`;
+      const content = [mention ? `<@${t.discordUserId}>` : "", i === 0 ? label : ""]
+        .filter(Boolean)
+        .join(" ");
+      const mentionUserIds = mention ? [t.discordUserId] : [];
+      const files = batch.map((p) => ({ name: p.name, data: p.data }));
+      if (webhook) {
+        await this.port.sendWebhook(webhook, { content, username, mentionUserIds, files });
+      } else {
+        await this.port.sendBotMessage(t.channelId, { content, mentionUserIds, files });
       }
     }
   }

@@ -22,11 +22,17 @@ class Socket implements SocketLike {
 function setup(answers: Record<string, object> = {}) {
   const calls: { method: string; auth: string | null; body: URLSearchParams }[] = [];
   const responded: { url: string; body: unknown }[] = [];
+  const uploads: { url: string; auth: string | null; bytes: number }[] = [];
   const fetchStub = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     if (url.startsWith("https://hooks.slack.test/")) {
       responded.push({ url, body: JSON.parse(String(init?.body)) });
       return new Response("ok");
+    }
+    if (url.startsWith("https://files.slack.test/")) {
+      const auth = new Headers(init?.headers).get("authorization");
+      uploads.push({ url, auth, bytes: (init?.body as Uint8Array | undefined)?.length ?? 0 });
+      return new Response("OK - 3");
     }
     const method = url.replace("https://slack.test/api/", "");
     const headers = new Headers(init?.headers);
@@ -54,7 +60,7 @@ function setup(answers: Record<string, object> = {}) {
   });
   const events: SlackEvent[] = [];
   api.listen((e) => events.push(e));
-  return { api, calls, responded, socket, events };
+  return { api, calls, responded, uploads, socket, events };
 }
 
 describe("SlackWebApi", () => {
@@ -85,6 +91,45 @@ describe("SlackWebApi", () => {
     expect(post?.has("icon_url")).toBe(false);
     await api.disconnect();
     expect(api.connected).toBe(false);
+  });
+
+  it("uploads files and shares them in the channel as one message", async () => {
+    let n = 0;
+    const { api, calls, uploads } = setup({
+      get "files.getUploadURLExternal"() {
+        n += 1;
+        return { ok: true, upload_url: `https://files.slack.test/upload/${n}`, file_id: `F${n}` };
+      },
+    });
+    await api.connect("xoxb-1", "xapp-1");
+    await api.uploadFiles(
+      "C1",
+      [
+        { name: "a.png", data: Buffer.from([1, 2, 3]) },
+        { name: "b.png", data: Buffer.from([4]) },
+      ],
+      { threadTs: "1.0001", initialComment: "*Captain*" },
+    );
+    const asks = calls.filter((c) => c.method === "files.getUploadURLExternal");
+    expect(asks.map((c) => [c.body.get("filename"), c.body.get("length")])).toEqual([
+      ["a.png", "3"],
+      ["b.png", "1"],
+    ]);
+    // The bytes go to Slack's upload address, without the token.
+    expect(uploads).toEqual([
+      { url: "https://files.slack.test/upload/1", auth: null, bytes: 3 },
+      { url: "https://files.slack.test/upload/2", auth: null, bytes: 1 },
+    ]);
+    const done = calls.at(-1);
+    expect(done?.method).toBe("files.completeUploadExternal");
+    expect(JSON.parse(done?.body.get("files") ?? "")).toEqual([
+      { id: "F1", title: "a.png" },
+      { id: "F2", title: "b.png" },
+    ]);
+    expect(done?.body.get("channel_id")).toBe("C1");
+    expect(done?.body.get("thread_ts")).toBe("1.0001");
+    expect(done?.body.get("initial_comment")).toBe("*Captain*");
+    await api.disconnect();
   });
 
   it("names the token Slack rejected", async () => {

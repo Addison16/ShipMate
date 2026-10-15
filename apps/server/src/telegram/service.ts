@@ -19,6 +19,7 @@ import {
   outcomeText,
   watchReportText,
 } from "../chat/core.js";
+import type { ReadFile } from "../chat/pictures.js";
 import {
   type ApprovalButton,
   type ApprovalCard,
@@ -32,6 +33,8 @@ import type { CrewService } from "../services/crew.js";
 import type { WatchReport } from "../services/watches.js";
 import { escapeHtml, TELEGRAM_LIMIT, toTelegramHtml } from "./format.js";
 import {
+  TELEGRAM_FILE_LIMIT,
+  TELEGRAM_PHOTO_LIMIT,
   TelegramError,
   type TelegramEvent,
   type TelegramIdentity,
@@ -42,6 +45,8 @@ const BOT_REF = "telegram:bot";
 /** Telegram's typing indicator lasts five seconds. */
 export const TELEGRAM_TYPING_MS = 4_500;
 const SEEN_MAX = 20;
+/** Sent with sendPhoto; GIFs and the rest go as files so they keep their frames. */
+const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export const TELEGRAM_LINK_HINT =
   "I don't know who you are yet. In Shipmate, open Chat bridges → Telegram (under Manage), press “Get a link code”, then send /link with the code here.";
@@ -55,6 +60,8 @@ export interface TelegramServiceDeps {
   bridge: Bridge;
   approvals: ApprovalService;
   port: TelegramPort;
+  /** A stored file's bytes, to post crew pictures; omit to post text only. */
+  readFile?: ReadFile;
   log?: (message: string, err?: unknown) => void;
 }
 
@@ -94,6 +101,7 @@ export class TelegramService {
         target: (id) => this.#target(id),
         userByExternalId: (id) => this.accounts.user(id),
         userName: (id) => this.#userName(id),
+        ...(deps.readFile ? { readFile: deps.readFile } : {}),
       },
       deps.approvals,
       { log: this.#log, typingRefreshMs: TELEGRAM_TYPING_MS },
@@ -390,6 +398,24 @@ export class TelegramService {
             html: `${i === 0 ? label : ""}${toTelegramHtml(chunk)}`,
             ...(i === 0 && replyTo ? { replyTo } : {}),
           });
+        }
+      },
+      pictureMaxBytes: TELEGRAM_FILE_LIMIT,
+      postPictures: async (t, crew, pictures, alone) => {
+        // A picture-only reply carries the crew member's name and quotes the person.
+        const replyTo = alone ? quoteFor(t) : undefined;
+        for (const [i, p] of pictures.entries()) {
+          const first = alone && i === 0;
+          const options = {
+            ...(first ? { captionHtml: `<b>${escapeHtml(crew.name)}</b>` } : {}),
+            ...(first && replyTo ? { replyTo } : {}),
+          };
+          const photo = PHOTO_TYPES.has(p.mimeType) && p.data.length <= TELEGRAM_PHOTO_LIMIT;
+          await port.sendFile(
+            t.chatId,
+            { name: p.name, mimeType: p.mimeType, data: p.data },
+            { ...options, as: photo ? "photo" : "document" },
+          );
         }
       },
       postHandoff: async (t, from, to, task) => {

@@ -9,7 +9,10 @@ function setup(answers: Record<string, Answer[]>) {
   const calls: { method: string; params: Record<string, unknown> }[] = [];
   const fetchStub = (async (input: string | URL | Request, init?: RequestInit) => {
     const method = String(input).split("/").at(-1) ?? "";
-    const params = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+    const params =
+      init?.body instanceof FormData
+        ? Object.fromEntries(init.body.entries())
+        : (JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
     calls.push({ method, params });
     const queue = answers[method] ?? [];
     const next = queue.length > 1 ? queue.shift() : queue[0];
@@ -149,6 +152,38 @@ describe("TelegramBotApi", () => {
       reply_markup: { inline_keyboard: [[{ text: "Allow once", callback_data: "ap:x:allow" }]] },
       reply_parameters: { message_id: 5, allow_sending_without_reply: true },
     });
+    await api.disconnect();
+  });
+
+  it("uploads photos as multipart, and sends a photo Telegram turns down as a document", async () => {
+    const { api, calls } = setup({
+      getMe: [me],
+      deleteWebhook: [{ ok: true, result: true }],
+      sendPhoto: [
+        { ok: true, result: { message_id: 7 } },
+        { ok: false, error_code: 400, description: "Bad Request: PHOTO_INVALID_DIMENSIONS" },
+      ],
+      sendDocument: [{ ok: true, result: { message_id: 8 } }],
+    });
+    await api.connect("1:abc");
+    const file = { name: "chart.png", mimeType: "image/png", data: Buffer.from([1, 2, 3]) };
+    expect(
+      await api.sendFile("-100", file, { as: "photo", captionHtml: "<b>Captain</b>", replyTo: 5 }),
+    ).toBe(7);
+    const photo = calls.find((c) => c.method === "sendPhoto")?.params ?? {};
+    expect(photo).toMatchObject({ chat_id: "-100", caption: "<b>Captain</b>", parse_mode: "HTML" });
+    expect(JSON.parse(String(photo.reply_parameters))).toEqual({
+      message_id: 5,
+      allow_sending_without_reply: true,
+    });
+    const blob = photo.photo as File;
+    expect(blob.name).toBe("chart.png");
+    expect(Buffer.from(await blob.arrayBuffer())).toEqual(file.data);
+
+    expect(await api.sendFile("-100", file, { as: "photo" })).toBe(8);
+    const doc = calls.find((c) => c.method === "sendDocument")?.params ?? {};
+    expect((doc.document as File).name).toBe("chart.png");
+    expect(doc.photo).toBeUndefined();
     await api.disconnect();
   });
 });

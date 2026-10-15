@@ -36,6 +36,25 @@ export interface TelegramOutgoing {
   replyTo?: number;
 }
 
+/** A file to send. */
+export interface TelegramFile {
+  name: string;
+  mimeType: string;
+  data: Buffer;
+}
+
+export interface TelegramFileOptions {
+  /** "photo" shows it inline (sendPhoto); "document" sends the file as is (sendDocument). */
+  as: "photo" | "document";
+  /** Telegram HTML, already escaped. */
+  captionHtml?: string;
+  replyTo?: number;
+}
+
+/** Bots send photos up to 10 MB and other files up to 50 MB. */
+export const TELEGRAM_PHOTO_LIMIT = 10 * 1024 * 1024;
+export const TELEGRAM_FILE_LIMIT = 50 * 1024 * 1024;
+
 export type TelegramEvent =
   | {
       type: "message";
@@ -74,6 +93,11 @@ export interface TelegramPort {
   /** Returns the new message's id. */
   sendMessage(chatId: string, message: TelegramOutgoing): Promise<number>;
   editMessage(chatId: string, messageId: number, message: TelegramOutgoing): Promise<void>;
+  /**
+   * Upload a file (multipart). A photo Telegram turns down (odd sizes) goes as a document.
+   * Returns the new message's id.
+   */
+  sendFile(chatId: string, file: TelegramFile, options: TelegramFileOptions): Promise<number>;
   /** Answer a button press; `text` shows as a short notice to the presser only. */
   answerCallback(callbackId: string, text: string | null): Promise<void>;
   deleteMessage(chatId: string, messageId: number): Promise<void>;

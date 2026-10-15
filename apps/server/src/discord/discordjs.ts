@@ -18,6 +18,7 @@ import {
   type DiscordClientPort,
   DiscordError,
   type DiscordEvent,
+  type DiscordFile,
   type DiscordIdentity,
   type DiscordWebhook,
   type WebhookMessage,
@@ -244,19 +245,21 @@ export class DiscordJsPort implements DiscordClientPort {
       this.#webhookClients.set(webhook.id, client);
     }
     await client.send({
-      content: message.content,
+      ...(message.content ? { content: message.content } : {}),
       username: message.username.slice(0, 80),
       ...(message.avatarURL ? { avatarURL: message.avatarURL } : {}),
       allowedMentions: { parse: [], users: message.mentionUserIds },
+      ...files(message.files),
     });
   }
 
   async sendBotMessage(channelId: string, message: BotMessage): Promise<string> {
     const channel = await this.#sendable(channelId);
     const sent = await channel.send({
-      content: message.content,
+      ...(message.content ? { content: message.content } : {}),
       allowedMentions: { parse: [], users: message.mentionUserIds },
       components: rows(message.buttons),
+      ...files(message.files),
     });
     return sent.id;
   }
@@ -301,6 +304,11 @@ export class DiscordJsPort implements DiscordClientPort {
     }
     return c;
   }
+}
+
+/** Files as discord.js sends them: multipart `files[n]`. */
+function files(list: DiscordFile[] | undefined) {
+  return list?.length ? { files: list.map((f) => ({ attachment: f.data, name: f.name })) } : {};
 }
 
 /** Discord takes at most five buttons a row (a question can have six answers and Skip). */

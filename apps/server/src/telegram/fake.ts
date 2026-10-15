@@ -2,6 +2,8 @@ import type {
   TelegramChatInfo,
   TelegramChatKind,
   TelegramEvent,
+  TelegramFile,
+  TelegramFileOptions,
   TelegramIdentity,
   TelegramOutgoing,
   TelegramPort,
@@ -23,6 +25,7 @@ export class FakeTelegramPort implements TelegramPort {
   chats = new Map<string, TelegramChatInfo>();
   sent: (TelegramOutgoing & { chatId: string; id: number })[] = [];
   edits: (TelegramOutgoing & { chatId: string; messageId: number })[] = [];
+  files: (TelegramFileOptions & { chatId: string; id: number; file: TelegramFile })[] = [];
   answers: { callbackId: string; text: string | null }[] = [];
   deleted: { chatId: string; messageId: number }[] = [];
   typingCalls: string[] = [];
@@ -44,6 +47,11 @@ export class FakeTelegramPort implements TelegramPort {
   async sendMessage(chatId: string, message: TelegramOutgoing) {
     this.#seq += 1;
     this.sent.push({ ...message, chatId, id: this.#seq });
+    return this.#seq;
+  }
+  async sendFile(chatId: string, file: TelegramFile, options: TelegramFileOptions) {
+    this.#seq += 1;
+    this.files.push({ ...options, chatId, id: this.#seq, file });
     return this.#seq;
   }
   async editMessage(chatId: string, messageId: number, message: TelegramOutgoing) {

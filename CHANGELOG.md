@@ -6,6 +6,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Claude Code agents can work on Shipyard projects**: an agent on your Claude subscription
+  used to refuse project work ("cannot work in Shipyard workspaces"). It now works in the
+  project's folder, and every shell command it runs (git, tests, builds) goes to the project's
+  sandbox through Shipmate's `bash` tool, with the same approvals as before. The Runs on hint also
+  says Claude Code for an agent that follows a Claude subscription default.
 - **The Codex engine works in Docker**: every Codex reply failed with "bwrap: No permissions to
   create a new namespace", because Docker blocks the tool Codex uses to lock itself down. Where
   that happens, Shipmate now runs Codex as its own limited account instead. That account can't

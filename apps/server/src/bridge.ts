@@ -5,6 +5,7 @@ import type {
   BashOperations,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { createBashToolDefinition } from "@earendil-works/pi-coding-agent";
 import {
   type AttachmentDto,
   ClaudeCliSettings,
@@ -1272,24 +1273,44 @@ export class Bridge {
         options.consultFor || codex || cursor || gemini
           ? { servers: {}, skipped: [] as string[] }
           : await this.deps.mcp.serversFor(folder);
+      // Claude Code works in a Shipyard project with its own file tools and Shipmate's sandboxed
+      // shell (see ClaudeCliTurns). The other CLIs refuse project work in their own turns.
+      if (conv.projectId && !(codex || cursor || gemini) && !this.#workspaces) {
+        throw new HttpError(503, "the Shipyard is not available on this instance");
+      }
+      const workspace =
+        conv.projectId && !(codex || cursor || gemini) && !options.consultFor && this.#workspaces
+          ? await this.#workspaces.forConversation(conv.projectId, user, folder, conv.id)
+          : undefined;
+      const workspaceTools = workspace
+        ? [
+            createBashToolDefinition(workspace.dir, {
+              operations: workspace.bash,
+            }) as unknown as ToolDefinition,
+            ...workspace.tools,
+          ]
+        : [];
       const grant = options.consultFor
         ? undefined
         : this.cliTools.open(
             {
-              tools: this.#cliTools(
-                user,
-                folder,
-                // Codex makes pictures with its own image tool.
-                {
-                  captain: host,
-                  crew: crewHost,
-                  question,
-                  theme,
-                  pet,
-                  picture: codex ? undefined : picture,
-                },
-                isCaptain,
-              ),
+              tools: [
+                ...workspaceTools,
+                ...this.#cliTools(
+                  user,
+                  folder,
+                  // Codex makes pictures with its own image tool.
+                  {
+                    captain: host,
+                    crew: crewHost,
+                    question,
+                    theme,
+                    pet,
+                    picture: codex ? undefined : picture,
+                  },
+                  isCaptain,
+                ),
+              ],
               gate: (call) =>
                 gateToolCall({ approval: folder.manifest.approval, allowed }, approvals, call),
             },
@@ -1351,6 +1372,7 @@ export class Bridge {
           ...(grant ? { mcpConfig: grant.mcpConfig } : {}),
           ...(grant?.settingsJson ? { settingsJson: grant.settingsJson } : {}),
           ...(grant ? { mcpServers: Object.keys(mcp.servers) } : {}),
+          ...(workspace ? { workspace: { dir: workspace.dir, prompt: workspace.prompt } } : {}),
           context,
           oneOff: options.consultFor !== undefined,
         });

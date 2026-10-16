@@ -83,6 +83,13 @@ export interface ClaudeCliRunOptions {
   mcpConfig?: string;
   /** Extra CLI settings as JSON for `--settings` (Shipmate's approval hook for MCP tools). */
   settingsJson?: string;
+  /**
+   * Lock the run to Shipmate's setup, for work in a checkout Shipmate does not control (a
+   * Shipyard workspace): these built-in tools are removed, only the user settings load (a repo's
+   * `.claude/settings.json` could add hooks that run on the Shipmate host) and only the
+   * `--mcp-config` servers start (not the repo's `.mcp.json`).
+   */
+  lockdown?: { disallowedTools: string[] };
   /** Defaults to claudeCliBin(). */
   bin?: string;
   /** Defaults to process.env without Shipmate's own secrets (see childEnv). */
@@ -95,7 +102,7 @@ export interface ClaudeCliRunOptions {
 export function claudeCliArgs(
   options: Pick<
     ClaudeCliRunOptions,
-    "appendSystemPrompt" | "resume" | "settings" | "mcpConfig" | "settingsJson"
+    "appendSystemPrompt" | "resume" | "settings" | "mcpConfig" | "settingsJson" | "lockdown"
   >,
 ): string[] {
   const s = options.settings ?? {};
@@ -113,6 +120,12 @@ export function claudeCliArgs(
   if (options.appendSystemPrompt) args.push("--append-system-prompt", options.appendSystemPrompt);
   if (options.mcpConfig) args.push("--mcp-config", options.mcpConfig);
   if (options.settingsJson) args.push("--settings", options.settingsJson);
+  if (options.lockdown) {
+    args.push("--setting-sources", "user", "--strict-mcp-config");
+    if (options.lockdown.disallowedTools.length) {
+      args.push("--disallowedTools", options.lockdown.disallowedTools.join(","));
+    }
+  }
   if (options.resume) args.push("--resume", options.resume);
   return args;
 }

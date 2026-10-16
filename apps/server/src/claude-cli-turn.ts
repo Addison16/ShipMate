@@ -57,6 +57,12 @@ export interface CliTurnInput {
   mcpServers?: string[];
   /** Extra system prompt sections (the Captain's crew roster, how to answer a consult). */
   context?: string[];
+  /**
+   * The Shipyard workspace of a project conversation. The CLI then works in that folder with its
+   * own file tools, and runs shell commands only through Shipmate's sandboxed `bash` tool (served
+   * with the rest of Shipmate's tools, see the Bridge's #cliTools).
+   */
+  workspace?: { dir: string; prompt: string };
   /** A one-off answer (the Captain answering a crew question): no resume, nothing stored. */
   oneOff?: boolean;
   emit: (event: ServerEvent) => void;
@@ -77,7 +83,8 @@ export interface CliTurnInput {
  * crew member's `cli.permissionMode` (default `dontAsk`) and `cli.allowedTools` decide what it may
  * do; with the defaults, anything beyond reading files in its own folder is refused. Caps are
  * checked by the Bridge before the turn, and the CLI's reported cost is recorded afterwards like
- * any other turn. Shipyard workspaces are not offered to it (it would run outside the sandbox).
+ * any other turn. In a Shipyard workspace its own shell is turned off and commands go through
+ * Shipmate's sandboxed `bash` tool instead (see workspaceCliTools).
  */
 export class ClaudeCliTurns {
   #running = new Map<string, Set<AbortController>>();
@@ -94,14 +101,16 @@ export class ClaudeCliTurns {
   }
 
   async turn(input: CliTurnInput): Promise<string> {
-    const { conv, folder, emit } = input;
-    if (conv.projectId) {
+    const { conv, folder, emit, workspace } = input;
+    // Without Shipmate's tools there is no sandboxed shell, and its own would run on the host. A
+    // one-off answer (the Captain answering a crew question) does no project work.
+    if (conv.projectId && !input.oneOff && (!workspace || input.mcpConfig === undefined)) {
       throw new HttpError(
-        409,
-        `${folder.manifest.name} runs on the Claude Code CLI, which cannot work in Shipyard workspaces (it would run outside the sandbox). Pick a crew member on the pi backend for project work.`,
+        503,
+        `${folder.manifest.name} runs on Claude Code, which needs Shipmate's sandboxed tools for Shipyard work, and they are not available right now. Try again in a moment.`,
       );
     }
-    const cwd = join(folder.dir, CLI_WORKDIR);
+    const cwd = workspace?.dir ?? join(folder.dir, CLI_WORKDIR);
     mkdirSync(cwd, { recursive: true });
     const key = cliSessionKey(folder.slug);
     const resume = input.oneOff ? undefined : conv.sessionFiles[key];
@@ -109,16 +118,29 @@ export class ClaudeCliTurns {
       allowedTools: [],
       permissionMode: "dontAsk" as const,
     };
-    const settings = {
-      ...own,
-      allowedTools: cliAllowedTools(
-        folder.dir,
-        own.allowedTools,
-        input.mcpConfig !== undefined,
-        folder.manifest.helpers,
-        input.mcpServers,
-      ),
-    };
+    const settings = workspace
+      ? {
+          ...own,
+          // "Allow all tools" would let it change files outside the project; the rules below
+          // already allow everything the project work needs.
+          permissionMode: "dontAsk" as const,
+          allowedTools: workspaceCliTools(
+            workspace.dir,
+            own.allowedTools,
+            folder.manifest.helpers,
+            input.mcpServers,
+          ),
+        }
+      : {
+          ...own,
+          allowedTools: cliAllowedTools(
+            folder.dir,
+            own.allowedTools,
+            input.mcpConfig !== undefined,
+            folder.manifest.helpers,
+            input.mcpServers,
+          ),
+        };
     // crew.yaml `model` wins; cli.model only fills in when it names no Claude model.
     const model = cliModelFromRef(folder.manifest.model) ?? settings.model;
 
@@ -188,6 +210,7 @@ export class ClaudeCliTurns {
         ...(resume ? { resume } : {}),
         ...(input.mcpConfig ? { mcpConfig: input.mcpConfig } : {}),
         ...(input.settingsJson ? { settingsJson: input.settingsJson } : {}),
+        ...(workspace ? { lockdown: { disallowedTools: CLI_SHELL_TOOLS } } : {}),
         settings: { ...settings, ...(model ? { model } : {}) },
         signal: controller.signal,
         onEvent,
@@ -227,7 +250,7 @@ export class ClaudeCliTurns {
     }
   }
 
-  #systemPrompt({ user, folder, mcpConfig, context }: CliTurnInput): string {
+  #systemPrompt({ user, folder, mcpConfig, context, workspace }: CliTurnInput): string {
     const memory = new MemoryStore(folder.dir);
     return [
       folder.persona.trim(),
@@ -242,6 +265,13 @@ export class ClaudeCliTurns {
       "",
       memory.contextFor(user.id),
       ...(context?.length ? ["", ...context] : []),
+      ...(workspace
+        ? [
+            "",
+            workspace.prompt,
+            `Your Read, Edit and Write tools work in the project workspace (${workspace.dir}). Your own Bash tool is turned off here: run every shell command (git, tests, builds) with \`mcp__${CLI_MCP_SERVER}__bash\`, which runs it in the project's sandbox.`,
+          ]
+        : []),
     ].join("\n");
   }
 }
@@ -286,6 +316,38 @@ export function cliAllowedTools(
       // So do an assigned server's tools (a PreToolUse hook asks Shipmate first, see cli-mcp.ts);
       // without this, dontAsk mode refuses a server someone gave the crew member.
       ...(shipmateTools ? mcpServers.map((id) => `mcp__${id}`) : []),
+    ]),
+  ];
+}
+
+/** Claude Code's shell tools (old and new names), turned off in a Shipyard workspace. */
+export const CLI_SHELL_TOOLS = ["Bash", "BashOutput", "KillBash", "KillShell"];
+
+/**
+ * The `--allowedTools` for a turn in a Shipyard workspace: reading and changing files inside the
+ * workspace, the web, helpers, and Shipmate's tools (its sandboxed `bash`, git_push and the
+ * GitHub tools, behind the approval gate). The crew member's own shell rules are dropped: its
+ * shell is off here and commands go to the sandbox.
+ */
+export function workspaceCliTools(
+  dir: string,
+  own: string[],
+  helpers = false,
+  mcpServers: string[] = [],
+): string[] {
+  const abs = dir.replace(/\\/g, "/").replace(/^\/*/, "");
+  const shell = new RegExp(`^(${CLI_SHELL_TOOLS.join("|")})(\\(|$)`);
+  return [
+    ...new Set([
+      `Read(//${abs}/**)`,
+      // Edit rules cover every tool that changes files (Edit, Write, NotebookEdit).
+      `Edit(//${abs}/**)`,
+      "WebSearch",
+      "WebFetch",
+      ...own.filter((rule) => !shell.test(rule)),
+      ...(helpers ? CLI_HELPER_TOOLS : []),
+      `mcp__${CLI_MCP_SERVER}`,
+      ...mcpServers.map((id) => `mcp__${id}`),
     ]),
   ];
 }

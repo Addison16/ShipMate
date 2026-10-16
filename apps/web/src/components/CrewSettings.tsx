@@ -453,18 +453,19 @@ function ManifestFields({
           geminiModels={geminiModels}
           engine={running}
           disabled={readOnly}
+          // What actually runs it: a crew member on the crew default follows the default's engine.
           hint={
-            cli
+            running === "claude-code-cli"
               ? t(
-                  "Runs on your Claude subscription through Claude Code. Shipmate's approval rules below do not apply; the Claude Code settings decide which tools it may use. Not available in Shipyard projects.",
+                  "Runs on your Claude subscription through Claude Code. Shipmate's approval rules below do not apply; the Claude Code settings decide which tools it may use.",
                 )
-              : codex
+              : running === "codex-cli"
                 ? t("Runs on your ChatGPT plan through Codex. Not available in Shipyard projects.")
-                : cursor
+                : running === "cursor-cli"
                   ? t(
                       "Runs on your Cursor plan through Cursor. Not available in Shipyard projects.",
                     )
-                  : gemini
+                  : running === "gemini-cli"
                     ? t(
                         "Runs through Gemini CLI on your Gemini API key or work login. Not available in Shipyard projects.",
                       )

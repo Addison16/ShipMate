@@ -1,4 +1,13 @@
-import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { execSync } from "node:child_process";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
@@ -13,6 +22,7 @@ import {
   cliModelFromRef,
   onCrewDefault,
   workspaceCliTools,
+  workspaceGuard,
 } from "./claude-cli-turn.js";
 import { chatGptProvider } from "./services/chatgpt.js";
 import { callCost } from "./services/usage.js";
@@ -382,23 +392,57 @@ describe("claude-code-cli backend: manifest and runner", () => {
     expect(allowed).toContain("mcp__shipmate");
     expect(allowed).not.toContain("Bash(npm *)");
     expect(at("--append-system-prompt")).toContain("mcp__shipmate__bash");
+    // The guard hook runs before every tool call, so other settings cannot widen the rules.
+    const hooks = JSON.parse(at("--settings") ?? "{}").hooks.PreToolUse;
+    expect(hooks[0]).toMatchObject({ matcher: "*" });
+    expect(hooks[0].hooks[0].command).toContain(ws);
   });
 
   it("allows file tools only inside the workspace", () => {
-    const tools = workspaceCliTools("/data/shipyard/app", ["Bash", "KillShell", "Read"], true, [
-      "github",
-    ]);
+    const tools = workspaceCliTools(
+      "/data/shipyard/app",
+      ["Bash", "KillShell", "Read", "PowerShell", "mcp__notes", "WebFetch(domain:example.com)"],
+      true,
+      ["github"],
+    );
     expect(tools).toEqual([
       "Read(//data/shipyard/app/**)",
       "Edit(//data/shipyard/app/**)",
       "WebSearch",
       "WebFetch",
-      "Read",
+      "mcp__notes",
+      "WebFetch(domain:example.com)",
       "Task",
       "Agent",
       "mcp__shipmate",
       "mcp__github",
     ]);
+  });
+
+  it("blocks file tools outside the workspace and any shell, whatever settings allow", () => {
+    const ws = mkdtempSync(join(tmpdir(), "shipmate-guard-"));
+    mkdirSync(join(ws, "src"));
+    symlinkSync("/etc", join(ws, "etc-link"));
+    const { command } = workspaceGuard(ws).hooks[0] ?? { command: "" };
+    const run = (tool_name: string, tool_input: object) => {
+      try {
+        execSync(command, { input: JSON.stringify({ tool_name, tool_input }), stdio: "pipe" });
+        return "ok";
+      } catch (err) {
+        return `blocked ${(err as { status: number }).status}`;
+      }
+    };
+    expect(run("Read", { file_path: join(ws, "src", "a.ts") })).toBe("ok");
+    expect(run("Edit", { file_path: "src/a.ts" })).toBe("ok");
+    expect(run("Grep", { pattern: "todo" })).toBe("ok");
+    expect(run("mcp__shipmate__bash", { command: "ls" })).toBe("ok");
+    expect(run("WebFetch", { url: "https://example.com" })).toBe("ok");
+    expect(run("Read", { file_path: "/etc/passwd" })).toBe("blocked 2");
+    expect(run("Read", { file_path: join(ws, "etc-link", "passwd") })).toBe("blocked 2");
+    expect(run("Write", { file_path: join(ws, "..", "x") })).toBe("blocked 2");
+    expect(run("Glob", { pattern: "/data/**" })).toBe("blocked 2");
+    expect(run("Bash", { command: "ls" })).toBe("blocked 2");
+    expect(run("PowerShell", { command: "ls" })).toBe("blocked 2");
   });
 
   it("fails clearly when the binary is missing", async () => {

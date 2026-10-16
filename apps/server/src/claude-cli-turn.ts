@@ -209,7 +209,11 @@ export class ClaudeCliTurns {
         appendSystemPrompt: this.#systemPrompt(input),
         ...(resume ? { resume } : {}),
         ...(input.mcpConfig ? { mcpConfig: input.mcpConfig } : {}),
-        ...(input.settingsJson ? { settingsJson: input.settingsJson } : {}),
+        ...(workspace
+          ? { settingsJson: withWorkspaceGuard(input.settingsJson, workspace.dir) }
+          : input.settingsJson
+            ? { settingsJson: input.settingsJson }
+            : {}),
         ...(workspace ? { lockdown: { disallowedTools: CLI_SHELL_TOOLS } } : {}),
         settings: { ...settings, ...(model ? { model } : {}) },
         signal: controller.signal,
@@ -326,8 +330,9 @@ export const CLI_SHELL_TOOLS = ["Bash", "BashOutput", "KillBash", "KillShell"];
 /**
  * The `--allowedTools` for a turn in a Shipyard workspace: reading and changing files inside the
  * workspace, the web, helpers, and Shipmate's tools (its sandboxed `bash`, git_push and the
- * GitHub tools, behind the approval gate). The crew member's own shell rules are dropped: its
- * shell is off here and commands go to the sandbox.
+ * GitHub tools, behind the approval gate). Of the crew member's own rules only MCP and web ones
+ * are kept: a broad `Read` or a shell rule would reach the Shipmate host. workspaceGuard enforces
+ * the same whatever other settings allow.
  */
 export function workspaceCliTools(
   dir: string,
@@ -336,7 +341,6 @@ export function workspaceCliTools(
   mcpServers: string[] = [],
 ): string[] {
   const abs = dir.replace(/\\/g, "/").replace(/^\/*/, "");
-  const shell = new RegExp(`^(${CLI_SHELL_TOOLS.join("|")})(\\(|$)`);
   return [
     ...new Set([
       `Read(//${abs}/**)`,
@@ -344,12 +348,105 @@ export function workspaceCliTools(
       `Edit(//${abs}/**)`,
       "WebSearch",
       "WebFetch",
-      ...own.filter((rule) => !shell.test(rule)),
+      ...own.filter((rule) => /^(mcp__|WebFetch\b|WebSearch\b)/.test(rule)),
       ...(helpers ? CLI_HELPER_TOOLS : []),
       `mcp__${CLI_MCP_SERVER}`,
       ...mcpServers.map((id) => `mcp__${id}`),
     ]),
   ];
+}
+
+/** Claude Code tools a Shipyard run may use without a path check. */
+const WORKSPACE_SAFE_TOOLS = [
+  "WebSearch",
+  "WebFetch",
+  "TodoWrite",
+  "ToolSearch",
+  ...CLI_HELPER_TOOLS,
+];
+/** Claude Code's file tools, allowed in a Shipyard run only on paths inside the workspace. */
+const WORKSPACE_FILE_TOOLS = [
+  "Read",
+  "Edit",
+  "MultiEdit",
+  "Write",
+  "NotebookEdit",
+  "NotebookRead",
+  "Glob",
+  "Grep",
+  "LS",
+];
+
+/**
+ * The hook script workspaceGuard runs before each tool call (`node -e`, the workspace as its
+ * argument). Exit 2 blocks the call with its stderr as the reason, whatever any settings allow.
+ */
+const GUARD_SCRIPT = `
+const fs = require("node:fs"), path = require("node:path");
+const SAFE = new Set(${JSON.stringify(WORKSPACE_SAFE_TOOLS)});
+const FILES = new Set(${JSON.stringify(WORKSPACE_FILE_TOOLS)});
+const real = (p) => {
+  let head = p, rest = [];
+  for (;;) {
+    try { return path.join(fs.realpathSync(head), ...rest.reverse()); } catch {}
+    const up = path.dirname(head);
+    if (up === head) return p;
+    rest.push(path.basename(head));
+    head = up;
+  }
+};
+const root = real(path.resolve(process.argv[1]));
+const inside = (p) => { const r = path.relative(root, p); return r === "" || (!r.startsWith("..") && !path.isAbsolute(r)); };
+const deny = (m) => { process.stderr.write(m); process.exit(2); };
+let raw = "";
+process.stdin.on("data", (c) => (raw += c)).on("end", () => {
+  let e = {};
+  try { e = JSON.parse(raw); } catch {}
+  const name = String(e.tool_name || ""), input = e.tool_input || {};
+  if (name.startsWith("mcp__") || SAFE.has(name)) process.exit(0);
+  if (!FILES.has(name)) deny(name + " is not available in a Shipyard project. Run commands with mcp__shipmate__bash.");
+  const paths = [input.file_path, input.notebook_path, input.path].filter((p) => typeof p === "string" && p);
+  if (typeof input.pattern === "string" && name === "Glob" && path.isAbsolute(input.pattern)) {
+    paths.push(input.pattern.replace(/[*?[{].*$/s, "") || "/");
+  }
+  for (const p of paths) {
+    if (!inside(real(path.resolve(root, p)))) deny("Only files inside the project workspace (" + root + ") are available.");
+  }
+  process.exit(0);
+});
+`;
+
+/**
+ * A PreToolUse hook (for `--settings`) that keeps a Shipyard run inside its workspace: Claude
+ * Code's file tools only on paths inside it (symlinks resolved), Shipmate's MCP tools, the web
+ * and helpers; anything else (a shell tool, an unknown tool) is blocked. Allow rules from any
+ * settings file cannot widen this: a hook's block wins over them.
+ */
+export function workspaceGuard(dir: string, node = process.execPath) {
+  const code = Buffer.from(GUARD_SCRIPT).toString("base64");
+  const q = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
+  return {
+    matcher: "*",
+    hooks: [
+      {
+        type: "command" as const,
+        command: `${q(node)} -e ${q(`eval(Buffer.from("${code}","base64").toString())`)} ${q(dir)}`,
+        timeout: 30,
+      },
+    ],
+  };
+}
+
+/** `--settings` JSON with the workspace guard added in front of any existing hooks. */
+export function withWorkspaceGuard(settingsJson: string | undefined, dir: string): string {
+  const settings = (settingsJson ? JSON.parse(settingsJson) : {}) as {
+    hooks?: { PreToolUse?: unknown[] };
+  };
+  const hooks = settings.hooks ?? {};
+  return JSON.stringify({
+    ...settings,
+    hooks: { ...hooks, PreToolUse: [workspaceGuard(dir), ...(hooks.PreToolUse ?? [])] },
+  });
 }
 
 /** `mcp__shipmate__delegate` → `delegate`; other tool names unchanged. */

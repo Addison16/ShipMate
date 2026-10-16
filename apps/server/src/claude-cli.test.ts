@@ -440,6 +440,8 @@ describe.skipIf(!db)("claude-code-cli backend through the Bridge", () => {
     process.env.SHIPMATE_CLAUDE_BIN = fakeBin;
     process.env.FAKE_CLAUDE_LOG = logFile;
     process.env.SHIPMATE_TEST_LEAK = "must-not-reach-the-cli";
+    // No sandbox engine, even where the machine has Docker: Shipyard commands must fail fast.
+    process.env.DOCKER_SOCKET = join(dir, "no-docker.sock");
     t = await testApp(db as string, { watches: false });
     sql = postgres(db as string, { max: 2, onnotice: () => {} });
     ownerCookie = cookieOf(
@@ -476,6 +478,7 @@ describe.skipIf(!db)("claude-code-cli backend through the Bridge", () => {
   afterAll(async () => {
     delete process.env.SHIPMATE_CLAUDE_BIN;
     delete process.env.SHIPMATE_TEST_LEAK;
+    delete process.env.DOCKER_SOCKET;
     await sql?.end();
     await t?.app.close();
   });

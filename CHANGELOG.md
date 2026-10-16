@@ -14,6 +14,12 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   box to set it yourself. Long chats on small models are summarised earlier so they keep fitting,
   and a chat that truly no longer fits now says so and suggests Start fresh instead of
   answering with nothing.
+- **The Codex engine works in Docker**: every Codex reply failed with "bwrap: No permissions to
+  create a new namespace", because Docker blocks the tool Codex uses to lock itself down. Where
+  that happens, Shipmate now runs Codex as its own limited account instead. That account can't
+  open keys, sign-ins, people's files or the database, and can only change an agent's folder
+  when the agent is allowed to edit files. This also makes ChatGPT-plan pictures work. Nothing
+  to set up: update the image.
 - **Pictures on your ChatGPT plan**: Settings, Photos and voice, Pictures and pets has a new
   choice, "Your ChatGPT plan (through Codex)". Every agent and pet can then make pictures with
   Codex's own image tool on your plan, with no API key. It needs ChatGPT Plus or higher and Codex

@@ -87,7 +87,7 @@ export class BackupService {
   }
 
   async #run(trigger: "manual" | "scheduled", userId: string | null): Promise<BackupDto> {
-    await mkdir(this.dir, { recursive: true });
+    await mkdir(this.dir, { recursive: true, mode: 0o700 });
     const now = new Date();
     let name = backupFileName(trigger, now);
     for (let n = 2; existsSync(join(this.dir, name)); n++) name = backupFileName(trigger, now, n);

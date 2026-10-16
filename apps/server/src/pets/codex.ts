@@ -1,7 +1,8 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { CODEX_SIGN_IN_COMMAND, codexCliStatus, codexHome, runCodexCli } from "@shipmate/crew";
+import { CODEX_SIGN_IN_COMMAND, codexCliStatus, codexHome, type runCodexCli } from "@shipmate/crew";
 import { newCodexImages } from "../codex-cli-turn.js";
+import { runCodex } from "../codex-run.js";
 
 /**
  * Pictures on the person's ChatGPT plan: one `codex exec` run that only uses Codex's own image
@@ -17,7 +18,10 @@ export interface CodexPainter {
 
 const STATUS_TTL_MS = 30_000;
 
-export function codexPainter(dataDir: string, run: typeof runCodexCli = runCodexCli): CodexPainter {
+export function codexPainter(
+  dataDir: string,
+  run: typeof runCodexCli = (options) => runCodex(options, false),
+): CodexPainter {
   let status: { at: number; signedIn: Promise<boolean> } | null = null;
   const signedIn = () => {
     if (!status || Date.now() - status.at > STATUS_TTL_MS) {

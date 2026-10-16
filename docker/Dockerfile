@@ -40,6 +40,12 @@ ENV PATH=/root/.local/bin:$PATH
 # Official Claude Code, Codex and Gemini CLIs, unmodified, for the subscription and CLI engines
 # (users sign in themselves).
 RUN npm install -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli
+# Docker blocks the user namespaces Codex's own sandbox needs, so Shipmate runs Codex as this
+# unprivileged user instead, kept out of Shipmate's data by file permissions
+# (apps/server/src/codex-run.ts). Fixed IDs, so its files keep their owner across updates.
+RUN groupadd --gid 1500 shipmate-cli \
+    && useradd --uid 1500 --gid 1500 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin shipmate-cli
+ENV SHIPMATE_CLI_UID=1500 SHIPMATE_CLI_GID=1500
 # The official Cursor CLI is ~560 MB, so it is not baked in: `install-cursor` downloads it into
 # /data/cursor/cli on demand (docker/install-cursor.sh).
 COPY --chmod=0755 docker/install-cursor.sh /usr/local/bin/install-cursor

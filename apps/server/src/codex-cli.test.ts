@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,6 +16,7 @@ import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { onCrewDefault } from "./claude-cli-turn.js";
 import { codexModelFromRef, codexModels, newCodexImages } from "./codex-cli-turn.js";
+import { CodexUnsandboxedError, runCodex, setCodexSandboxAvailable } from "./codex-run.js";
 import { planModelIds } from "./services/chatgpt.js";
 import { callCost } from "./services/usage.js";
 import { TEST_DATABASE_URL, testApp } from "./testing.js";
@@ -31,6 +33,11 @@ const fs = require("node:fs");
 const args = process.argv.slice(2);
 const log = (o) => process.env.FAKE_CODEX_LOG && fs.appendFileSync(process.env.FAKE_CODEX_LOG, JSON.stringify(o) + "\\n");
 if (args[0] === "--version") { console.log("codex-cli 9.9.9"); process.exit(0); }
+if (args[0] === "sandbox") {
+  if (process.env.FAKE_CODEX_NO_SANDBOX === "1") { console.error("bwrap: No permissions to create a new namespace"); process.exit(1); }
+  if (process.env.FAKE_CODEX_NO_SANDBOX === "other") { console.error("Error: something unrelated"); process.exit(1); }
+  process.exit(0);
+}
 if (args[0] === "login") {
   if (process.env.FAKE_CODEX_SIGNED_IN === "0") { console.error("Not logged in"); process.exit(1); }
   console.error(process.env.FAKE_CODEX_API_KEY === "1" ? "Logged in using an API key - sk-***" : "Logged in using ChatGPT");
@@ -44,7 +51,7 @@ process.stdin.on("end", () => {
   args.forEach((a, i) => { if (a === "-c") { const [k, ...v] = args[i + 1].split("="); const raw = v.join("="); try { configs[k] = JSON.parse(raw); } catch { configs[k] = raw; } } });
   const r = args.indexOf("resume");
   const resume = r >= 0 ? args[r + 1] : undefined;
-  log({ args, configs, cwd: process.cwd(), prompt, leaked: Object.keys(process.env).filter((k) => k.startsWith("SHIPMATE_")) });
+  log({ args, configs, cwd: process.cwd(), prompt, uid: process.getuid(), home: process.env.HOME, leaked: Object.keys(process.env).filter((k) => k.startsWith("SHIPMATE_")) });
   const out = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
   if (resume === "gone") { console.error("Error: thread/resume: thread/resume failed: no rollout found for thread id gone (code -32600)"); process.exit(1); }
   const tid = resume || "thread-" + Math.random().toString(36).slice(2, 8);
@@ -110,6 +117,8 @@ interface Call {
   configs: Record<string, string>;
   cwd: string;
   prompt: string;
+  uid: number;
+  home: string;
   leaked: string[];
 }
 const calls = (): Call[] =>
@@ -182,6 +191,10 @@ describe("codex-cli backend: manifest and runner", () => {
     const full = codexCliArgs({ cwd: "/w", settings: { sandbox: "danger-full-access" } });
     expect(full.slice(3, 5)).toEqual(["--sandbox", "danger-full-access"]);
     expect(full.join(" ")).not.toContain("permissions.");
+    // Where Codex's sandbox can't start, Shipmate turns it off and isolates the run itself.
+    const bare = codexCliArgs({ cwd: "/w", settings: { sandbox: "read-only" }, unsandboxed: true });
+    expect(bare.slice(3, 5)).toEqual(["--sandbox", "danger-full-access"]);
+    expect(bare.join(" ")).not.toContain("permissions.");
     expect(args[args.indexOf("--model") + 1]).toBe("gpt-6.1-sol");
     expect(args).toContain('developer_instructions="Be \\"brief\\".\\nThanks"');
     // The token itself never goes on the command line.
@@ -285,6 +298,85 @@ describe("codex-cli backend: manifest and runner", () => {
     expect(c.billing).toBe("subscription");
     expect(c.costMicroUsd).toBe(0);
     expect(c.apiEquivalentMicroUsd).toBeGreaterThan(0);
+  });
+});
+
+describe("codex-cli backend where Docker blocks Codex's sandbox", () => {
+  const root = process.getuid?.() === 0;
+  const env = { ...process.env };
+  afterAll(() => {
+    process.env = env;
+    setCodexSandboxAvailable(undefined);
+  });
+
+  it("runs Codex without its sandbox, as the CLI user, keeping it out of private folders", async () => {
+    const data = join(dir, "data");
+    const home = join(data, "codex");
+    const work = join(data, "crew", "painter", "cli-workspace");
+    mkdirSync(home, { recursive: true });
+    mkdirSync(work, { recursive: true });
+    mkdirSync(join(data, "pi"), { recursive: true });
+    writeFileSync(join(home, "auth.json"), "{}");
+    // The CLI user must reach the fake binary and its log, as it reaches /usr/local in the image.
+    chmodSync(dir, 0o777);
+    process.env.SHIPMATE_CODEX_BIN = fakeBin;
+    process.env.FAKE_CODEX_LOG = logFile;
+    process.env.FAKE_CODEX_NO_SANDBOX = "1";
+    process.env.CODEX_HOME = home;
+    process.env.SHIPMATE_DATA_DIR = data;
+    process.env.SHIPMATE_CLI_UID = "1500";
+    process.env.SHIPMATE_CLI_GID = "1500";
+    setCodexSandboxAvailable(undefined);
+
+    const before = calls().length;
+    const run = runCodex({ cwd: work, prompt: "hello", settings: { sandbox: "read-only" } }, false);
+    if (!root) {
+      // Not root: no other user to hand Codex to, so it refuses rather than run unsandboxed.
+      await expect(run).rejects.toThrow(CodexUnsandboxedError);
+      expect(calls()).toHaveLength(before);
+      return;
+    }
+    const result = await run;
+    expect(result.isError).toBe(false);
+    const call = calls()[before];
+    expect(call?.args.slice(3, 5)).toEqual(["--sandbox", "danger-full-access"]);
+    expect(call?.args.join(" ")).not.toContain("permissions.");
+    expect(call).toMatchObject({ uid: 1500, home });
+    expect(statSync(join(home, "auth.json")).uid).toBe(1500);
+    // Read-only: the crew folder stays root's; a crew member that may edit gets it.
+    expect(statSync(work).uid).toBe(0);
+    expect(statSync(join(data, "pi")).mode & 0o077).toBe(0);
+    await runCodex({ cwd: work, prompt: "hello", settings: { sandbox: "workspace-write" } }, true);
+    expect(statSync(work).uid).toBe(1500);
+    // Modes left open while it could edit don't let it keep writing once it's read-only again.
+    writeFileSync(join(work, "notes.md"), "hi");
+    chmodSync(join(work, "notes.md"), 0o666);
+    chmodSync(work, 0o777);
+    await runCodex({ cwd: work, prompt: "hello", settings: { sandbox: "read-only" } }, false);
+    expect(statSync(work).uid).toBe(0);
+    expect(statSync(work).mode & 0o022).toBe(0);
+    expect(statSync(join(work, "notes.md")).mode & 0o777).toBe(0o644);
+    // A private folder made after the first run is closed on the next one.
+    mkdirSync(join(data, "backups"), { mode: 0o755 });
+    chmodSync(join(data, "backups"), 0o755);
+    await runCodex({ cwd: work, prompt: "hello", settings: { sandbox: "read-only" } }, false);
+    expect(statSync(join(data, "backups")).mode & 0o077).toBe(0);
+  });
+
+  it.each([
+    ["where it works", undefined],
+    ["when its check fails for another reason", "other"],
+  ])("keeps Codex's own sandbox %s", async (_, failure) => {
+    process.env.SHIPMATE_CODEX_BIN = fakeBin;
+    process.env.FAKE_CODEX_LOG = logFile;
+    if (failure) process.env.FAKE_CODEX_NO_SANDBOX = failure;
+    else delete process.env.FAKE_CODEX_NO_SANDBOX;
+    setCodexSandboxAvailable(undefined);
+    const before = calls().length;
+    await runCodex({ cwd: dir, prompt: "hello", settings: { sandbox: "read-only" } }, false);
+    const call = calls()[before];
+    expect(call?.args.join(" ")).toContain("default_permissions");
+    expect(call?.uid).toBe(process.getuid?.());
   });
 });
 

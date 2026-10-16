@@ -119,6 +119,12 @@ export interface ProviderDto {
   enabled: boolean;
   /** Model ids for self-hosted kinds (ollama, openai-compatible); empty for built-in catalogs. */
   models: string[];
+  /** Self-hosted kinds: context size (tokens) the owner set for every model; null = the server's. */
+  contextWindow: number | null;
+  /** Self-hosted kinds: context size per model id, as the server reported it. */
+  modelContexts: Record<string, number>;
+  /** Context size (tokens) used when neither the owner nor the server gives one. */
+  defaultContextWindow: number;
   createdAt: string;
 }
 
@@ -142,6 +148,8 @@ export interface UpdateProviderRequest {
   apiKey?: string;
   enabled?: boolean;
   models?: string[];
+  /** Tokens; null goes back to the size the server reports. */
+  contextWindow?: number | null;
 }
 /** DELETE /api/providers/:id (owner) → { ok: true } */
 /**

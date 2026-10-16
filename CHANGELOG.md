@@ -11,6 +11,14 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   project's folder, and every shell command it runs (git, tests, builds) goes to the project's
   sandbox through Shipmate's `bash` tool, with the same approvals as before. The Runs on hint also
   says Claude Code for an agent that follows a Claude subscription default.
+- **Local models use their real context size**: Shipmate told pi every local model held 32K
+  tokens, whatever it could really hold. Once a chat grew near that, pi asked the model for a
+  reply only a token long and the chat went blank. Shipmate now asks the server how much each
+  model holds (llama.cpp, vLLM, LM Studio and Ollama say so) and uses that, keeping 32K only
+  when the server doesn't say. Each local provider on the Providers page has a "Context size"
+  box to set it yourself. Long chats on small models are summarised earlier so they keep fitting,
+  and a chat that truly no longer fits now says so and suggests Start fresh instead of
+  answering with nothing.
 - **The Codex engine works in Docker**: every Codex reply failed with "bwrap: No permissions to
   create a new namespace", because Docker blocks the tool Codex uses to lock itself down. Where
   that happens, Shipmate now runs Codex as its own limited account instead. That account can't

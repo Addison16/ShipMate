@@ -3,12 +3,13 @@ import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { ModelOption, ProviderDto, ProviderKindDto } from "@shipmate/core";
 import { type Db, providers, secrets } from "@shipmate/db";
 import {
+  DEFAULT_LOCAL_CONTEXT,
   defaultBaseUrl,
   PROVIDER_KINDS,
   ProviderBinder,
   type ProviderRecord,
   piProviderId,
-  probeModels,
+  probeServer,
   providerKind,
   SELF_HOSTED_KINDS,
   type SecretVault,
@@ -93,6 +94,7 @@ export class ProviderService {
     if (!row) throw new Error("insert failed");
     if (input.apiKey) await this.#setKey(row.id, input.apiKey);
     await this.sync();
+    if (selfHosted) void this.refreshContexts(row.id);
     return this.#dto(row.id);
   }
 
@@ -104,6 +106,7 @@ export class ProviderService {
       apiKey?: string | undefined;
       enabled?: boolean | undefined;
       models?: string[] | undefined;
+      contextWindow?: number | null | undefined;
     },
   ): Promise<ProviderDto> {
     const row = await this.#row(id);
@@ -114,6 +117,9 @@ export class ProviderService {
     }
     if (patch.enabled !== undefined) values.enabled = patch.enabled;
     if (patch.models !== undefined) values.models = cleanModels(patch.models);
+    if (patch.contextWindow !== undefined && SELF_HOSTED_KINDS.includes(row.kind)) {
+      values.contextWindow = patch.contextWindow;
+    }
     if (Object.keys(values).length) {
       await this.db.update(providers).set(values).where(eq(providers.id, id));
     }
@@ -122,6 +128,9 @@ export class ProviderService {
       else await this.#setKey(id, patch.apiKey);
     }
     await this.sync();
+    if (values.baseUrl !== undefined || values.models !== undefined || patch.apiKey !== undefined) {
+      if (SELF_HOSTED_KINDS.includes(row.kind)) void this.refreshContexts(id);
+    }
     return this.#dto(id);
   }
 
@@ -137,15 +146,52 @@ export class ProviderService {
     if (!SELF_HOSTED_KINDS.includes(row.kind)) {
       throw new HttpError(400, "only self-hosted providers can be probed");
     }
-    let models: string[];
+    let found: Awaited<ReturnType<typeof probeServer>>;
     try {
-      models = await probeModels(row.baseUrl ?? defaultBaseUrl(row.kind), await this.#key(row));
+      found = await probeServer(row.baseUrl ?? defaultBaseUrl(row.kind), await this.#key(row));
     } catch (err) {
       throw new HttpError(502, `could not list models: ${(err as Error).message}`);
     }
-    await this.db.update(providers).set({ models }).where(eq(providers.id, id));
+    await this.db
+      .update(providers)
+      .set({ models: found.models, modelContexts: found.contexts })
+      .where(eq(providers.id, id));
     await this.sync();
-    return models;
+    return found.models;
+  }
+
+  /**
+   * Ask each self-hosted server (or just `id`) how much context its models hold, so pi neither
+   * cuts a long chat short nor sends more than the server takes. Runs at boot and after a
+   * provider changes; a server that is down keeps the sizes it reported last.
+   */
+  async refreshContexts(id?: string): Promise<void> {
+    await this.#refreshContexts(id).catch(() => {});
+  }
+
+  async #refreshContexts(id?: string): Promise<void> {
+    const rows = (await this.db.select().from(providers)).filter(
+      (r) => SELF_HOSTED_KINDS.includes(r.kind) && r.enabled && (!id || r.id === id),
+    );
+    let changed = false;
+    for (const row of rows) {
+      try {
+        const { contexts } = await probeServer(
+          row.baseUrl ?? defaultBaseUrl(row.kind),
+          await this.#key(row),
+        );
+        const merged = { ...row.modelContexts, ...contexts };
+        if (JSON.stringify(merged) === JSON.stringify(row.modelContexts)) continue;
+        await this.db
+          .update(providers)
+          .set({ modelContexts: merged })
+          .where(eq(providers.id, row.id));
+        changed = true;
+      } catch {
+        // Unreachable right now; the Health page reports that.
+      }
+    }
+    if (changed) await this.sync().catch(() => {});
   }
 
   /** Every provider with its key decrypted (server-side only: sync and health checks). */
@@ -161,6 +207,8 @@ export class ProviderService {
         apiKey: await this.#key(r),
         models: r.models,
         enabled: r.enabled,
+        contextWindow: r.contextWindow,
+        modelContexts: r.modelContexts,
       });
     }
     return records;
@@ -246,6 +294,9 @@ function toDto(r: ProviderRow): ProviderDto {
     hasSecret: Boolean(r.secretRef),
     enabled: r.enabled,
     models: r.models,
+    contextWindow: r.contextWindow,
+    modelContexts: r.modelContexts,
+    defaultContextWindow: DEFAULT_LOCAL_CONTEXT,
     createdAt: r.createdAt.toISOString(),
   };
 }

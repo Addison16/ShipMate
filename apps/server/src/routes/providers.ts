@@ -41,6 +41,7 @@ export async function providerRoutes(app: FastifyInstance, s: Services) {
         apiKey: z.string().max(4000).optional(),
         enabled: z.boolean().optional(),
         models: Models.optional(),
+        contextWindow: z.number().int().min(1024).max(16_777_216).nullable().optional(),
       })
       .parse(req.body);
     return { provider: await s.providers.update(req.params.id, body) };

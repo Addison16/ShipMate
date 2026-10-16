@@ -213,7 +213,7 @@ export function CrewModelSelect({
         disabled={readOnly || busy}
         hint={t(
           running === "claude-code-cli"
-            ? "Runs on your Claude subscription through Claude Code. Not available in Shipyard projects."
+            ? "Runs on your Claude subscription through Claude Code."
             : running !== "pi"
               ? `Runs on ${engineName(running)}. Not available in Shipyard projects.`
               : "Crew default follows the model picked in Settings → General. Pick a provider and model to give this crew member its own.",

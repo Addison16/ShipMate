@@ -6,6 +6,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Claude Code agents can work on Shipyard projects**: an agent on your Claude subscription
+  used to refuse project work ("cannot work in Shipyard workspaces"). It now works in the
+  project's folder, and every shell command it runs (git, tests, builds) goes to the project's
+  sandbox through Shipmate's `bash` tool, with the same approvals as before. The Runs on hint also
+  says Claude Code for an agent that follows a Claude subscription default.
 - **Local models use their real context size**: Shipmate told pi every local model held 32K
   tokens, whatever it could really hold. Once a chat grew near that, pi asked the model for a
   reply only a token long and the chat went blank. Shipmate now asks the server how much each

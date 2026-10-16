@@ -91,6 +91,12 @@ secrets. Git credentials never enter the sandbox: pushing and GitHub calls happe
 behind approval gates. If no sandbox engine is reachable, the Shipyard says "Code cannot run
 right now" and nothing runs at all; code never runs outside a sandbox.
 
+Agents on the Claude Code engine (your Claude subscription) can work on projects too. Claude Code
+reads and edits the project's files itself, but its own shell is turned off there: every command
+goes through Shipmate's sandboxed `bash` tool, behind the same approvals. It also ignores the
+repo's own Claude Code settings and MCP servers, which could otherwise run things on the Shipmate
+host. Codex, Cursor and Gemini CLI agents can't work on projects yet.
+
 The default is the Docker socket mounted into the Shipmate container:
 
 ```yaml

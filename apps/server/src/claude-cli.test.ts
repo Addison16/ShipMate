@@ -1,4 +1,13 @@
-import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { execSync } from "node:child_process";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
@@ -12,6 +21,8 @@ import {
   cliAllowedTools,
   cliModelFromRef,
   onCrewDefault,
+  workspaceCliTools,
+  workspaceGuard,
 } from "./claude-cli-turn.js";
 import { chatGptProvider } from "./services/chatgpt.js";
 import { callCost } from "./services/usage.js";
@@ -76,6 +87,27 @@ process.stdin.on("end", () => {
       out({ type: "user", session_id: sid, message: { content: [{ type: "tool_result", tool_use_id: "tu9", content: reply, is_error: r.result.isError }] } });
       const final = "Wrapped up (" + init.result.serverInfo.name + ": " + names + "): " + reply;
       say("m3", final);
+      out({ type: "result", subtype: "success", is_error: false, result: final, session_id: sid, total_cost_usd: 0.001, usage: { input_tokens: 1, output_tokens: 1 } });
+    })();
+    return;
+  }
+  // "shell <command>": run it with Shipmate's sandboxed bash tool, as in a Shipyard project.
+  if (prompt.startsWith("shell ")) {
+    const srv = mcp ? JSON.parse(mcp).mcpServers.shipmate : null;
+    const rpc = async (method, params, id) => {
+      const res = await fetch(srv.url, { method: "POST", headers: { ...srv.headers, "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", ...(id ? { id } : {}), method, params }) });
+      if (res.status === 202) return null;
+      const body = await res.text();
+      if ((res.headers.get("content-type") ?? "").includes("event-stream")) return JSON.parse(body.split(String.fromCharCode(10)).find((l) => l.startsWith("data: ")).slice(6));
+      return JSON.parse(body);
+    };
+    (async () => {
+      await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "fake", version: "1" } }, 1);
+      const list = await rpc("tools/list", {}, 2);
+      const names = list.result.tools.map((t) => t.name).sort().join(",");
+      const r = await rpc("tools/call", { name: "bash", arguments: { command: prompt.slice(6).trim() } }, 3);
+      const final = "tools: " + names + " | bash: " + r.result.content.map((c) => c.text).join("");
+      out({ type: "assistant", session_id: sid, message: { id: "m1", content: [{ type: "text", text: final }] } });
       out({ type: "result", subtype: "success", is_error: false, result: final, session_id: sid, total_cost_usd: 0.001, usage: { input_tokens: 1, output_tokens: 1 } });
     })();
     return;
@@ -290,13 +322,127 @@ describe("claude-code-cli backend: manifest and runner", () => {
     });
   });
 
-  it("refuses Shipyard project conversations (it would run outside the sandbox)", async () => {
+  it("refuses Shipyard work without Shipmate's sandboxed tools", async () => {
     const turns = new ClaudeCliTurns(null as unknown as Db);
     const input = {
       conv: { id: "c", projectId: "p", sessionFiles: {} },
       folder: { slug: "s", dir, persona: "", manifest: { name: "Scribe" } },
     } as unknown as Parameters<ClaudeCliTurns["turn"]>[0];
     await expect(turns.turn(input)).rejects.toThrow(/Shipyard/);
+    await expect(
+      turns.turn({ ...input, workspace: { dir, prompt: "# Shipyard project" } }),
+    ).rejects.toThrow(/Shipyard/);
+  });
+
+  it("works in a Shipyard workspace with its shell off and the repo's settings ignored", async () => {
+    const log = join(dir, "workspace-turn.log");
+    const ws = mkdtempSync(join(tmpdir(), "shipmate-ws-"));
+    const bin = process.env.SHIPMATE_CLAUDE_BIN;
+    const logVar = process.env.FAKE_CLAUDE_LOG;
+    process.env.SHIPMATE_CLAUDE_BIN = fakeBin;
+    process.env.FAKE_CLAUDE_LOG = log;
+    const db = { update: () => ({ set: () => ({ where: async () => {} }) }) };
+    const turns = new ClaudeCliTurns(db as unknown as Db);
+    try {
+      await turns.turn({
+        user: { id: "u", displayName: "Addison", role: "owner" },
+        conv: { id: "c", projectId: "p", sessionFiles: {} },
+        folder: {
+          slug: "artificer",
+          dir,
+          persona: "",
+          manifest: CrewManifest.parse({
+            name: "Artificer",
+            slug: "artificer",
+            role: "software engineer",
+            backend: "claude-code-cli",
+            model: "claude-code/sonnet",
+            cli: { permissionMode: "bypassPermissions", allowedTools: ["Bash(npm *)", "Read"] },
+          }),
+        },
+        prompt: "fix the bug",
+        stream: () => ({ id: "s", text: "", tools: [] }),
+        usage: { userId: "u", crewMemberId: "m", conversationId: "c", routineId: null },
+        mcpConfig: JSON.stringify({ mcpServers: {} }),
+        workspace: { dir: ws, prompt: "# Shipyard project" },
+        emit: () => {},
+        record: () => {},
+      } as unknown as Parameters<ClaudeCliTurns["turn"]>[0]);
+    } finally {
+      for (const [k, v] of [
+        ["SHIPMATE_CLAUDE_BIN", bin],
+        ["FAKE_CLAUDE_LOG", logVar],
+      ] as const) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+    const call = JSON.parse(readFileSync(log, "utf8").trim().split("\n")[0] ?? "{}") as {
+      args: string[];
+      cwd: string;
+    };
+    const at = (flag: string) => call.args[call.args.indexOf(flag) + 1];
+    expect(call.cwd).toBe(ws);
+    // "Allow all tools" would reach outside the project; the shell goes to the sandbox instead.
+    expect(at("--permission-mode")).toBe("dontAsk");
+    expect(at("--disallowedTools")?.split(",")).toContain("Bash");
+    expect(at("--setting-sources")).toBe("user");
+    expect(call.args).toContain("--strict-mcp-config");
+    const allowed = at("--allowedTools")?.split(",") ?? [];
+    expect(allowed).toContain("mcp__shipmate");
+    expect(allowed).not.toContain("Bash(npm *)");
+    expect(at("--append-system-prompt")).toContain("mcp__shipmate__bash");
+    // The guard hook runs before every tool call, so other settings cannot widen the rules.
+    const hooks = JSON.parse(at("--settings") ?? "{}").hooks.PreToolUse;
+    expect(hooks[0]).toMatchObject({ matcher: "*" });
+    expect(hooks[0].hooks[0].command).toContain(ws);
+  });
+
+  it("allows file tools only inside the workspace", () => {
+    const tools = workspaceCliTools(
+      "/data/shipyard/app",
+      ["Bash", "KillShell", "Read", "PowerShell", "mcp__notes", "WebFetch(domain:example.com)"],
+      true,
+      ["github"],
+    );
+    expect(tools).toEqual([
+      "Read(//data/shipyard/app/**)",
+      "Edit(//data/shipyard/app/**)",
+      "WebSearch",
+      "WebFetch",
+      "mcp__notes",
+      "WebFetch(domain:example.com)",
+      "Task",
+      "Agent",
+      "mcp__shipmate",
+      "mcp__github",
+    ]);
+  });
+
+  it("blocks file tools outside the workspace and any shell, whatever settings allow", () => {
+    const ws = mkdtempSync(join(tmpdir(), "shipmate-guard-"));
+    mkdirSync(join(ws, "src"));
+    symlinkSync("/etc", join(ws, "etc-link"));
+    const { command } = workspaceGuard(ws).hooks[0] ?? { command: "" };
+    const run = (tool_name: string, tool_input: object) => {
+      try {
+        execSync(command, { input: JSON.stringify({ tool_name, tool_input }), stdio: "pipe" });
+        return "ok";
+      } catch (err) {
+        return `blocked ${(err as { status: number }).status}`;
+      }
+    };
+    expect(run("Read", { file_path: join(ws, "src", "a.ts") })).toBe("ok");
+    expect(run("Edit", { file_path: "src/a.ts" })).toBe("ok");
+    expect(run("Grep", { pattern: "todo" })).toBe("ok");
+    expect(run("mcp__shipmate__bash", { command: "ls" })).toBe("ok");
+    expect(run("WebFetch", { url: "https://example.com" })).toBe("ok");
+    expect(run("Read", { file_path: "/etc/passwd" })).toBe("blocked 2");
+    expect(run("Read", { file_path: join(ws, "etc-link", "passwd") })).toBe("blocked 2");
+    expect(run("Write", { file_path: join(ws, "..", "x") })).toBe("blocked 2");
+    expect(run("Glob", { pattern: "/data/**" })).toBe("blocked 2");
+    expect(run("Bash", { command: "ls" })).toBe("blocked 2");
+    expect(run("PowerShell", { command: "ls" })).toBe("blocked 2");
   });
 
   it("fails clearly when the binary is missing", async () => {
@@ -338,6 +484,8 @@ describe.skipIf(!db)("claude-code-cli backend through the Bridge", () => {
     process.env.SHIPMATE_CLAUDE_BIN = fakeBin;
     process.env.FAKE_CLAUDE_LOG = logFile;
     process.env.SHIPMATE_TEST_LEAK = "must-not-reach-the-cli";
+    // No sandbox engine, even where the machine has Docker: Shipyard commands must fail fast.
+    process.env.DOCKER_SOCKET = join(dir, "no-docker.sock");
     t = await testApp(db as string, { watches: false });
     sql = postgres(db as string, { max: 2, onnotice: () => {} });
     ownerCookie = cookieOf(
@@ -374,8 +522,53 @@ describe.skipIf(!db)("claude-code-cli backend through the Bridge", () => {
   afterAll(async () => {
     delete process.env.SHIPMATE_CLAUDE_BIN;
     delete process.env.SHIPMATE_TEST_LEAK;
+    delete process.env.DOCKER_SOCKET;
     await sql?.end();
     await t?.app.close();
+  });
+
+  it("works on a Shipyard project with its shell in the sandbox, never on the host", async () => {
+    const project = (
+      await api("POST", "/api/shipyard/projects", {
+        name: "Scribe Notes",
+        provider: "local",
+        crewSlug: "scribe",
+      })
+    ).json().project;
+    expect(project.crewSlug).toBe("scribe");
+    // Shipmate's tools reach the CLI over loopback once the server listens.
+    if (!t.app.server.listening) await t.app.listen({ port: 0, host: "127.0.0.1" });
+    const conv = (await api("POST", `/api/shipyard/projects/${project.id}/conversations`)).json()
+      .conversation;
+    expect(conv).toMatchObject({ projectId: project.id, crewSlug: "scribe" });
+    const before = calls().length;
+    const marker = join(t.config.dirs.workspaces, "scribe-notes", "ran-on-host");
+    const ws = await t.app.injectWS("/api/ws", { headers: { cookie: ownerCookie } });
+    const events: ServerEvent[] = [];
+    ws.on("message", (raw: Buffer) => events.push(JSON.parse(raw.toString()) as ServerEvent));
+    ws.send(
+      JSON.stringify({ type: "send", conversationId: conv.id, text: `shell touch ${marker}` }),
+    );
+    // bash asks first, as on the Shipmate engine.
+    await until(() => events.some((e) => e.type === "approval_request"));
+    const req = events.find((e) => e.type === "approval_request");
+    if (req?.type !== "approval_request") throw new Error("no approval request");
+    expect(req.approval).toMatchObject({ toolName: "bash", crew: { slug: "scribe" } });
+    ws.send(JSON.stringify({ type: "approve", approvalId: req.approval.id, decision: "allow" }));
+    await until(() => events.some((e) => e.type === "status" && !e.busy));
+    ws.terminate();
+    expect(events.find((e) => e.type === "error")).toBeUndefined();
+    const call = calls()[before];
+    expect(call?.cwd).toBe(join(t.config.dirs.workspaces, "scribe-notes"));
+    expect(call?.args).toContain("--disallowedTools");
+    const text = events
+      .filter((e) => e.type === "delta")
+      .map((e) => (e.type === "delta" ? e.text : ""))
+      .join("");
+    expect(text).toMatch(/tools: .*\bbash\b/);
+    // No Docker in tests: the sandbox refuses, and nothing ran on the Shipmate host.
+    expect(text).toContain("Docker socket");
+    expect(existsSync(marker)).toBe(false);
   });
 
   it("streams a full CLI turn into messages and records its usage", async () => {
@@ -515,7 +708,7 @@ describe.skipIf(!db)("claude-code-cli backend through the Bridge", () => {
   });
 
   it("lets a Captain on the CLI route a message to a crew member", async () => {
-    await t.app.listen({ port: 0, host: "127.0.0.1" });
+    if (!t.app.server.listening) await t.app.listen({ port: 0, host: "127.0.0.1" });
     const deck = await api("POST", "/api/crew", {
       slug: "deckhand",
       manifestYaml: "name: Deckhand\nrole: odd jobs\nmodel: faux/m\n",

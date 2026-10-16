@@ -57,6 +57,12 @@ export interface CliTurnInput {
   mcpServers?: string[];
   /** Extra system prompt sections (the Captain's crew roster, how to answer a consult). */
   context?: string[];
+  /**
+   * The Shipyard workspace of a project conversation. The CLI then works in that folder with its
+   * own file tools, and runs shell commands only through Shipmate's sandboxed `bash` tool (served
+   * with the rest of Shipmate's tools, see the Bridge's #cliTools).
+   */
+  workspace?: { dir: string; prompt: string };
   /** A one-off answer (the Captain answering a crew question): no resume, nothing stored. */
   oneOff?: boolean;
   emit: (event: ServerEvent) => void;
@@ -77,7 +83,8 @@ export interface CliTurnInput {
  * crew member's `cli.permissionMode` (default `dontAsk`) and `cli.allowedTools` decide what it may
  * do; with the defaults, anything beyond reading files in its own folder is refused. Caps are
  * checked by the Bridge before the turn, and the CLI's reported cost is recorded afterwards like
- * any other turn. Shipyard workspaces are not offered to it (it would run outside the sandbox).
+ * any other turn. In a Shipyard workspace its own shell is turned off and commands go through
+ * Shipmate's sandboxed `bash` tool instead (see workspaceCliTools).
  */
 export class ClaudeCliTurns {
   #running = new Map<string, Set<AbortController>>();
@@ -94,14 +101,16 @@ export class ClaudeCliTurns {
   }
 
   async turn(input: CliTurnInput): Promise<string> {
-    const { conv, folder, emit } = input;
-    if (conv.projectId) {
+    const { conv, folder, emit, workspace } = input;
+    // Without Shipmate's tools there is no sandboxed shell, and its own would run on the host. A
+    // one-off answer (the Captain answering a crew question) does no project work.
+    if (conv.projectId && !input.oneOff && (!workspace || input.mcpConfig === undefined)) {
       throw new HttpError(
-        409,
-        `${folder.manifest.name} runs on the Claude Code CLI, which cannot work in Shipyard workspaces (it would run outside the sandbox). Pick a crew member on the pi backend for project work.`,
+        503,
+        `${folder.manifest.name} runs on Claude Code, which needs Shipmate's sandboxed tools for Shipyard work, and they are not available right now. Try again in a moment.`,
       );
     }
-    const cwd = join(folder.dir, CLI_WORKDIR);
+    const cwd = workspace?.dir ?? join(folder.dir, CLI_WORKDIR);
     mkdirSync(cwd, { recursive: true });
     const key = cliSessionKey(folder.slug);
     const resume = input.oneOff ? undefined : conv.sessionFiles[key];
@@ -109,16 +118,29 @@ export class ClaudeCliTurns {
       allowedTools: [],
       permissionMode: "dontAsk" as const,
     };
-    const settings = {
-      ...own,
-      allowedTools: cliAllowedTools(
-        folder.dir,
-        own.allowedTools,
-        input.mcpConfig !== undefined,
-        folder.manifest.helpers,
-        input.mcpServers,
-      ),
-    };
+    const settings = workspace
+      ? {
+          ...own,
+          // "Allow all tools" would let it change files outside the project; the rules below
+          // already allow everything the project work needs.
+          permissionMode: "dontAsk" as const,
+          allowedTools: workspaceCliTools(
+            workspace.dir,
+            own.allowedTools,
+            folder.manifest.helpers,
+            input.mcpServers,
+          ),
+        }
+      : {
+          ...own,
+          allowedTools: cliAllowedTools(
+            folder.dir,
+            own.allowedTools,
+            input.mcpConfig !== undefined,
+            folder.manifest.helpers,
+            input.mcpServers,
+          ),
+        };
     // crew.yaml `model` wins; cli.model only fills in when it names no Claude model.
     const model = cliModelFromRef(folder.manifest.model) ?? settings.model;
 
@@ -187,7 +209,12 @@ export class ClaudeCliTurns {
         appendSystemPrompt: this.#systemPrompt(input),
         ...(resume ? { resume } : {}),
         ...(input.mcpConfig ? { mcpConfig: input.mcpConfig } : {}),
-        ...(input.settingsJson ? { settingsJson: input.settingsJson } : {}),
+        ...(workspace
+          ? { settingsJson: withWorkspaceGuard(input.settingsJson, workspace.dir) }
+          : input.settingsJson
+            ? { settingsJson: input.settingsJson }
+            : {}),
+        ...(workspace ? { lockdown: { disallowedTools: CLI_SHELL_TOOLS } } : {}),
         settings: { ...settings, ...(model ? { model } : {}) },
         signal: controller.signal,
         onEvent,
@@ -227,7 +254,7 @@ export class ClaudeCliTurns {
     }
   }
 
-  #systemPrompt({ user, folder, mcpConfig, context }: CliTurnInput): string {
+  #systemPrompt({ user, folder, mcpConfig, context, workspace }: CliTurnInput): string {
     const memory = new MemoryStore(folder.dir);
     return [
       folder.persona.trim(),
@@ -242,6 +269,13 @@ export class ClaudeCliTurns {
       "",
       memory.contextFor(user.id),
       ...(context?.length ? ["", ...context] : []),
+      ...(workspace
+        ? [
+            "",
+            workspace.prompt,
+            `Your Read, Edit and Write tools work in the project workspace (${workspace.dir}). Your own Bash tool is turned off here: run every shell command (git, tests, builds) with \`mcp__${CLI_MCP_SERVER}__bash\`, which runs it in the project's sandbox.`,
+          ]
+        : []),
     ].join("\n");
   }
 }
@@ -288,6 +322,131 @@ export function cliAllowedTools(
       ...(shipmateTools ? mcpServers.map((id) => `mcp__${id}`) : []),
     ]),
   ];
+}
+
+/** Claude Code's shell tools (old and new names), turned off in a Shipyard workspace. */
+export const CLI_SHELL_TOOLS = ["Bash", "BashOutput", "KillBash", "KillShell"];
+
+/**
+ * The `--allowedTools` for a turn in a Shipyard workspace: reading and changing files inside the
+ * workspace, the web, helpers, and Shipmate's tools (its sandboxed `bash`, git_push and the
+ * GitHub tools, behind the approval gate). Of the crew member's own rules only MCP and web ones
+ * are kept: a broad `Read` or a shell rule would reach the Shipmate host. workspaceGuard enforces
+ * the same whatever other settings allow.
+ */
+export function workspaceCliTools(
+  dir: string,
+  own: string[],
+  helpers = false,
+  mcpServers: string[] = [],
+): string[] {
+  const abs = dir.replace(/\\/g, "/").replace(/^\/*/, "");
+  return [
+    ...new Set([
+      `Read(//${abs}/**)`,
+      // Edit rules cover every tool that changes files (Edit, Write, NotebookEdit).
+      `Edit(//${abs}/**)`,
+      "WebSearch",
+      "WebFetch",
+      ...own.filter((rule) => /^(mcp__|WebFetch\b|WebSearch\b)/.test(rule)),
+      ...(helpers ? CLI_HELPER_TOOLS : []),
+      `mcp__${CLI_MCP_SERVER}`,
+      ...mcpServers.map((id) => `mcp__${id}`),
+    ]),
+  ];
+}
+
+/** Claude Code tools a Shipyard run may use without a path check. */
+const WORKSPACE_SAFE_TOOLS = [
+  "WebSearch",
+  "WebFetch",
+  "TodoWrite",
+  "ToolSearch",
+  ...CLI_HELPER_TOOLS,
+];
+/** Claude Code's file tools, allowed in a Shipyard run only on paths inside the workspace. */
+const WORKSPACE_FILE_TOOLS = [
+  "Read",
+  "Edit",
+  "MultiEdit",
+  "Write",
+  "NotebookEdit",
+  "NotebookRead",
+  "Glob",
+  "Grep",
+  "LS",
+];
+
+/**
+ * The hook script workspaceGuard runs before each tool call (`node -e`, the workspace as its
+ * argument). Exit 2 blocks the call with its stderr as the reason, whatever any settings allow.
+ */
+const GUARD_SCRIPT = `
+const fs = require("node:fs"), path = require("node:path");
+const SAFE = new Set(${JSON.stringify(WORKSPACE_SAFE_TOOLS)});
+const FILES = new Set(${JSON.stringify(WORKSPACE_FILE_TOOLS)});
+const real = (p) => {
+  let head = p, rest = [];
+  for (;;) {
+    try { return path.join(fs.realpathSync(head), ...rest.reverse()); } catch {}
+    const up = path.dirname(head);
+    if (up === head) return p;
+    rest.push(path.basename(head));
+    head = up;
+  }
+};
+const root = real(path.resolve(process.argv[1]));
+const inside = (p) => { const r = path.relative(root, p); return r === "" || (!r.startsWith("..") && !path.isAbsolute(r)); };
+const deny = (m) => { process.stderr.write(m); process.exit(2); };
+let raw = "";
+process.stdin.on("data", (c) => (raw += c)).on("end", () => {
+  let e = {};
+  try { e = JSON.parse(raw); } catch {}
+  const name = String(e.tool_name || ""), input = e.tool_input || {};
+  if (name.startsWith("mcp__") || SAFE.has(name)) process.exit(0);
+  if (!FILES.has(name)) deny(name + " is not available in a Shipyard project. Run commands with mcp__shipmate__bash.");
+  const paths = [input.file_path, input.notebook_path, input.path].filter((p) => typeof p === "string" && p);
+  if (typeof input.pattern === "string" && name === "Glob" && path.isAbsolute(input.pattern)) {
+    paths.push(input.pattern.replace(/[*?[{].*$/s, "") || "/");
+  }
+  for (const p of paths) {
+    if (!inside(real(path.resolve(root, p)))) deny("Only files inside the project workspace (" + root + ") are available.");
+  }
+  process.exit(0);
+});
+`;
+
+/**
+ * A PreToolUse hook (for `--settings`) that keeps a Shipyard run inside its workspace: Claude
+ * Code's file tools only on paths inside it (symlinks resolved), Shipmate's MCP tools, the web
+ * and helpers; anything else (a shell tool, an unknown tool) is blocked. Allow rules from any
+ * settings file cannot widen this: a hook's block wins over them.
+ */
+export function workspaceGuard(dir: string, node = process.execPath) {
+  const code = Buffer.from(GUARD_SCRIPT).toString("base64");
+  const q = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
+  return {
+    matcher: "*",
+    hooks: [
+      {
+        type: "command" as const,
+        command: `${q(node)} -e ${q(`eval(Buffer.from("${code}","base64").toString())`)} ${q(dir)}`,
+        timeout: 30,
+      },
+    ],
+  };
+}
+
+/** `--settings` JSON with the workspace guard added in front of any existing hooks. */
+export function withWorkspaceGuard(settingsJson: string | undefined, dir: string): string {
+  const settings = (settingsJson ? JSON.parse(settingsJson) : {}) as {
+    hooks?: { PreToolUse?: unknown[] };
+  };
+  const hooks = settings.hooks ?? {};
+  return JSON.stringify({
+    ...settings,
+    hooks: { ...hooks, PreToolUse: [workspaceGuard(dir), ...(hooks.PreToolUse ?? [])] },
+  });
 }
 
 /** `mcp__shipmate__delegate` → `delegate`; other tool names unchanged. */

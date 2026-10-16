@@ -83,6 +83,18 @@ export const MODEL_RETRY = {
   maxAgentDelayMs: 30_000,
 } as const;
 
+/**
+ * When pi summarises the older part of a long chat. Its defaults (compact 16K before the end,
+ * keep the last 20K) suit large windows; on a small local one they leave a summarised chat still
+ * too full to reply, so both scale down to a quarter of the window there.
+ */
+export function compactionFor(contextWindow: number) {
+  const quarter = Math.floor(contextWindow / 4);
+  return quarter > 0
+    ? { reserveTokens: Math.min(16_384, quarter), keepRecentTokens: Math.min(20_000, quarter) }
+    : {};
+}
+
 /** Split `provider/model-id` (the model id itself may contain slashes, e.g. OpenRouter). */
 export function splitModelRef(ref: string): { provider: string; id: string } | undefined {
   const i = ref.indexOf("/");
@@ -206,7 +218,10 @@ export async function createCrewSession(options: CreateCrewSessionOptions): Prom
     customTools,
     resourceLoader,
     sessionManager,
-    settingsManager: SettingsManager.inMemory({ retry: MODEL_RETRY }),
+    settingsManager: SettingsManager.inMemory({
+      retry: MODEL_RETRY,
+      compaction: compactionFor(model.contextWindow),
+    }),
   });
   if (mcpServers.length) await session.bindExtensions({});
 

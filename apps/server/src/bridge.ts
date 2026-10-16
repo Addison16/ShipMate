@@ -71,7 +71,7 @@ import type { EverydayTools } from "./everyday.js";
 import type { AttachmentService } from "./files/service.js";
 import { toDto as toAttachmentDto } from "./files/service.js";
 import { GeminiCliTurns, geminiModels } from "./gemini-cli-turn.js";
-import { ModelError, serviceName, toModelError } from "./model-errors.js";
+import { contextFullError, ModelError, serviceName, toModelError } from "./model-errors.js";
 import { modelList, modelPrice } from "./model-price.js";
 import { petHost } from "./pets/host.js";
 import type { PetService } from "./pets/service.js";
@@ -712,7 +712,8 @@ export class Bridge {
     clearTimeout(run.idleTimer);
     const promptKey = await this.#promptKey().catch(() => run.promptKey);
     if (run.promptKey !== promptKey) {
-      // The crew, the crew default or the models changed since these sessions started: reopen
+      // The crew, the crew default or the models (or their context sizes) changed since these
+      // sessions started: reopen
       // them from their files so the Captain's crew list (in its system prompt) is current.
       for (const s of run.sessions.values()) s.dispose();
       run.sessions.clear();
@@ -1434,6 +1435,8 @@ export class Bridge {
     });
     try {
       await session.prompt(prompt, images);
+      const full = contextFull(session);
+      if (full && !run.aborted) throw full;
       const failure = lastError(session);
       if (failure && !run.aborted) {
         // pi has already retried temporary failures (see MODEL_RETRY in @shipmate/crew).
@@ -1814,6 +1817,8 @@ export class Bridge {
     try {
       if (signal?.aborted) throw new Error("stopped");
       await session.prompt(task);
+      const full = contextFull(session);
+      if (full && !run.aborted) throw full;
       const failure = lastError(session);
       if (failure && !run.aborted) throw new Error(failure);
       return final;
@@ -2170,7 +2175,11 @@ export class Bridge {
       this.deps.providers.available(),
       this.deps.settings.get(),
     ]);
-    const models = available.map((m) => `${m.provider}/${m.id}:${m.cost.input}/${m.cost.output}`);
+    // Context size too: sessions keep the model (and compaction settings) they were made with.
+    const models = available.map(
+      (m) =>
+        `${m.provider}/${m.id}:${m.cost.input}/${m.cost.output}:${m.contextWindow}/${m.maxTokens}`,
+    );
     return [this.#crewVersion, settings.defaultModel, ...models].join("|");
   }
 
@@ -2376,6 +2385,13 @@ function sessionKey(slug: string, mode: SessionMode | undefined): string {
   // A consult is the Captain's second session in the run, so it never collides with the main
   // one, which may be waiting on the delegate that asked.
   return "consultFor" in mode ? `${slug}#consult` : `${slug}#helper:${mode.helper}`;
+}
+
+/** The turn ended blank because the chat outgrew the model's context (see contextFullError). */
+function contextFull(session: CrewSession): ModelError | undefined {
+  const last = [...session.session.messages].reverse().find((m) => m.role === "assistant");
+  if (last?.role !== "assistant") return undefined;
+  return contextFullError(last, session.session.model ?? session.model);
 }
 
 function lastError(session: CrewSession): string | undefined {

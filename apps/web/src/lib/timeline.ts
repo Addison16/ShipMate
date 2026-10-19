@@ -113,7 +113,11 @@ export function timelineReducer(state: TimelineState, action: TimelineAction): T
       // Keep anything live that arrived while loading, minus messages we now have.
       const ids = new Set(action.messages.map((m) => m.id));
       const live = state.items.filter((it) => it.kind !== "message" || !ids.has(it.message.id));
-      return { ...state, items: [...action.messages.map(msgItem), ...live] };
+      const items = [...action.messages.map(msgItem), ...live];
+      // A saved note about a failed reply shows instead of the error banner.
+      return action.messages.at(-1)?.meta?.turnError === true
+        ? { ...state, items, error: null, errorDetail: null }
+        : { ...state, items };
     }
     case "dismissError":
       return { ...state, error: null, errorDetail: null };
@@ -144,6 +148,10 @@ function applyEvent(state: TimelineState, ev: ServerEvent): TimelineState {
     case "message": {
       const m = ev.message;
       if (state.items.some((it) => it.kind === "message" && it.message.id === m.id)) return state;
+      // A saved note about a failed reply takes over from the error shown live.
+      if (m.meta?.turnError === true) {
+        return { ...state, error: null, errorDetail: null, items: [...state.items, msgItem(m)] };
+      }
       let items = state.items;
       if (m.author.kind === "crew") {
         const slug = m.author.slug;

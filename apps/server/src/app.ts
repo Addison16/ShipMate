@@ -117,6 +117,8 @@ export async function buildApp(
   app.decorateRequest("user", null as unknown as UserRow);
   let fileSweep: NodeJS.Timeout | undefined;
   app.addHook("onReady", async () => {
+    // Replies cut off by a restart get a note in their chat, so nobody waits for them.
+    await services.bridge.recover().catch((err: Error) => app.log.error(err, "recover failed"));
     if (options.watches !== false) {
       await services.watches.start();
       // Issue-to-PR jobs poll GitHub where no webhook is set up (tests drive them by hand).

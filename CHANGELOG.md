@@ -6,6 +6,14 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Leaving the app no longer loses work**: agents always kept working on the server after you
+  left, but when something went wrong while you were away, the error only went to open pages,
+  so you came back to your message with no reply and no reason. Now the reason is saved in the
+  chat (with "More details") and sent to your phone. Questions and approvals now wait for you
+  for a day instead of 15 to 30 minutes, so they are still there when you come back. If
+  Shipmate restarts while an agent is working, the chat says so instead of waiting forever. An
+  open chat also reloads when you switch back to it, in case the phone quietly dropped its
+  connection.
 - **Claude Code agents can work on Shipyard projects**: an agent on your Claude subscription
   used to refuse project work ("cannot work in Shipyard workspaces"). It now works in the
   project's folder, and every shell command it runs (git, tests, builds) goes to the project's

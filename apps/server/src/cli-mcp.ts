@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { McpServerConfig, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { SHIPMATE_VERSION } from "@shipmate/core";
 import type { FastifyInstance } from "fastify";
+import { APPROVAL_TIMEOUT_MS } from "./services/approvals.js";
 
 /** The MCP server name the CLI sees; its tools appear to it as `mcp__shipmate__<tool>`. */
 export const CLI_MCP_SERVER = "shipmate";
@@ -9,8 +10,8 @@ export const CLI_MCP_SERVER = "shipmate";
 export const CLI_MCP_PATH = "/api/cli-mcp";
 /** The CLI's PreToolUse hook asks here before it calls a tool from an installed MCP server. */
 export const CLI_GATE_PATH = `${CLI_MCP_PATH}/gate`;
-/** How long the hook waits for a person to answer an approval, in seconds. */
-const GATE_TIMEOUT_S = 900;
+/** How long the hook waits for a person to answer an approval, in seconds (as long as the card). */
+const GATE_TIMEOUT_S = APPROVAL_TIMEOUT_MS / 1000;
 /** How often a long tool call's stream sends a keep-alive comment. */
 export const KEEPALIVE_MS = 15_000;
 

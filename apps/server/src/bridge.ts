@@ -61,7 +61,7 @@ import {
   watches,
   watchRuns,
 } from "@shipmate/db";
-import { and, asc, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { accessSummary } from "./access-summary.js";
 import { HttpError, type UserRow } from "./auth.js";
 import { ClaudeCliTurns, cliModelFromRef, onCrewDefault } from "./claude-cli-turn.js";
@@ -722,6 +722,8 @@ export class Bridge {
     }
     this.emit(user.id, { type: "status", conversationId, busy: true });
     try {
+      // Before the message is saved, so a restart can never leave it without a reply or a note.
+      await this.#markTurn(conversationId, true);
       const userMessage = await this.#store(conv, {
         role: "user",
         content,
@@ -754,20 +756,84 @@ export class Bridge {
           : {}),
       });
     } catch (err) {
-      if (!run.aborted) {
-        this.emit(user.id, {
-          type: "error",
-          conversationId,
-          message: err instanceof Error ? err.message : String(err),
-          ...(err instanceof ModelError ? { detail: err.detail } : {}),
-        });
-      }
+      if (!run.aborted) await this.#failed(user, conv, slug, err);
     } finally {
+      await this.#markTurn(conversationId, false);
       run.busy = false;
       this.emit(user.id, { type: "status", conversationId, busy: false });
       run.idleTimer = setTimeout(() => this.#dispose(conversationId), IDLE_MS);
       run.idleTimer.unref?.();
     }
+  }
+
+  /**
+   * A turn that failed. The reason is saved in the chat (and pushed when no page is open), so a
+   * person who left mid-reply finds out why there is no answer when they come back.
+   */
+  async #failed(user: UserRow, conv: ConversationRow, slug: string | null, err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    const detail = err instanceof ModelError ? err.detail : undefined;
+    const name = slug ? this.#crewName(slug) : null;
+    // Pages that are open show it at once; the saved note below replaces it there.
+    this.emit(user.id, {
+      type: "error",
+      conversationId: conv.id,
+      message,
+      ...(detail ? { detail } : {}),
+    });
+    try {
+      const note = await this.#store(conv, {
+        role: "system",
+        content: `${name ?? "The crew"} stopped before finishing: ${message}`,
+        authorName: "Shipmate",
+        meta: { turnError: true, ...(detail ? { detail } : {}) },
+      });
+      this.emit(user.id, { type: "message", conversationId: conv.id, message: note });
+    } catch {
+      // Not saved: open pages still show the error above.
+    }
+  }
+
+  #crewName(slug: string): string | null {
+    try {
+      return this.deps.crew.folder(slug).manifest.name;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Remember that a turn is running here, so a restart mid-reply is noticed (see recover). */
+  async #markTurn(conversationId: string, running: boolean) {
+    await this.deps.db
+      .update(conversations)
+      .set({ turnStartedAt: running ? new Date() : null })
+      .where(eq(conversations.id, conversationId))
+      .catch(() => {});
+  }
+
+  /**
+   * At startup: chats where the crew were still answering when the server stopped get a note,
+   * since that reply is gone and nobody is working on it any more.
+   */
+  async recover(): Promise<number> {
+    const stuck = await this.deps.db
+      .select()
+      .from(conversations)
+      .where(isNotNull(conversations.turnStartedAt));
+    for (const conv of stuck) {
+      const slug = conv.kind === "direct" ? await this.#slugOf(conv.crewMemberId) : CAPTAIN_SLUG;
+      const name = (slug && this.#crewName(slug)) ?? "The crew";
+      const note = await this.#store(conv, {
+        role: "system",
+        content: `Shipmate restarted while ${name} was working, so that reply was lost. Send your message again to carry on.`,
+        authorName: "Shipmate",
+        meta: { turnError: true, restarted: true },
+      });
+      // Cleared only once its note is saved, so a failure here is retried on the next start.
+      await this.#markTurn(conv.id, false);
+      this.emit(conv.userId, { type: "message", conversationId: conv.id, message: note });
+    }
+    return stuck.length;
   }
 
   async abort(user: UserRow, conversationId: string): Promise<void> {
@@ -803,9 +869,11 @@ export class Bridge {
       const conv = await this.conversation(user, conversationId);
       await this.#checkCap(user, slug, options.watchId);
       await this.#assertActive(slug, user);
+      await this.#markTurn(conversationId, true);
       const text = await this.#turn(user, conv, run, slug, prompt, options);
       return { text, sessionFile: run.sessions.get(slug)?.sessionFile };
     } finally {
+      await this.#markTurn(conversationId, false);
       run.busy = false;
       this.#dispose(conversationId);
     }

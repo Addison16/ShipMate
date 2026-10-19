@@ -8,6 +8,7 @@ import { type Handoff, messageHandoff, type TimelineItem, type ToolChip } from "
 import { ApprovalCard } from "./ApprovalCard.js";
 import { MessageFiles } from "./Attachments.js";
 import { Avatar } from "./Avatar.js";
+import { ChatError } from "./ChatError.js";
 import { Markdown } from "./Markdown.js";
 import { PetPreviewCard } from "./Pet.js";
 import { ThemeChatCard } from "./ThemeCard.js";
@@ -185,6 +186,18 @@ function MessageView({ message, selfId }: { message: MessageDto; selfId: string 
   if (question) return <AnsweredQuestion {...question} />;
   const theme = message.meta?.theme as { id?: unknown } | undefined;
   if (typeof theme?.id === "string") return <ThemeChatCard id={theme.id} />;
+  if (message.meta?.turnError === true) {
+    // Why a reply never came (it failed, or Shipmate restarted), kept for whoever comes back.
+    const detail = message.meta.detail;
+    return (
+      <div className="mx-auto w-full max-w-[85%]">
+        <ChatError
+          message={`${t(message.content)} · ${formatTime(message.createdAt)}`}
+          detail={typeof detail === "string" ? detail : null}
+        />
+      </div>
+    );
+  }
   if (a.kind === "system" || message.role === "system") {
     return (
       <div className="mx-auto max-w-[85%] text-center text-xs text-slate-500 dark:text-slate-400">

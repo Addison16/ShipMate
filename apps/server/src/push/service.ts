@@ -201,7 +201,9 @@ export class PushService {
       });
     } else if (event.type === "message") {
       const m = event.message;
-      if (m.author.kind !== "crew" || this.#open.has(userId)) return;
+      // A reply, or the note saying why one will not come (a failure or a restart).
+      const stopped = m.author.kind === "system" && m.meta?.turnError === true;
+      if ((m.author.kind !== "crew" && !stopped) || this.#open.has(userId)) return;
       // Chat bridges and watch runs reach people their own way.
       const [conv] = await this.options.db
         .select({ surface: conversations.surface })
@@ -211,7 +213,7 @@ export class PushService {
       if (conv?.surface !== "web") return;
       await this.#deliver(userId, "messages", {
         kind: "message",
-        title: await this.#name(userId, m.author.name),
+        title: m.author.kind === "crew" ? await this.#name(userId, m.author.name) : "Shipmate",
         body: preview(m.content),
         url: `/#/bridge/${event.conversationId}`,
         tag: `conversation-${event.conversationId}`,

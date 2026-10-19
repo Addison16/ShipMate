@@ -4,8 +4,11 @@ import type { ApprovalAnswer } from "@shipmate/crew";
 import { HttpError } from "../auth.js";
 import { summarize } from "../summarize.js";
 
-/** How long a consequential call waits for a person before it is denied. */
-export const APPROVAL_TIMEOUT_MS = 30 * 60_000;
+/**
+ * How long a consequential call or a question waits for a person before it is denied. Long, so
+ * someone who leaves finds the question still waiting when they come back (Stop ends it sooner).
+ */
+export const APPROVAL_TIMEOUT_MS = 24 * 60 * 60_000;
 
 interface Pending {
   dto: ApprovalDto;

@@ -1,5 +1,6 @@
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import type { ServerEvent } from "@shipmate/core";
+import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TEST_DATABASE_URL, testApp } from "./testing.js";
 
@@ -103,5 +104,55 @@ describe.skipIf(!db)("crew keep working when the page closes", () => {
     third.ws.send(JSON.stringify({ type: "watch", conversationId: conv.id }));
     expect(await third.next("live")).toMatchObject({ busy: false, items: [] });
     third.ws.terminate();
+  });
+
+  it("saves why a turn failed while the page was closed, so it shows on return", async () => {
+    const conv = (await api("POST", "/api/conversations", {})).json().conversation;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    t.faux.setResponses([
+      async () => {
+        await gate;
+        return fauxAssistantMessage([], {
+          stopReason: "error",
+          errorMessage: "400 invalid request: the model refused the tools",
+        });
+      },
+    ]);
+    const first = await connect();
+    first.ws.send(JSON.stringify({ type: "send", conversationId: conv.id, text: "Plan it" }));
+    await first.next("stream_start");
+    first.ws.terminate();
+    release();
+    let messages: { content: string; meta: Record<string, unknown> | null }[] = [];
+    for (let i = 0; i < 200; i++) {
+      messages = (await api("GET", `/api/conversations/${conv.id}/messages`)).json().messages;
+      if (messages.length > 1) break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(messages).toHaveLength(2);
+    expect(messages[1]?.content).toMatch(/^Captain stopped before finishing: /);
+    expect(messages[1]?.meta).toMatchObject({ turnError: true });
+    const [row] = await t.app.db.execute<{ turn_started_at: Date | null }>(
+      sql`select turn_started_at from conversations where id = ${conv.id}`,
+    );
+    expect(row?.turn_started_at).toBeNull();
+  });
+
+  it("leaves a note in chats whose reply a restart cut off", async () => {
+    const conv = (await api("POST", "/api/conversations", {})).json().conversation;
+    await t.app.db.execute(
+      sql`update conversations set turn_started_at = now() where id = ${conv.id}`,
+    );
+    expect(await t.app.services.bridge.recover()).toBe(1);
+    const messages = (await api("GET", `/api/conversations/${conv.id}/messages`)).json().messages;
+    expect(messages.at(-1)).toMatchObject({
+      content: expect.stringContaining("Shipmate restarted while Captain was working"),
+      meta: { turnError: true, restarted: true },
+    });
+    // Only once: the mark is cleared.
+    expect(await t.app.services.bridge.recover()).toBe(0);
   });
 });

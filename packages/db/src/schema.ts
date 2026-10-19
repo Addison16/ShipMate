@@ -82,6 +82,8 @@ export const conversations = pgTable(
     sessionFiles: jsonb("session_files").$type<Record<string, string>>().notNull().default({}),
     /** Pinned to the top of the person's list; null = not pinned. */
     pinnedAt: timestamp("pinned_at", { withTimezone: true }),
+    /** Set while the crew are answering here; still set at startup = the server restarted mid-reply. */
+    turnStartedAt: timestamp("turn_started_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

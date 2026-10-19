@@ -112,6 +112,13 @@ process.stdin.on("end", () => {
     })();
     return;
   }
+  if (prompt.includes("slow")) {
+    setTimeout(() => {
+      out({ type: "assistant", session_id: sid, message: { id: "m1", content: [{ type: "text", text: "Finished slowly" }] } });
+      out({ type: "result", subtype: "success", is_error: false, result: "Finished slowly", session_id: sid, total_cost_usd: 0.001, usage: { input_tokens: 1, output_tokens: 1 } });
+    }, 1500);
+    return;
+  }
   if (prompt.includes("fail")) {
     out({ type: "result", subtype: "success", is_error: true, result: "Invalid API key · Please run /login", session_id: sid, total_cost_usd: 0, usage: {} });
     return;
@@ -647,6 +654,22 @@ describe.skipIf(!db)("claude-code-cli backend through the Bridge", () => {
     ws.terminate();
     expect(events.find((e) => e.type === "error")).toBeUndefined();
     await until(() => !alive(pid));
+  });
+
+  it("keeps a CLI turn running after the page closes", async () => {
+    const before = calls().length;
+    const ws = await t.app.injectWS("/api/ws", { headers: { cookie: ownerCookie } });
+    ws.send(JSON.stringify({ type: "send", conversationId: convId, text: "slow job" }));
+    await until(() => calls().length > before);
+    const pid = calls()[before]?.pid ?? 0;
+    // The phone leaves the site while the CLI is still working.
+    ws.terminate();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(alive(pid)).toBe(true);
+    await until(async () => {
+      const msgs = (await api("GET", `/api/conversations/${convId}/messages`)).json().messages;
+      return msgs.at(-1)?.content === "Finished slowly";
+    });
   });
 
   it("reports CLI errors with the sign-in hint", async () => {

@@ -33,7 +33,8 @@ Requirements:
 
 How the buttons stay safe: each approval notification carries a token that works for that one
 request, for the person who was asked, once, for 30 minutes. The service worker sends it without
-cookies, so a notification can never act as anyone, or on anything, else.
+cookies, so a notification can never act as anyone, or on anything, else. After that, open the
+app to answer: the request itself waits there for up to a day.
 
 ## Approvals from Discord, Telegram and Slack
 

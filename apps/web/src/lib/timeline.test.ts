@@ -72,6 +72,24 @@ describe("timelineReducer", () => {
     ]);
   });
 
+  it("lets the saved note about a failed reply replace the live error", () => {
+    const note: MessageDto = {
+      id: "n1",
+      conversationId: CID,
+      role: "system",
+      content: "Captain stopped before finishing: the model refused",
+      author: { kind: "system" },
+      meta: { turnError: true },
+      createdAt: "2026-10-11T00:00:00.000Z",
+    };
+    const s = run([
+      { type: "error", conversationId: CID, message: "the model refused" },
+      { type: "message", conversationId: CID, message: note },
+    ]);
+    expect(s.error).toBeNull();
+    expect(s.items.map((it) => it.kind)).toEqual(["message"]);
+  });
+
   it("ignores events for other conversations", () => {
     const s = run([
       { type: "stream_start", conversationId: "other", streamId: "x", crew: captain },

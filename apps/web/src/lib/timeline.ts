@@ -144,6 +144,10 @@ function applyEvent(state: TimelineState, ev: ServerEvent): TimelineState {
     case "message": {
       const m = ev.message;
       if (state.items.some((it) => it.kind === "message" && it.message.id === m.id)) return state;
+      // A saved note about a failed reply takes over from the error shown live.
+      if (m.meta?.turnError === true) {
+        return { ...state, error: null, errorDetail: null, items: [...state.items, msgItem(m)] };
+      }
       let items = state.items;
       if (m.author.kind === "crew") {
         const slug = m.author.slug;

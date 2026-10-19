@@ -722,6 +722,8 @@ export class Bridge {
     }
     this.emit(user.id, { type: "status", conversationId, busy: true });
     try {
+      // Before the message is saved, so a restart can never leave it without a reply or a note.
+      await this.#markTurn(conversationId, true);
       const userMessage = await this.#store(conv, {
         role: "user",
         content,
@@ -734,7 +736,6 @@ export class Bridge {
         userMessage.id,
       );
       this.emit(user.id, { type: "message", conversationId, message: userMessage });
-      await this.#markTurn(conversationId, true);
       if (!conv.title) {
         const title = content || files.map((f) => f.name).join(", ");
         await this.deps.db
@@ -816,10 +817,9 @@ export class Bridge {
    */
   async recover(): Promise<number> {
     const stuck = await this.deps.db
-      .update(conversations)
-      .set({ turnStartedAt: null })
-      .where(isNotNull(conversations.turnStartedAt))
-      .returning();
+      .select()
+      .from(conversations)
+      .where(isNotNull(conversations.turnStartedAt));
     for (const conv of stuck) {
       const slug = conv.kind === "direct" ? await this.#slugOf(conv.crewMemberId) : CAPTAIN_SLUG;
       const name = (slug && this.#crewName(slug)) ?? "The crew";
@@ -829,6 +829,8 @@ export class Bridge {
         authorName: "Shipmate",
         meta: { turnError: true, restarted: true },
       });
+      // Cleared only once its note is saved, so a failure here is retried on the next start.
+      await this.#markTurn(conv.id, false);
       this.emit(conv.userId, { type: "message", conversationId: conv.id, message: note });
     }
     return stuck.length;

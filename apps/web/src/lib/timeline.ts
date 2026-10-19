@@ -113,7 +113,11 @@ export function timelineReducer(state: TimelineState, action: TimelineAction): T
       // Keep anything live that arrived while loading, minus messages we now have.
       const ids = new Set(action.messages.map((m) => m.id));
       const live = state.items.filter((it) => it.kind !== "message" || !ids.has(it.message.id));
-      return { ...state, items: [...action.messages.map(msgItem), ...live] };
+      const items = [...action.messages.map(msgItem), ...live];
+      // A saved note about a failed reply shows instead of the error banner.
+      return action.messages.at(-1)?.meta?.turnError === true
+        ? { ...state, items, error: null, errorDetail: null }
+        : { ...state, items };
     }
     case "dismissError":
       return { ...state, error: null, errorDetail: null };

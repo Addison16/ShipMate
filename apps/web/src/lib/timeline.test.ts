@@ -90,6 +90,21 @@ describe("timelineReducer", () => {
     expect(s.items.map((it) => it.kind)).toEqual(["message"]);
   });
 
+  it("drops the live error when a reload brings its saved note", () => {
+    const note: MessageDto = {
+      id: "n1",
+      conversationId: CID,
+      role: "system",
+      content: "Captain stopped before finishing: the model refused",
+      author: { kind: "system" },
+      meta: { turnError: true },
+      createdAt: "2026-10-11T00:00:00.000Z",
+    };
+    const s0 = run([{ type: "error", conversationId: CID, message: "the model refused" }]);
+    const s = timelineReducer(s0, { type: "loaded", conversationId: CID, messages: [note] });
+    expect(s.error).toBeNull();
+  });
+
   it("ignores events for other conversations", () => {
     const s = run([
       { type: "stream_start", conversationId: "other", streamId: "x", crew: captain },

@@ -6,6 +6,13 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Chat upkeep**: type your next message while a reply is still coming and it sends itself
+  when the reply is done ("Send when done", or Enter on a computer; Cancel puts it back in the
+  message box). A chat's ⋯ menu has **Save as file** (the whole chat as a Markdown file) and
+  **Archive**, which folds the chat away under "Show archived" at the end of the list; writing
+  in an archived chat brings it back. Long chats open with their newest 100 messages and a
+  "Show earlier messages" button, so they load quickly on a phone. New chats get a tidier name:
+  the greeting and "can you please" are dropped and the name is never cut mid-word.
 - **One-time reminders**: a routine can now run once at a set time ("Once, at a set time" on
   the routine form), then turn itself off. Ask in chat ("remind me in 20 minutes", "remind me
   at 5pm") and the agent sets it up, with your OK as for any routine. A reminder that came due

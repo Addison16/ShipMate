@@ -61,9 +61,10 @@ import {
   watches,
   watchRuns,
 } from "@shipmate/db";
-import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { accessSummary } from "./access-summary.js";
 import { HttpError, type UserRow } from "./auth.js";
+import { chatTitle } from "./chat/title.js";
 import { ClaudeCliTurns, cliModelFromRef, onCrewDefault } from "./claude-cli-turn.js";
 import { CliToolServer } from "./cli-mcp.js";
 import { CodexCliTurns, codexModels } from "./codex-cli-turn.js";
@@ -412,7 +413,12 @@ export class Bridge {
           ))`,
         ),
       )
-      .orderBy(sql`${conversations.pinnedAt} desc nulls last`, desc(conversations.updatedAt));
+      // Archived chats go last; the app shows them folded away.
+      .orderBy(
+        sql`${conversations.archivedAt} is not null`,
+        sql`${conversations.pinnedAt} desc nulls last`,
+        desc(conversations.updatedAt),
+      );
     return rows.map((r) => toConversationDto(r.c, r.slug, r.preview));
   }
 
@@ -529,6 +535,22 @@ export class Bridge {
     const [c] = await this.deps.db
       .update(conversations)
       .set({ pinnedAt: pinned ? new Date() : null })
+      .where(eq(conversations.id, id))
+      .returning();
+    if (!c) throw new HttpError(404, "conversation not found");
+    return toConversationDto(c, await this.#slugOf(c.crewMemberId));
+  }
+
+  async archiveConversation(
+    user: UserRow,
+    id: string,
+    archived: boolean,
+  ): Promise<ConversationDto> {
+    await this.conversation(user, id);
+    const [c] = await this.deps.db
+      .update(conversations)
+      // An archived chat is not pinned: it would sit at the top of a list it has left.
+      .set(archived ? { archivedAt: new Date(), pinnedAt: null } : { archivedAt: null })
       .where(eq(conversations.id, id))
       .returning();
     if (!c) throw new HttpError(404, "conversation not found");
@@ -655,6 +677,54 @@ export class Bridge {
     await this.deps.files.removeFiles(files);
   }
 
+  /**
+   * One page of a conversation, oldest first: the newest `limit` messages, or the `limit` just
+   * before the message `before`. `more` says whether older ones remain.
+   */
+  async messagePage(
+    user: UserRow,
+    id: string,
+    options: { limit: number; before?: string | undefined },
+  ): Promise<{ messages: MessageDto[]; more: boolean }> {
+    await this.conversation(user, id);
+    let cut: Date | undefined;
+    if (options.before) {
+      const [edge] = await this.deps.db
+        .select({ at: messages.createdAt })
+        .from(messages)
+        .where(and(eq(messages.conversationId, id), eq(messages.id, options.before)));
+      if (!edge) throw new HttpError(404, "message not found");
+      cut = edge.at;
+    }
+    const rows = await this.deps.db
+      .select({
+        m: messages,
+        userName: users.displayName,
+        crewSlug: crewMembers.slug,
+        crewName: crewMembers.name,
+      })
+      .from(messages)
+      .leftJoin(users, eq(users.id, messages.userId))
+      .leftJoin(crewMembers, eq(crewMembers.id, messages.crewMemberId))
+      .where(and(eq(messages.conversationId, id), cut ? lt(messages.createdAt, cut) : undefined))
+      .orderBy(desc(messages.createdAt))
+      .limit(options.limit + 1);
+    const more = rows.length > options.limit;
+    return {
+      more,
+      messages: rows
+        .slice(0, options.limit)
+        .reverse()
+        .map((r) =>
+          toMessageDto(r.m, {
+            userName: r.userName,
+            crewSlug: r.crewSlug,
+            crewName: r.crewName,
+          }),
+        ),
+    };
+  }
+
   async messages(user: UserRow, id: string): Promise<MessageDto[]> {
     await this.conversation(user, id);
     const rows = await this.deps.db
@@ -737,10 +807,21 @@ export class Bridge {
       );
       this.emit(user.id, { type: "message", conversationId, message: userMessage });
       if (!conv.title) {
-        const title = content || files.map((f) => f.name).join(", ");
         await this.deps.db
           .update(conversations)
-          .set({ title: title.replace(/\s+/g, " ").slice(0, 60) })
+          .set({
+            title: chatTitle(
+              content,
+              files.map((f) => f.name),
+            ),
+          })
+          .where(eq(conversations.id, conv.id));
+      }
+      // Writing in an archived chat brings it back to the list.
+      if (conv.archivedAt) {
+        await this.deps.db
+          .update(conversations)
+          .set({ archivedAt: null })
           .where(eq(conversations.id, conv.id));
       }
 
@@ -2515,6 +2596,7 @@ function toConversationDto(
     surface: c.surface,
     projectId: c.projectId,
     pinned: c.pinnedAt !== null,
+    archived: c.archivedAt !== null,
     preview,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),

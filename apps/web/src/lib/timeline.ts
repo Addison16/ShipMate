@@ -48,6 +48,8 @@ export interface TimelineState {
 export type TimelineAction =
   | { type: "open"; conversationId: string | null }
   | { type: "loaded"; conversationId: string; messages: MessageDto[] }
+  /** An older page, shown above what is there. */
+  | { type: "earlier"; conversationId: string; messages: MessageDto[] }
   | { type: "event"; event: ServerEvent }
   | { type: "dismissError" };
 
@@ -113,11 +115,25 @@ export function timelineReducer(state: TimelineState, action: TimelineAction): T
       // Keep anything live that arrived while loading, minus messages we now have.
       const ids = new Set(action.messages.map((m) => m.id));
       const live = state.items.filter((it) => it.kind !== "message" || !ids.has(it.message.id));
-      const items = [...action.messages.map(msgItem), ...live];
+      // A reload brings the newest page only; older pages already shown stay above it.
+      const first = action.messages[0]?.createdAt;
+      const older = first
+        ? live.filter((it) => it.kind === "message" && it.message.createdAt < first)
+        : [];
+      const rest = live.filter((it) => !older.includes(it));
+      const items = [...older, ...action.messages.map(msgItem), ...rest];
       // A saved note about a failed reply shows instead of the error banner.
       return action.messages.at(-1)?.meta?.turnError === true
         ? { ...state, items, error: null, errorDetail: null }
         : { ...state, items };
+    }
+    case "earlier": {
+      if (action.conversationId !== state.conversationId) return state;
+      const have = new Set(
+        state.items.flatMap((it) => (it.kind === "message" ? [it.message.id] : [])),
+      );
+      const fresh = action.messages.filter((m) => !have.has(m.id));
+      return { ...state, items: [...fresh.map(msgItem), ...state.items] };
     }
     case "dismissError":
       return { ...state, error: null, errorDetail: null };

@@ -287,3 +287,39 @@ describe("timelineReducer", () => {
     expect(s.items.map((i) => i.key)).toEqual(["m:m1"]);
   });
 });
+
+describe("paged loading", () => {
+  const at = (id: string, createdAt: string): MessageDto => ({
+    id,
+    conversationId: "c",
+    role: "user",
+    content: id,
+    author: { kind: "user", id: "u", name: "U" },
+    meta: null,
+    createdAt,
+  });
+  const ids = (s: ReturnType<typeof timelineReducer>) =>
+    s.items.flatMap((it) => (it.kind === "message" ? [it.message.id] : []));
+
+  it("adds an older page above, and keeps it through a reload of the newest page", () => {
+    let s = timelineReducer(initialTimeline, { type: "open", conversationId: "c" });
+    const newest = [at("m3", "2026-01-03T00:00:00Z"), at("m4", "2026-01-04T00:00:00Z")];
+    s = timelineReducer(s, { type: "loaded", conversationId: "c", messages: newest });
+    s = timelineReducer(s, {
+      type: "earlier",
+      conversationId: "c",
+      messages: [
+        at("m1", "2026-01-01T00:00:00Z"),
+        at("m2", "2026-01-02T00:00:00Z"),
+        newest[0] as MessageDto,
+      ],
+    });
+    expect(ids(s)).toEqual(["m1", "m2", "m3", "m4"]);
+    s = timelineReducer(s, {
+      type: "loaded",
+      conversationId: "c",
+      messages: [...newest, at("m5", "2026-01-05T00:00:00Z")],
+    });
+    expect(ids(s)).toEqual(["m1", "m2", "m3", "m4", "m5"]);
+  });
+});

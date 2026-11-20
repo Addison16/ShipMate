@@ -40,6 +40,7 @@ import {
   IconButton,
 } from "../components/ui.js";
 import { MicButton, speaker, useHandsFree, useVoiceStatus } from "../components/Voice.js";
+import { chatFileName, chatMarkdown, saveTextFile } from "../lib/chat-export.js";
 import { formatTime } from "../lib/format.js";
 import { enterAddsLine } from "../lib/keyboard.js";
 import { dockPets } from "../lib/pets.js";
@@ -123,6 +124,10 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
   const [picking, setPicking] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const search = useConversationSearch();
+  // Archived chats are folded away under the list until asked for.
+  const [showArchived, setShowArchived] = useState(false);
+  const archivedCount = (conversations.data ?? []).filter((c) => c.archived).length;
+  const shown = (conversations.data ?? []).filter((c) => showArchived || !c.archived);
 
   useServerEvents((ev) => {
     if (ev.type === "crew_changed") void crew.reload();
@@ -271,10 +276,13 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
                 </p>
               )}
               <ul className="stagger space-y-0.5">
-                {conversations.data?.map((c, i, all) => (
+                {shown.map((c, i, all) => (
                   <li key={c.id}>
                     {c.pinned && i === 0 && <ListLabel>Pinned</ListLabel>}
-                    {!c.pinned && i > 0 && all[i - 1]?.pinned && <ListLabel>Recent</ListLabel>}
+                    {!c.pinned && !c.archived && i > 0 && all[i - 1]?.pinned && (
+                      <ListLabel>Recent</ListLabel>
+                    )}
+                    {c.archived && !all[i - 1]?.archived && <ListLabel>Archived</ListLabel>}
                     <ConversationRow
                       c={c}
                       title={conversationTitle(c, crewList, crewName, t)}
@@ -297,6 +305,19 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
                   </li>
                 ))}
               </ul>
+              {archivedCount > 0 && (
+                <button
+                  type="button"
+                  aria-expanded={showArchived}
+                  onClick={() => setShowArchived((v) => !v)}
+                  className={cx(
+                    "mt-1 w-full rounded-md px-3 py-2.5 text-left text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
+                    focusRing,
+                  )}
+                >
+                  {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
+                </button>
+              )}
             </div>
           )}
         </aside>
@@ -569,6 +590,13 @@ function Thread({
   const [resetting, setResetting] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  /** Whether older messages remain on the server; null until the first load. */
+  const [more, setMore] = useState<boolean | null>(null);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  /** A message typed while the reply was still coming; it sends itself when the reply ends. */
+  const [queued, setQueued] = useState<string | null>(null);
+  /** The scroll height before older messages were added above, to keep the view in place. */
+  const heightBefore = useRef<number | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const approvals = useApprovals();
@@ -601,8 +629,10 @@ function Thread({
     dispatch({ type: "open", conversationId });
     setLoadError(null);
     try {
-      const { messages } = await api.listMessages(conversationId);
-      dispatch({ type: "loaded", conversationId, messages });
+      const page = await api.listMessages(conversationId, { limit: PAGE_SIZE });
+      dispatch({ type: "loaded", conversationId, messages: page.messages });
+      // Only the first load decides; a reload must not hide a "Show earlier" already in use.
+      setMore((was) => was ?? page.more === true);
       // The crew may still be working (they carry on while the page is closed): catch up.
       socket.send({ type: "watch", conversationId });
     } catch (err) {
@@ -645,6 +675,12 @@ function Thread({
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll whenever the items (or the room left for pets) change
   useLayoutEffect(() => {
     const el = scroller.current;
+    if (el && heightBefore.current !== null) {
+      // Older messages arrived above: stay on the message the person was reading.
+      el.scrollTop += el.scrollHeight - heightBefore.current;
+      heightBefore.current = null;
+      return;
+    }
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   }, [state.items, restoredApprovals.length, pets.length > 0]);
 
@@ -657,6 +693,65 @@ function Thread({
     if (!el) return;
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     setReadingBack(!stick.current);
+  }
+
+  async function showEarlier() {
+    const first = state.items.find((it) => it.kind === "message");
+    if (first?.kind !== "message" || loadingEarlier) return;
+    setLoadingEarlier(true);
+    try {
+      const page = await api.listMessages(conversationId, {
+        limit: PAGE_SIZE,
+        before: first.message.id,
+      });
+      heightBefore.current = scroller.current?.scrollHeight ?? null;
+      stick.current = false;
+      dispatch({ type: "earlier", conversationId, messages: page.messages });
+      setMore(page.more === true);
+    } catch (err) {
+      setLoadError(errorMessage(err));
+    } finally {
+      setLoadingEarlier(false);
+    }
+  }
+
+  // A message that waited for the reply to end goes out as soon as it has.
+  useEffect(() => {
+    if (queued === null || state.busy || socketState !== "open") return;
+    const text = queued;
+    setQueued(null);
+    send(undefined, text);
+  });
+
+  /** Keep what is typed to send once the current reply is done. */
+  function sendNext() {
+    const body = text.trim();
+    if (!body) return;
+    setQueued((was) => (was ? `${was}\n\n${body}` : body));
+    setText("");
+  }
+
+  async function saveAsFile() {
+    try {
+      // The whole chat, not only the pages loaded so far.
+      const { messages } = await api.listMessages(conversationId);
+      saveTextFile(
+        chatFileName(title),
+        chatMarkdown(title, messages, { selfId: user.id, crewName }),
+      );
+    } catch (err) {
+      setSendError(errorMessage(err));
+    }
+  }
+
+  async function toggleArchive() {
+    if (!conversation) return;
+    try {
+      await api.archiveConversation(conversationId, !conversation.archived);
+      onPinned();
+    } catch (err) {
+      setSendError(errorMessage(err));
+    }
   }
 
   /** The crew forget the chat so far; the messages stay, below a divider. */
@@ -706,7 +801,8 @@ function Thread({
     if (enterAddsLine()) return;
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      send();
+      if (state.busy) sendNext();
+      else send();
     }
   }
 
@@ -862,6 +958,16 @@ function Thread({
                         onSelect: () => setRenaming(conversation.title ?? ""),
                       },
                       {
+                        label: "Save as file",
+                        icon: "download",
+                        onSelect: () => void saveAsFile(),
+                      },
+                      {
+                        label: conversation.archived ? "Unarchive" : "Archive",
+                        icon: "backup",
+                        onSelect: () => void toggleArchive(),
+                      },
+                      {
                         label: "Delete",
                         icon: "trash",
                         danger: true,
@@ -887,6 +993,14 @@ function Thread({
                   >
                     <NavIcon name="pencil" size={16} />
                     Rename
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => void saveAsFile()}>
+                    <NavIcon name="download" size={16} />
+                    Save
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => void toggleArchive()}>
+                    <NavIcon name="backup" size={16} />
+                    {conversation.archived ? "Unarchive" : "Archive"}
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => void remove()}>
                     <NavIcon name="trash" size={16} />
@@ -940,6 +1054,13 @@ function Thread({
                 ? `${t(member.role)}. Ask a question, think something through, or hand over a job.`
                 : `Say hello. Ask for anything, and the right ${words.crewMember} picks it up.`}
             </EmptyState>
+          )}
+          {more && state.items.length > 0 && (
+            <div className="mb-4 flex justify-center">
+              <Button size="sm" disabled={loadingEarlier} onClick={() => void showEarlier()}>
+                {loadingEarlier ? "Loading…" : "Show earlier messages"}
+              </Button>
+            </div>
           )}
           <TimelineView
             items={state.items}
@@ -1004,6 +1125,34 @@ function Thread({
               </div>
             )}
             <ErrorText>{sendError}</ErrorText>
+            {queued !== null && (
+              <div className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800/60">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Sends when this reply is done
+                  </p>
+                  <p className="line-clamp-2 break-words whitespace-pre-wrap">{queued}</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    // Back in the message box, so nothing typed is lost.
+                    setText((t) => (t.trim() ? `${queued}\n\n${t}` : queued));
+                    setQueued(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
+            {state.busy && text.trim() !== "" && (
+              <div className="flex justify-end">
+                <Button size="sm" onClick={sendNext}>
+                  Send when done
+                </Button>
+              </div>
+            )}
             <PendingFiles items={files.items} onRemove={files.remove} />
             <div className="flex items-end gap-2">
               <AttachButtons onFiles={files.add} disabled={files.full} />
@@ -1042,7 +1191,7 @@ function Thread({
                 }}
                 placeholder={
                   state.busy
-                    ? `${member ? crewName(member.name) : `The ${words.crew.toLowerCase()}`} is working…`
+                    ? `${member ? crewName(member.name) : `The ${words.crew.toLowerCase()}`} is working… type your next message`
                     : conversation?.kind === "direct" && member
                       ? `Message ${crewName(member.name)}`
                       : `Message the ${words.crew.toLowerCase()}`
@@ -1080,7 +1229,9 @@ function Thread({
             >
               {handsFree
                 ? "Hands-free: tap the mic, speak, tap again to send. Replies are read aloud."
-                : "Enter to send, Shift+Enter for a new line, /new to start fresh."}
+                : state.busy
+                  ? "Enter keeps your message to send when this reply is done."
+                  : "Enter to send, Shift+Enter for a new line, /new to start fresh."}
             </p>
           </div>
         </form>
@@ -1088,6 +1239,9 @@ function Thread({
     </>
   );
 }
+
+/** Messages loaded at a time; older ones come with "Show earlier messages". */
+const PAGE_SIZE = 100;
 
 function ListLabel({ children }: { children: ReactNode }) {
   return (
@@ -1112,7 +1266,7 @@ function withWhom(
 
 type MenuItem = {
   label: string;
-  icon: "pin" | "pencil" | "trash";
+  icon: "pin" | "pencil" | "trash" | "download" | "backup";
   danger?: boolean;
   onSelect: () => void;
 };

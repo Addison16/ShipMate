@@ -234,8 +234,18 @@ export const api = {
       "GET",
       `/api/conversations/search?q=${enc(q)}`,
     ),
-  listMessages: (id: string) =>
-    request<{ messages: MessageDto[] }>("GET", `/api/conversations/${enc(id)}/messages`),
+  archiveConversation: (id: string, archived: boolean) =>
+    request<{ conversation: ConversationDto }>("PATCH", `/api/conversations/${enc(id)}`, {
+      archived,
+    }),
+  /** With `limit`: the newest messages, or those before `before`. Without: the whole chat. */
+  listMessages: (id: string, page?: { limit: number; before?: string }) =>
+    request<{ messages: MessageDto[]; more?: boolean }>(
+      "GET",
+      `/api/conversations/${enc(id)}/messages${
+        page ? `?limit=${page.limit}${page.before ? `&before=${enc(page.before)}` : ""}` : ""
+      }`,
+    ),
 
   // lists
   listLists: () => request<{ lists: ListDto[] }>("GET", "/api/lists"),

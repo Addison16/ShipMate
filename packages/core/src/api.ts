@@ -318,6 +318,8 @@ export interface ConversationDto {
   projectId: string | null;
   /** Pinned conversations come first in the list. */
   pinned: boolean;
+  /** Put away under "Archived" in the list; sending a message in it brings it back. */
+  archived: boolean;
   /** The latest thing said ("You: …" for the person's own words); only in the list. */
   preview: string | null;
   createdAt: string;

@@ -51,6 +51,8 @@ export function describeTrigger(
     }
     case "interval":
       return describeInterval(trigger.everyMinutes);
+    case "once":
+      return `Once, ${formatOnce(trigger.at)}`;
     case "webhook":
       return "On webhook";
     case "after": {
@@ -124,4 +126,22 @@ export function dailyCron(time: string): string | null {
   const min = Number(m[2]);
   if (h > 23 || min > 59) return null;
   return `${min} ${h} * * *`;
+}
+
+/** "Nov 20, 5:00 PM" in the reader's own timezone; the raw text when it is not a date. */
+export function formatOnce(iso: string, locale?: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(locale, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/** A date as the value of a `datetime-local` input ("2026-11-20T17:00"), in local time. */
+export function toLocalInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }

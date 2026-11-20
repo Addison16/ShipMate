@@ -492,7 +492,7 @@ export const pushSubscriptions = pgTable(
     /** "Pixel 9, Chrome", guessed from the browser; the person can tell devices apart. */
     label: text("label").notNull(),
     /** Which notifications this device gets: { approvals, watches, messages }. */
-    events: jsonb("events").$type<Record<string, boolean>>().notNull().default({}),
+    events: jsonb("events").$type<Record<string, unknown>>().notNull().default({}),
     lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
     createdAt: createdAt(),
   },

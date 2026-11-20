@@ -15,12 +15,56 @@ export interface PushEvents {
   messages: boolean;
 }
 
+/** No notifications on a device between two times of day, e.g. 22:00 to 07:00. */
+export interface QuietHours {
+  /** "HH:MM", 24-hour. */
+  from: string;
+  to: string;
+  /** IANA timezone the times are in, e.g. America/Chicago. */
+  timezone: string;
+}
+
+const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+function minutes(hhmm: string): number | null {
+  const m = HHMM.exec(hhmm);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+/** Whether `now` falls inside the quiet hours. A span may cross midnight (22:00 to 07:00). */
+export function inQuietHours(
+  quiet: QuietHours | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!quiet) return false;
+  const from = minutes(quiet.from);
+  const to = minutes(quiet.to);
+  if (from === null || to === null || from === to) return false;
+  let local: string;
+  try {
+    local = new Intl.DateTimeFormat("en-GB", {
+      timeZone: quiet.timezone || "UTC",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(now);
+  } catch {
+    // An unknown timezone: better a notification at night than none at all.
+    return false;
+  }
+  const at = minutes(local);
+  if (at === null) return false;
+  return from < to ? at >= from && at < to : at >= from || at < to;
+}
+
 export interface PushDeviceDto {
   id: string;
   /** The push service URL; the web app matches it to its own subscription. */
   endpoint: string;
   label: string;
   events: PushEvents;
+  /** Quiet hours on this device; null when notifications come at any hour. */
+  quiet: QuietHours | null;
   lastSentAt: string | null;
   createdAt: string;
 }
@@ -34,7 +78,7 @@ export interface PushStatusDto {
 
 /**
  * POST /api/push/devices → { device } (subscribe this browser; same endpoint updates it)
- * PATCH /api/push/devices/:id { events } → { device }
+ * PATCH /api/push/devices/:id { events?, quiet? } → { device } (quiet: null turns it off)
  * DELETE /api/push/devices/:id → { ok: true }
  * POST /api/push/test → { sent, failed, removed } (a test notification to every device)
  * POST /api/push/act/approvals/:id { token, decision: "allow" | "deny" } → { ok: true }

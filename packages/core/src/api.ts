@@ -552,6 +552,8 @@ export interface AuditEventDto {
 export type WatchTrigger =
   | { kind: "cron"; expression: string; timezone?: string }
   | { kind: "interval"; everyMinutes: number }
+  /** One time only, at `at` (an ISO date-time). The watch turns itself off after it runs. */
+  | { kind: "once"; at: string }
   | { kind: "webhook" }
   | { kind: "after"; routineId: string }
   /**

@@ -5,10 +5,11 @@ import type {
   PushEvents,
   PushPayload,
   PushStatusDto,
+  QuietHours,
   ServerEvent,
   ThemeWordMap,
 } from "@shipmate/core";
-import { STOCK_CAPTAIN_NAME, singular } from "@shipmate/core";
+import { inQuietHours, STOCK_CAPTAIN_NAME, singular } from "@shipmate/core";
 import { conversations, type Db, pushSubscriptions, secrets } from "@shipmate/db";
 import type { SecretVault } from "@shipmate/providers";
 import { and, eq } from "drizzle-orm";
@@ -45,6 +46,8 @@ export interface PushServiceOptions {
   extraHosts?: string[];
   /** Stand-in for the push services (tests). */
   fetch?: PushFetch;
+  /** The clock, for quiet hours (tests). */
+  now?: () => Date;
   /** The app's words as a person sees them, so notifications match their theme. */
   wordsFor?: (userId: string) => Promise<ThemeWordMap>;
 }
@@ -105,13 +108,21 @@ export class PushService {
     if (p256dh.length !== 65 || p256dh[0] !== 4 || auth.length < 16) {
       throw new HttpError(400, "that subscription's keys are not valid");
     }
+    // A browser that subscribes again (a new push key) keeps its own quiet hours.
+    const [before] = await this.options.db
+      .select()
+      .from(pushSubscriptions)
+      .where(
+        and(eq(pushSubscriptions.endpoint, input.endpoint), eq(pushSubscriptions.userId, userId)),
+      );
+    const quiet = before ? readQuiet(before.events) : null;
     const values = {
       userId,
       endpoint: input.endpoint,
       p256dh: input.p256dh,
       auth: input.auth,
       label: input.label.trim().slice(0, 80) || "This device",
-      events: { ...DEFAULT_PUSH_EVENTS, ...input.events },
+      events: { ...DEFAULT_PUSH_EVENTS, ...input.events, ...(quiet ? { quiet } : {}) },
     };
     // The same browser signing in as someone else takes the subscription over.
     const [row] = await this.options.db
@@ -123,11 +134,24 @@ export class PushService {
     return toDeviceDto(row);
   }
 
-  async update(userId: string, id: string, events: Partial<PushEvents>): Promise<PushDeviceDto> {
+  async update(
+    userId: string,
+    id: string,
+    events: Partial<PushEvents>,
+    quiet?: QuietHours | null,
+  ): Promise<PushDeviceDto> {
     const row = await this.#own(userId, id);
+    // Quiet hours are stored beside the event choices.
+    const nextQuiet = quiet === undefined ? readQuiet(row.events) : quiet;
     const [updated] = await this.options.db
       .update(pushSubscriptions)
-      .set({ events: { ...readEvents(row.events), ...events } })
+      .set({
+        events: {
+          ...readEvents(row.events),
+          ...events,
+          ...(nextQuiet ? { quiet: nextQuiet } : {}),
+        },
+      })
       .where(eq(pushSubscriptions.id, id))
       .returning();
     if (!updated) throw new HttpError(404, "device not found");
@@ -310,7 +334,12 @@ export class PushService {
       .select()
       .from(pushSubscriptions)
       .where(eq(pushSubscriptions.userId, userId));
-    const targets = rows.filter((r) => kind === null || readEvents(r.events)[kind]);
+    const now = this.options.now?.() ?? new Date();
+    // A test always arrives; everything else respects the device's choices and quiet hours.
+    const targets = rows.filter(
+      (r) =>
+        kind === null || (readEvents(r.events)[kind] && !inQuietHours(readQuiet(r.events), now)),
+    );
     const result = { sent: 0, failed: 0, removed: 0 };
     if (!targets.length) return result;
     const keys = await this.keys();
@@ -397,12 +426,19 @@ function readEvents(value: unknown): PushEvents {
   };
 }
 
+function readQuiet(value: unknown): QuietHours | null {
+  const q = (value as { quiet?: unknown } | null)?.quiet as Partial<QuietHours> | undefined;
+  if (!q || typeof q.from !== "string" || typeof q.to !== "string") return null;
+  return { from: q.from, to: q.to, timezone: typeof q.timezone === "string" ? q.timezone : "" };
+}
+
 function toDeviceDto(r: Row): PushDeviceDto {
   return {
     id: r.id,
     endpoint: r.endpoint,
     label: r.label,
     events: readEvents(r.events),
+    quiet: readQuiet(r.events),
     lastSentAt: r.lastSentAt?.toISOString() ?? null,
     createdAt: r.createdAt.toISOString(),
   };

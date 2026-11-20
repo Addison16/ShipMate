@@ -983,16 +983,26 @@ export class Bridge {
       },
       createWatch: async (spec) => {
         if (!this.#watches) throw new Error("watches are not available");
-        const trigger = spec.cron
-          ? {
-              kind: "cron" as const,
-              expression: spec.cron,
-              ...(spec.timezone ? { timezone: spec.timezone } : {}),
-            }
-          : {
-              kind: "interval" as const,
-              everyMinutes: Math.max(1, Math.round(spec.everyMinutes ?? 60)),
-            };
+        const onceAt = spec.inMinutes
+          ? new Date(Date.now() + Math.max(1, spec.inMinutes) * 60_000)
+          : spec.at
+            ? new Date(spec.at)
+            : null;
+        if (onceAt && Number.isNaN(onceAt.getTime())) {
+          throw new Error("`at` must be an ISO date-time such as 2026-11-20T17:00:00-06:00");
+        }
+        const trigger = onceAt
+          ? { kind: "once" as const, at: onceAt.toISOString() }
+          : spec.cron
+            ? {
+                kind: "cron" as const,
+                expression: spec.cron,
+                ...(spec.timezone ? { timezone: spec.timezone } : {}),
+              }
+            : {
+                kind: "interval" as const,
+                everyMinutes: Math.max(1, Math.round(spec.everyMinutes ?? 60)),
+              };
         const w = await this.#watches.create(user, {
           name: spec.name,
           crewSlug: spec.crew,
@@ -1990,7 +2000,7 @@ export class Bridge {
       "# Shipmate",
       "",
       `You are ${folder.manifest.name}, a crew member of a self-hosted Shipmate instance shared by several people.`,
-      `You are talking with ${user.displayName} (${user.role}). Today is ${new Date().toISOString().slice(0, 10)}.`,
+      `You are talking with ${user.displayName} (${user.role}). Today is ${new Date().toISOString().slice(0, 10)} (now ${new Date().toISOString().slice(11, 16)} UTC).`,
       "Use `remember` for durable facts worth keeping, `recall` to read a memory in full, and `forget` for facts that are no longer true. Keep one person's private memory away from everyone else.",
       "",
       memory.contextFor(user.id),

@@ -75,6 +75,24 @@ export class LoginLimiter {
     }
   }
 
+  readonly #queues = new Map<string, Promise<unknown>>();
+
+  /**
+   * Run sign-in checks from one address one at a time, so a burst of requests sent together
+   * cannot all pass the wait check before any of them is counted as wrong.
+   */
+  async inTurn<T>(address: string, run: () => Promise<T>): Promise<T> {
+    const before = this.#queues.get(address) ?? Promise.resolve();
+    const mine = before.then(run, run);
+    const tail = mine.catch(() => {});
+    this.#queues.set(address, tail);
+    try {
+      return await mine;
+    } finally {
+      if (this.#queues.get(address) === tail) this.#queues.delete(address);
+    }
+  }
+
   /** A right password forgives the wrong tries for that email from that address. */
   succeeded(email: string, address: string): void {
     this.#entries.delete(`e:${address}:${email.toLowerCase()}`);

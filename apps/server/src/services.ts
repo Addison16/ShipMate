@@ -265,6 +265,12 @@ export async function createServices(
       databaseUrl: config.DATABASE_URL,
       // The container's restart policy brings Shipmate back up on the restored data.
       restart: options.restart ?? (() => process.exit(0)),
+      quiesce: async () => {
+        await watches.stop();
+        shipyard.jobs.stop();
+        await Promise.all([discord.stop(), telegram.stop(), slack.stop()]);
+        await bridge?.close();
+      },
     },
   );
   const health = new HealthService(

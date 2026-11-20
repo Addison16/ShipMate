@@ -56,4 +56,25 @@ describe("waitWords", () => {
     expect(waitWords(60)).toBe("1 minute");
     expect(waitWords(61)).toBe("2 minutes");
   });
+  it("counts tries sent together one at a time", async () => {
+    const limiter = new LoginLimiter();
+    const attempt = () =>
+      limiter.inTurn("1.2.3.4", async () => {
+        if (limiter.waitSeconds("a@example.com", "1.2.3.4") > 0) return "blocked";
+        await new Promise((r) => setTimeout(r, 5));
+        limiter.failed("a@example.com", "1.2.3.4");
+        return "wrong";
+      });
+    const results = await Promise.all(Array.from({ length: 12 }, attempt));
+    expect(results.filter((r) => r === "wrong")).toHaveLength(5);
+    expect(results.filter((r) => r === "blocked")).toHaveLength(7);
+    // A failing check does not stop the ones queued behind it.
+    const mixed = await Promise.allSettled([
+      limiter.inTurn("9.9.9.9", async () => {
+        throw new Error("boom");
+      }),
+      limiter.inTurn("9.9.9.9", async () => "ok"),
+    ]);
+    expect(mixed.map((m) => m.status)).toEqual(["rejected", "fulfilled"]);
+  });
 });

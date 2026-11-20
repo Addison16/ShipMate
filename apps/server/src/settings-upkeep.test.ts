@@ -103,8 +103,12 @@ describe.skipIf(!db)("restore from Settings and memory editing", () => {
       .json()
       .backups.map((b: { name: string }) => b.name);
     expect(names).toEqual(expect.arrayContaining([backup.name, safety]));
-    // A second restore is refused while the restart is pending.
-    expect((await api("POST", restoreUrl, { confirm: "RESTORE" })).statusCode).toBe(409);
+    // Nothing may change while the restart is pending: no second restore, no new chat.
+    expect((await api("POST", restoreUrl, { confirm: "RESTORE" })).statusCode).toBe(503);
+    expect((await api("POST", "/api/conversations", {})).statusCode).toBe(503);
+    // The restore is in the audit log of the restored data.
+    const audit = (await api("GET", "/api/audit")).json();
+    expect(JSON.stringify(audit)).toContain("backup.restore");
     await new Promise((r) => setTimeout(r, 1700));
     expect(restarts).toBe(1);
   });

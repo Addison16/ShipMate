@@ -177,6 +177,10 @@ export async function buildApp(
 
   app.addHook("onRequest", async (req) => {
     const path = req.url.split("?")[0] ?? "";
+    // While a backup is being restored nothing may change; the page waits for the restart.
+    if (path.startsWith("/api/") && req.method !== "GET" && services.backups.restoring) {
+      throw new HttpError(503, "Shipmate is restoring a backup. It will be back in a moment.");
+    }
     if (!path.startsWith("/api/") || PUBLIC.has(path)) return;
     if (PUBLIC_PREFIXES.some((p) => path.startsWith(p))) return;
     const user = await services.sessions.user(req);
@@ -256,6 +260,10 @@ export async function buildApp(
         event = ClientEventSchema.parse(JSON.parse(raw.toString()));
       } catch {
         send({ type: "error", message: "unrecognized message" });
+        return;
+      }
+      if (services.backups.restoring) {
+        send({ type: "error", message: "Shipmate is restoring a backup. Try again in a moment." });
         return;
       }
       void handle(event).catch((err: Error) =>

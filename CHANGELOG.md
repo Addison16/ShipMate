@@ -10,6 +10,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   button (owner only). You type RESTORE to confirm, Shipmate first saves a backup of how
   things are now, puts the chosen backup back, then restarts and reloads the page. It relies
   on the container restarting itself, which the compose file and Unraid template already do.
+  While a restore runs, chats, routines and chat apps are stopped and changes are refused, so
+  nothing from before is written on top of the restored data.
+- **Fixes**: sign-in tries sent at the same moment are now counted one at a time, so a burst
+  cannot get past the wrong-password limit. "Remind me in 0 minutes" sets a one-time reminder
+  instead of an hourly routine.
 - **Add and change what an agent remembers**: the memory list on an agent's page has Add and
   Edit, so you can write a note yourself or fix one the agent got wrong. Shared notes need an
   admin.

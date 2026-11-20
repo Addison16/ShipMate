@@ -43,6 +43,8 @@ export class BackupService {
       databaseUrl: string;
       /** Ends the process so the container starts Shipmate again on the restored data. */
       restart: () => void;
+      /** Stop everything that writes (chats, routines, chat apps) before the data is replaced. */
+      quiesce?: () => Promise<void>;
     },
   ) {}
 
@@ -175,37 +177,45 @@ export class BackupService {
   async restore(name: string, userId: string): Promise<{ safety: BackupDto }> {
     if (!this.restorer) throw new HttpError(400, "restoring is not available on this install");
     if (this.#restoring) throw new HttpError(409, "a restore is already running");
-    const { path } = await this.file(name);
-    let manifest: Awaited<ReturnType<typeof readBackupManifest>>;
-    try {
-      manifest = await readBackupManifest(path);
-    } catch {
-      throw new HttpError(400, "that file is not a Shipmate backup");
-    }
-    const build = buildMigrationLevel();
-    if (manifest.migrations.count > build.count) {
-      throw new HttpError(
-        400,
-        `This backup was made by a newer Shipmate (${manifest.shipmateVersion}). Update Shipmate first, then restore.`,
-      );
-    }
+    // Taken before the first wait, so two requests arriving together cannot both get in.
     this.#restoring = true;
     try {
+      const { path } = await this.file(name);
+      let manifest: Awaited<ReturnType<typeof readBackupManifest>>;
+      try {
+        manifest = await readBackupManifest(path);
+      } catch {
+        throw new HttpError(400, "that file is not a Shipmate backup");
+      }
+      const build = buildMigrationLevel();
+      if (manifest.migrations.count > build.count) {
+        throw new HttpError(
+          400,
+          `This backup was made by a newer Shipmate (${manifest.shipmateVersion}). Update Shipmate first, then restore.`,
+        );
+      }
       const safety = await this.run("manual", userId);
-      await this.audit.record({
-        userId,
-        crewMemberId: null,
-        action: "backup.restore",
-        summary: `Restoring ${name} (kept ${safety.name} first)`,
-        decision: null,
-        detail: { name, safety: safety.name },
-      });
+      // Chats, routines and chat apps stop here and stay stopped until the restart, so nothing
+      // from before the restore is written on top of the restored data.
+      await this.restorer.quiesce?.();
       await restoreBackup({
         url: this.restorer.databaseUrl,
         dataDir: this.dataDir,
         file: path,
         keep: [this.dir],
       });
+      // Written after the restore so it survives it; the person may not exist in the backup.
+      const event = {
+        crewMemberId: null,
+        action: "backup.restore",
+        summary: `Restored ${name} (kept ${safety.name} first)`,
+        decision: null,
+        detail: { name, safety: safety.name },
+      };
+      await this.audit
+        .record({ ...event, userId })
+        .catch(() => this.audit.record({ ...event, userId: null }))
+        .catch(() => {});
       // After the reply has gone out.
       setTimeout(() => this.restorer?.restart(), 1500).unref?.();
       return { safety };
@@ -213,6 +223,11 @@ export class BackupService {
       this.#restoring = false;
       throw err;
     }
+  }
+
+  /** True from the start of a restore until Shipmate restarts; changes are refused meanwhile. */
+  get restoring(): boolean {
+    return this.#restoring;
   }
 
   // ---------- schedule ----------

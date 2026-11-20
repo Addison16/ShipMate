@@ -210,6 +210,27 @@ describe.skipIf(!db)("push notifications", () => {
       url: `/#/bridge/${conv.id}`,
     });
 
+    // Quiet hours around now: nothing is sent, and the setting is kept on the device.
+    const hhmm = (ms: number) => new Date(Date.now() + ms).toISOString().slice(11, 16);
+    const quiet = { from: hhmm(-3_600_000), to: hhmm(3_600_000), timezone: "UTC" };
+    const hushed = await api("PATCH", `/api/push/devices/${device.id}`, { quiet });
+    expect(hushed.json().device.quiet).toEqual(quiet);
+    push.received.length = 0;
+    await send("quiet");
+    await new Promise((r) => setTimeout(r, 100));
+    expect(push.received).toEqual([]);
+    // A test notification still arrives.
+    expect((await api("POST", "/api/push/test")).json().sent).toBe(1);
+    expect(
+      (
+        await api("PATCH", `/api/push/devices/${device.id}`, {
+          quiet: { ...quiet, to: quiet.from },
+        })
+      ).statusCode,
+    ).toBe(400);
+    const loud = await api("PATCH", `/api/push/devices/${device.id}`, { quiet: null });
+    expect(loud.json().device.quiet).toBeNull();
+
     // This device opted out of crew replies.
     const patched = await api("PATCH", `/api/push/devices/${device.id}`, {
       events: { messages: false },

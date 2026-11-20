@@ -51,6 +51,7 @@ import {
   GITHUB_EVENTS,
   RUN_STATUS_LABEL,
   runTone,
+  toLocalInput,
 } from "../lib/watches.js";
 import { href, navigate } from "../router.js";
 import { useServerEvents } from "../ws.js";
@@ -472,6 +473,8 @@ interface FormState {
   expression: string;
   timezone: string;
   everyMinutes: string;
+  /** A one-time run, as a `datetime-local` value in this browser's timezone. */
+  onceAt: string;
   afterId: string;
   projectId: string;
   events: GitHubWatchEvent[];
@@ -494,6 +497,7 @@ function toForm(w: WatchDto | null, crew: CrewDto[]): FormState {
         ? (t.timezone ?? "")
         : (Intl.DateTimeFormat().resolvedOptions().timeZone ?? ""),
     everyMinutes: t?.kind === "interval" ? String(t.everyMinutes) : "30",
+    onceAt: toLocalInput(t?.kind === "once" ? new Date(t.at) : new Date(Date.now() + 3_600_000)),
     afterId: t?.kind === "after" ? t.routineId : "",
     projectId: t?.kind === "github" ? t.projectId : "",
     events: t?.kind === "github" ? t.events : ["issues.opened"],
@@ -516,6 +520,11 @@ function toTrigger(f: FormState): WatchTrigger | string {
       const n = Number.parseInt(f.everyMinutes, 10);
       if (!Number.isFinite(n) || n < 1) return "The interval must be at least 1 minute.";
       return { kind: "interval", everyMinutes: n };
+    }
+    case "once": {
+      const at = new Date(f.onceAt);
+      if (Number.isNaN(at.getTime())) return "Pick a date and time.";
+      return { kind: "once", at: at.toISOString() };
     }
     case "webhook":
       return { kind: "webhook" };
@@ -684,6 +693,7 @@ function WatchForm({
           value={f.kind}
           onChange={(e) => set("kind", e.target.value as TriggerKind)}
         >
+          <option value="once">Once, at a set time</option>
           <option value="cron">On a schedule (cron)</option>
           <option value="interval">Every few minutes</option>
           <option value="webhook">When a webhook is called</option>
@@ -731,6 +741,16 @@ function WatchForm({
               ))}
             </div>
           </>
+        )}
+        {f.kind === "once" && (
+          <TextField
+            label="When"
+            type="datetime-local"
+            required
+            hint="Runs one time, then turns itself off."
+            value={f.onceAt}
+            onChange={(e) => set("onceAt", e.target.value)}
+          />
         )}
         {f.kind === "interval" && (
           <TextField

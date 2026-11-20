@@ -26,6 +26,11 @@ import { eventText, githubEventKeys } from "../shipyard/webhook.js";
 import type { AuditService } from "./audit.js";
 import type { CrewService } from "./crew.js";
 
+/** The longest a timer can wait (2^31 - 1 ms, about 24 days). */
+const MAX_TIMER_MS = 2_147_483_647;
+/** A one-time watch that came due this long ago or less still runs after a restart. */
+const ONCE_GRACE_MS = 12 * 3_600_000;
+
 type WatchRow = typeof watches.$inferSelect;
 type RunRow = typeof watchRuns.$inferSelect;
 
@@ -43,6 +48,7 @@ export const WatchTriggerSchema = z.discriminatedUnion("kind", [
       .min(1)
       .max(60 * 24 * 31),
   }),
+  z.object({ kind: z.literal("once"), at: z.string().datetime({ offset: true }) }),
   z.object({ kind: z.literal("webhook") }),
   z.object({ kind: z.literal("after"), routineId: z.string().uuid() }),
   z.object({
@@ -161,7 +167,43 @@ export class WatchService {
       }, ms);
       timer.unref?.();
       this.#jobs.set(w.id, { stop: () => clearInterval(timer), next: () => next });
+    } else if (trigger.kind === "once") {
+      const at = new Date(trigger.at);
+      if (Number.isNaN(at.getTime())) return;
+      let timer: ReturnType<typeof setTimeout>;
+      const arm = () => {
+        const wait = at.getTime() - Date.now();
+        // A reminder that came due while Shipmate was off still runs, unless it is long past.
+        if (wait < -ONCE_GRACE_MS) {
+          void this.#finishOnce(w.id);
+          return;
+        }
+        // Timers cannot wait longer than about 24 days, so a far-off time is reached in steps.
+        timer = setTimeout(
+          () => {
+            if (at.getTime() - Date.now() > 0) arm();
+            else {
+              // Turned off first, so a restart mid-run cannot run it a second time.
+              void this.#finishOnce(w.id).then(fire);
+            }
+          },
+          Math.min(Math.max(wait, 0), MAX_TIMER_MS),
+        );
+        timer.unref?.();
+      };
+      arm();
+      this.#jobs.set(w.id, { stop: () => clearTimeout(timer), next: () => at });
     }
+  }
+
+  /** A one-time watch has had its turn: turn it off, so it shows as done and never repeats. */
+  async #finishOnce(id: string) {
+    this.#jobs.delete(id);
+    await this.db
+      .update(watches)
+      .set({ enabled: false })
+      .where(eq(watches.id, id))
+      .catch(() => {});
   }
 
   // ---------- CRUD ----------
@@ -440,6 +482,9 @@ export class WatchService {
       } catch (err) {
         throw new HttpError(400, `cron: ${(err as Error).message}`);
       }
+    }
+    if (trigger.kind === "once" && new Date(trigger.at).getTime() <= Date.now() && !selfId) {
+      throw new HttpError(400, "pick a time that is still ahead");
     }
     if (trigger.kind === "github") {
       const [p] = await this.db.select().from(projects).where(eq(projects.id, trigger.projectId));

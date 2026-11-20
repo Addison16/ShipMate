@@ -135,6 +135,10 @@ export interface WatchSpec {
   cron?: string | undefined;
   timezone?: string | undefined;
   everyMinutes?: number | undefined;
+  /** One time only: an ISO date-time with its offset, e.g. 2026-11-20T17:00:00-06:00. */
+  at?: string | undefined;
+  /** One time only: this many minutes from now. */
+  inMinutes?: number | undefined;
 }
 
 /** What the create_skill tool needs: where the skill goes and whether it waits for review. */
@@ -466,7 +470,7 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
       name: "create_watch",
       label: "Create watch",
       description:
-        "Schedule a watch: a crew member runs a prompt on a cron schedule or every N minutes, for the person you are talking with. The person approves this before it is created.",
+        'Schedule a watch: a crew member runs a prompt on a cron schedule, every N minutes, or one time only (a reminder), for the person you are talking with. For a reminder like "remind me in 20 minutes" give inMinutes; for "remind me at 5pm" give at. Give exactly one of cron, everyMinutes, at, inMinutes. The person approves this before it is created.',
       parameters: Type.Object({
         name: Type.String(),
         crew: Type.String({ description: "slug of the crew member who runs it" }),
@@ -476,11 +480,29 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
           Type.String({ description: "IANA timezone, e.g. America/Chicago" }),
         ),
         everyMinutes: Type.Optional(Type.Number({ description: "instead of cron" })),
+        at: Type.Optional(
+          Type.String({
+            description:
+              "one time only, at this moment: ISO date-time with the offset, e.g. 2026-11-20T17:00:00-06:00",
+          }),
+        ),
+        inMinutes: Type.Optional(
+          Type.Number({ description: "one time only, this many minutes from now" }),
+        ),
       }),
       async execute(_id, p) {
-        if (!p.cron && !p.everyMinutes) throw new Error("give either cron or everyMinutes");
+        const given = [p.cron, p.everyMinutes, p.at, p.inMinutes].filter(
+          (v) => v !== undefined && v !== "",
+        );
+        if (given.length !== 1) {
+          throw new Error("give exactly one of cron, everyMinutes, at, inMinutes");
+        }
         const w = await host.createWatch(p);
-        return text(`Created watch "${w.name}". It shows on the Watches page.`);
+        return text(
+          p.at || p.inMinutes
+            ? `Set the reminder "${w.name}". It runs once and shows on the Watches page.`
+            : `Created watch "${w.name}". It shows on the Watches page.`,
+        );
       },
     }),
     defineTool({

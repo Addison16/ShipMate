@@ -7,6 +7,7 @@ import {
   describeTrigger,
   formatDuration,
   GITHUB_EVENTS,
+  toLocalInput,
 } from "./watches.js";
 
 function watch(id: string, trigger: WatchTrigger): WatchDto {
@@ -103,5 +104,19 @@ describe("GitHub triggers", () => {
       "When commits are pushed (a Shipyard project)",
     );
     expect(GITHUB_EVENTS).toContain("pull_request.merged");
+  });
+});
+
+describe("one-time watches", () => {
+  it("describes a one-time trigger with its date", () => {
+    const text = describeTrigger({ kind: "once", at: "2026-11-20T17:00:00Z" });
+    expect(text).toMatch(/^Once, /);
+    expect(text).toMatch(/Nov/);
+  });
+
+  it("round-trips a local date through the form value", () => {
+    const d = new Date(2026, 10, 20, 17, 5);
+    expect(toLocalInput(d)).toBe("2026-11-20T17:05");
+    expect(new Date(toLocalInput(d)).getTime()).toBe(d.getTime());
   });
 });

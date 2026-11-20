@@ -8,6 +8,7 @@ export const RoutineTrigger = z.discriminatedUnion("kind", [
     timezone: z.string().optional(),
   }),
   z.object({ kind: z.literal("interval"), everyMinutes: z.number().int().positive() }),
+  z.object({ kind: z.literal("once"), at: z.string().datetime({ offset: true }) }),
   z.object({ kind: z.literal("webhook") }),
   z.object({ kind: z.literal("github"), events: z.array(z.string().min(1)).min(1) }),
   z.object({ kind: z.literal("after"), routineId: z.string().min(1) }),

@@ -2,6 +2,7 @@ import type {
   PushDeviceDto,
   PushEvents,
   PushStatusDto,
+  QuietHours,
   SubscribePushRequest,
 } from "@shipmate/core";
 import { request } from "../api.js";
@@ -12,8 +13,11 @@ export const pushApi = {
   status: () => request<PushStatusDto>("GET", "/api/push"),
   subscribe: (body: SubscribePushRequest) =>
     request<{ device: PushDeviceDto }>("POST", "/api/push/devices", body),
-  update: (id: string, events: Partial<PushEvents>) =>
-    request<{ device: PushDeviceDto }>("PATCH", `/api/push/devices/${enc(id)}`, { events }),
+  update: (id: string, events: Partial<PushEvents>, quiet?: QuietHours | null) =>
+    request<{ device: PushDeviceDto }>("PATCH", `/api/push/devices/${enc(id)}`, {
+      events,
+      ...(quiet !== undefined ? { quiet } : {}),
+    }),
   remove: (id: string) => request<{ ok: true }>("DELETE", `/api/push/devices/${enc(id)}`),
   test: () => request<{ sent: number; failed: number; removed: number }>("POST", "/api/push/test"),
 };

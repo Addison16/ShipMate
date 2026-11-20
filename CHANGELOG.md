@@ -6,6 +6,12 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **One-time reminders**: a routine can now run once at a set time ("Once, at a set time" on
+  the routine form), then turn itself off. Ask in chat ("remind me in 20 minutes", "remind me
+  at 5pm") and the agent sets it up, with your OK as for any routine. A reminder that came due
+  while Shipmate was off still runs when it starts, if it is less than 12 hours late.
+- **Quiet hours**: each device under Settings → Notifications has a "Quiet hours" checkbox with
+  two times. Nothing is sent to that device between them; it is all still in the app.
 - **Safer sign-in**: after five wrong passwords for an account from one address, sign-in for
   it pauses for 15 minutes (and after 30 wrong tries from one address, for any account). The
   pause is noted in the audit log. Settings → Profile and account has a new "Signed-in devices"

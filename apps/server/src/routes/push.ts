@@ -10,6 +10,11 @@ const Events = z
   .partial()
   .strict();
 
+const Time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "use a time like 22:00");
+const Quiet = z
+  .object({ from: Time, to: Time, timezone: z.string().max(64).default("") })
+  .refine((q) => q.from !== q.to, "pick two different times");
+
 const base64url = z
   .string()
   .max(200)
@@ -38,8 +43,12 @@ export async function pushRoutes(app: FastifyInstance, s: Services) {
   });
 
   app.patch<{ Params: { id: string } }>("/api/push/devices/:id", async (req) => {
-    const { events } = z.object({ events: Events }).parse(req.body);
-    return { device: await s.push.update(req.user.id, uuid(req.params.id), defined(events)) };
+    const { events, quiet } = z
+      .object({ events: Events.default({}), quiet: Quiet.nullable().optional() })
+      .parse(req.body);
+    return {
+      device: await s.push.update(req.user.id, uuid(req.params.id), defined(events), quiet),
+    };
   });
 
   app.delete<{ Params: { id: string } }>("/api/push/devices/:id", async (req) => {

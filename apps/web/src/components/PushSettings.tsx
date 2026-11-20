@@ -1,4 +1,4 @@
-import type { PushDeviceDto, PushEvents } from "@shipmate/core";
+import type { PushDeviceDto, PushEvents, QuietHours } from "@shipmate/core";
 import { useCallback, useEffect, useState } from "react";
 import { errorMessage } from "../api.js";
 import { formatTime } from "../lib/format.js";
@@ -104,6 +104,21 @@ export function PushSettings() {
     }
   }
 
+  async function setQuiet(device: PushDeviceDto, quiet: QuietHours | null) {
+    setError(null);
+    try {
+      const { device: updated } = await pushApi.update(device.id, {}, quiet);
+      if (status.data) {
+        status.setData({
+          ...status.data,
+          devices: status.data.devices.map((d) => (d.id === updated.id ? updated : d)),
+        });
+      }
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
   async function toggle(device: PushDeviceDto, key: keyof PushEvents, on: boolean) {
     setError(null);
     try {
@@ -161,7 +176,13 @@ export function PushSettings() {
       {support === "ok" && (
         <div className="space-y-3">
           {here ? (
-            <DeviceRow device={here} current onToggle={toggle} onRemove={remove} />
+            <DeviceRow
+              device={here}
+              current
+              onToggle={toggle}
+              onQuiet={setQuiet}
+              onRemove={remove}
+            />
           ) : (
             <div className="flex flex-wrap items-center gap-3">
               <Button
@@ -181,7 +202,13 @@ export function PushSettings() {
         <div className="mt-5 space-y-3">
           <h3 className="text-sm font-medium">Your other devices</h3>
           {others.map((d) => (
-            <DeviceRow key={d.id} device={d} onToggle={toggle} onRemove={remove} />
+            <DeviceRow
+              key={d.id}
+              device={d}
+              onToggle={toggle}
+              onQuiet={setQuiet}
+              onRemove={remove}
+            />
           ))}
         </div>
       )}
@@ -201,11 +228,13 @@ function DeviceRow({
   device,
   current,
   onToggle,
+  onQuiet,
   onRemove,
 }: {
   device: PushDeviceDto;
   current?: boolean;
   onToggle: (d: PushDeviceDto, key: keyof PushEvents, on: boolean) => Promise<void>;
+  onQuiet: (d: PushDeviceDto, quiet: QuietHours | null) => Promise<void>;
   onRemove: (d: PushDeviceDto) => Promise<void>;
 }) {
   return (
@@ -239,6 +268,68 @@ function DeviceRow({
           </label>
         ))}
       </fieldset>
+      <QuietHoursRow device={device} onQuiet={onQuiet} />
+    </div>
+  );
+}
+
+/** No notifications between two times of day, in this browser's timezone. */
+function QuietHoursRow({
+  device,
+  onQuiet,
+}: {
+  device: PushDeviceDto;
+  onQuiet: (d: PushDeviceDto, quiet: QuietHours | null) => Promise<void>;
+}) {
+  const quiet = device.quiet;
+  const timezone = quiet?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const set = (patch: Partial<QuietHours>) => {
+    const next = { from: quiet?.from ?? "22:00", to: quiet?.to ?? "07:00", timezone, ...patch };
+    // The server refuses equal times; wait for the second one to change.
+    if (next.from && next.to && next.from !== next.to) void onQuiet(device, next);
+  };
+  const time =
+    "h-9 rounded-md border border-control bg-white px-2 text-sm dark:bg-slate-950 disabled:opacity-50";
+  return (
+    <div className="mt-3 border-t border-slate-200 pt-3 dark:border-slate-700">
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-0.5 size-4 accent-accent-700"
+          checked={quiet !== null}
+          onChange={(e) =>
+            void onQuiet(device, e.target.checked ? { from: "22:00", to: "07:00", timezone } : null)
+          }
+        />
+        <span>
+          Quiet hours
+          <span className="block text-xs text-slate-500 dark:text-slate-400">
+            Nothing is sent to this device between these times. It is all still in the app.
+          </span>
+        </span>
+      </label>
+      {quiet && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 pl-6 text-sm">
+          <label className="flex items-center gap-2">
+            From
+            <input
+              type="time"
+              className={time}
+              value={quiet.from}
+              onChange={(e) => set({ from: e.target.value })}
+            />
+          </label>
+          <label className="flex items-center gap-2">
+            to
+            <input
+              type="time"
+              className={time}
+              value={quiet.to}
+              onChange={(e) => set({ to: e.target.value })}
+            />
+          </label>
+        </div>
+      )}
     </div>
   );
 }

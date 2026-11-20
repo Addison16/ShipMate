@@ -15,7 +15,8 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   service for apps, so Shipmate reads its results page and it can be limited for a while;
   SearXNG is steadier and has to allow the `json` format. `read_web_page` reads a public page
   as text and can be turned off. It only goes to the public web: addresses on your home
-  network are refused, also after a redirect.
+  network are refused, also after a redirect, and the page is loaded only from the address
+  that was checked.
 - Two documents can no longer share a name: a second "manual.pdf" becomes "manual (2).pdf".
 - **Documents**: a new place under Settings → Documents for manuals, policies and letters
   (PDFs and text files). Add them once and every agent can look things up in them: agents

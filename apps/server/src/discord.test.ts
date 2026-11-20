@@ -168,7 +168,15 @@ describe.skipIf(!db)("Discord bridge", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ externalId: `${captainChannel}:${PERSON}`, kind: "bridge" });
 
-    // The next message continues the same conversation.
+    // The next message continues the same conversation. The reply is posted a moment before
+    // the turn is over, and a message sent in that moment is turned away as "busy".
+    await until(async () => {
+      const [row] = await t.app.db
+        .select({ busy: conversations.turnStartedAt })
+        .from(conversations)
+        .where(eq(conversations.surface, "discord"));
+      return row?.busy === null;
+    });
     t.faux.setResponses([fauxAssistantMessage("Still here.")]);
     port.message(captainChannel, PERSON, "you there?");
     await until(() => port.webhookPosts.some((p) => p.content.includes("Still here.")));

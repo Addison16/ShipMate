@@ -1,5 +1,8 @@
 import { lookup as dnsLookup } from "node:dns/promises";
-import { isIP } from "node:net";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { isIP, type LookupFunction } from "node:net";
+import { Readable } from "node:stream";
 import type { WebSearchSettingsDto, WebSearchSource } from "@shipmate/core";
 import { HttpError } from "../auth.js";
 import type { SettingsService } from "./settings.js";
@@ -22,7 +25,69 @@ export interface WebDeps {
   fetch?: typeof fetch;
   /** Every address a host name resolves to (injectable for tests). */
   lookup?: (host: string) => Promise<string[]>;
+  /**
+   * Loads a page from one of `addresses`, the ones that were checked, and nowhere else. Defaults
+   * to `pinnedFetch`; when only `fetch` is given (tests), pages go through that instead.
+   */
+  fetchPage?: PageFetch;
 }
+
+export type PageFetch = (
+  url: URL,
+  addresses: string[],
+  init: { headers: Record<string, string>; signal: AbortSignal },
+) => Promise<Response>;
+
+/**
+ * GET a page, connecting only to the given addresses. The host name was looked up and checked
+ * once; a second lookup at connect time could answer differently (a name that first points at
+ * the public web and then at the home network), so the connection never asks again. The name
+ * is still what the server sees and what its certificate is checked against.
+ */
+export const pinnedFetch: PageFetch = (url, addresses, init) =>
+  new Promise((resolve, reject) => {
+    const pinned = addresses.map((address) => ({ address, family: isIP(address) }));
+    const lookup: LookupFunction = (_host, options, done) => {
+      const first = pinned[0];
+      if (!first) done(new Error("no address"), "", 0);
+      else if (options.all) done(null, pinned);
+      else done(null, first.address, first.family);
+    };
+    const request = url.protocol === "https:" ? httpsRequest : httpRequest;
+    const req = request(
+      url,
+      {
+        method: "GET",
+        headers: { ...init.headers, "accept-encoding": "identity" },
+        lookup,
+        agent: false,
+        signal: init.signal,
+      },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        if (status < 200 || status > 599) {
+          res.destroy();
+          reject(new Error(`unexpected status ${status}`));
+          return;
+        }
+        const headers = new Headers();
+        for (const [name, value] of Object.entries(res.headers)) {
+          if (value !== undefined)
+            headers.set(name, Array.isArray(value) ? value.join(", ") : value);
+        }
+        const empty = status === 204 || status === 205 || status === 304;
+        if (empty) res.resume();
+        resolve(
+          new Response(empty ? null : (Readable.toWeb(res) as ReadableStream<Uint8Array>), {
+            status,
+            headers,
+          }),
+        );
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
 
 const DEFAULTS: WebSearchSettingsDto = { source: "duckduckgo", searxngUrl: "", readPages: true };
 const SOURCES: WebSearchSource[] = ["duckduckgo", "searxng", "off"];
@@ -84,7 +149,7 @@ const ENTITIES: Record<string, string> = {
 };
 
 function decodeEntities(s: string): string {
-  return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, code: string) => {
+  return s.replace(/&(#x[0-9a-f]{1,8}|#\d{1,8}|[a-z]{1,32});/gi, (whole, code: string) => {
     if (code[0] === "#") {
       const n =
         code[1]?.toLowerCase() === "x" ? Number.parseInt(code.slice(2), 16) : +code.slice(1);
@@ -94,28 +159,66 @@ function decodeEntities(s: string): string {
   });
 }
 
+/** Parts of a page that are never its text. */
+const SKIPPED =
+  /<!--|<(script|style|noscript|svg|template|iframe|nav|footer|header|form|aside)(?=[\s>])/g;
+
+/**
+ * `html` without comments and the SKIPPED blocks. One pass: a page is at most a couple of
+ * megabytes of anything at all, and a pattern that looks ahead for each opening tag takes time
+ * that grows with the square of that, with the whole server waiting on it.
+ */
+function dropSkipped(html: string): string {
+  const lower = html.toLowerCase();
+  const unclosed = new Set<string>();
+  let out = "";
+  let at = 0;
+  for (const m of lower.matchAll(SKIPPED)) {
+    if (m.index < at) continue;
+    const close = m[1] ? `</${m[1]}>` : "-->";
+    if (unclosed.has(close)) continue;
+    const end = lower.indexOf(close, m.index);
+    if (end < 0) {
+      // Never closed: nothing later closes either, so this kind is left for the tag stripping.
+      unclosed.add(close);
+      continue;
+    }
+    out += `${html.slice(at, m.index)} `;
+    at = end + close.length;
+  }
+  return out + html.slice(at);
+}
+
+/** From the first `<tag>` to the last `</tag>`, or null when the page has no such part. */
+function section(html: string, lower: string, tag: string): string | null {
+  const open = new RegExp(`<${tag}[\\s>]`).exec(lower);
+  if (!open) return null;
+  const close = lower.lastIndexOf(`</${tag}>`);
+  return close > open.index ? html.slice(open.index, close) : null;
+}
+
 /** A web page as plain text: its title, then its readable text with scripts and menus dropped. */
 export function htmlToText(html: string): { title: string; text: string } {
-  const title = decodeEntities(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "")
+  const lower = html.toLowerCase();
+  const titleOpen = /<title(?:\s[^<>]{0,500})?>/.exec(lower);
+  const titleStart = titleOpen ? titleOpen.index + titleOpen[0].length : -1;
+  const titleEnd = titleStart < 0 ? -1 : lower.indexOf("</title>", titleStart);
+  const title = decodeEntities(titleEnd < 0 ? "" : html.slice(titleStart, titleEnd).slice(0, 500))
     .replace(/\s+/g, " ")
     .trim();
   // Prefer the article or main part when the page marks one.
   const main =
-    html.match(/<article[\s>][\s\S]*<\/article>/i)?.[0] ??
-    html.match(/<main[\s>][\s\S]*<\/main>/i)?.[0] ??
-    html.match(/<body[\s>][\s\S]*<\/body>/i)?.[0] ??
+    section(html, lower, "article") ??
+    section(html, lower, "main") ??
+    section(html, lower, "body") ??
     html;
   const text = decodeEntities(
-    main
-      .replace(/<!--[\s\S]*?-->/g, " ")
-      .replace(
-        /<(script|style|noscript|svg|template|iframe|nav|footer|header|form|aside)[\s>][\s\S]*?<\/\1>/gi,
-        " ",
-      )
+    dropSkipped(main)
       .replace(/<(br|hr)\s*\/?>/gi, "\n")
       .replace(/<\/(p|div|section|article|li|ul|ol|tr|table|h[1-6]|blockquote|pre)>/gi, "\n")
       .replace(/<li(?=[\s>])/gi, "\n- <li")
-      .replace(/<[^>]+>/g, " "),
+      // Stops at the next "<" too, so a page of stray "<" is still read in one pass.
+      .replace(/<[^<>]+>/g, " "),
   )
     .replace(/[ \t\f\v ]+/g, " ")
     .replace(/ *\n */g, "\n")
@@ -131,6 +234,7 @@ export function htmlToText(html: string): { title: string; text: string } {
  */
 export class WebService {
   readonly #fetch: typeof fetch;
+  readonly #fetchPage: PageFetch;
   readonly #lookup: (host: string) => Promise<string[]>;
 
   constructor(
@@ -138,6 +242,12 @@ export class WebService {
     deps: WebDeps = {},
   ) {
     this.#fetch = deps.fetch ?? fetch;
+    const plain = deps.fetch;
+    this.#fetchPage =
+      deps.fetchPage ??
+      (plain
+        ? (url, _addresses, init) => plain(url, { redirect: "manual", ...init })
+        : pinnedFetch);
     this.#lookup =
       deps.lookup ?? (async (host) => (await dnsLookup(host, { all: true })).map((a) => a.address));
   }
@@ -284,12 +394,11 @@ export class WebService {
     from = 0,
   ): Promise<{ url: string; title: string; text: string; from: number; total: number }> {
     if (!(await this.getSettings()).readPages) throw new Error("Reading web pages is turned off.");
-    let url = await this.#publicUrl(address);
+    let { url, addresses } = await this.#publicUrl(address);
     let res: Response | null = null;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
       try {
-        res = await this.#fetch(url, {
-          redirect: "manual",
+        res = await this.#fetchPage(url, addresses, {
           headers: { accept: "text/html,text/plain;q=0.9,*/*;q=0.1", "user-agent": USER_AGENT },
           signal: AbortSignal.timeout(TIMEOUT_MS),
         });
@@ -300,7 +409,7 @@ export class WebService {
       if (!next) break;
       await res.body?.cancel().catch(() => {});
       if (hop === MAX_REDIRECTS) throw new Error("That page redirects too many times.");
-      url = await this.#publicUrl(new URL(next, url).toString());
+      ({ url, addresses } = await this.#publicUrl(new URL(next, url).toString()));
     }
     if (!res) throw new Error("Could not load that page.");
     if (!res.ok) throw new Error(`${url.host} answered with an error (${res.status}).`);
@@ -323,8 +432,11 @@ export class WebService {
     };
   }
 
-  /** The address as a URL, refused unless every address its host resolves to is public. */
-  async #publicUrl(address: string): Promise<URL> {
+  /**
+   * The address as a URL, with the addresses its host resolves to. Refused unless every one of
+   * them is public; the page is then loaded from those addresses only.
+   */
+  async #publicUrl(address: string): Promise<{ url: URL; addresses: string[] }> {
     let url: URL;
     try {
       url = new URL(address.trim());
@@ -348,7 +460,7 @@ export class WebService {
     if (!addresses.length || addresses.some(isPrivateAddress)) {
       throw new Error(`${host} is on the home network or not a public address, so it is not read.`);
     }
-    return url;
+    return { url, addresses };
   }
 }
 

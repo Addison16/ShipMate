@@ -1,7 +1,9 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import type { ServerEvent } from "@shipmate/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { htmlToText, isPrivateAddress, parseDuckDuckGo } from "./services/web.js";
+import { htmlToText, isPrivateAddress, parseDuckDuckGo, pinnedFetch } from "./services/web.js";
 import { TEST_DATABASE_URL, testApp } from "./testing.js";
 
 const db = TEST_DATABASE_URL;
@@ -46,6 +48,50 @@ describe("web helpers", () => {
     expect(text).not.toContain("alert");
     expect(text).not.toContain("Home");
     expect(text).not.toContain("Contact us");
+  });
+
+  it("reads a page of unclosed tags in one pass", () => {
+    // Each of these once cost a scan to the end of the page per opening tag.
+    for (const piece of ["<article>", "<nav class=x>", "<!-- ", "<title>", "< ", "<script>"]) {
+      const started = performance.now();
+      const { text } = htmlToText(`<html><body>${piece.repeat(40_000)}<p>Still read</p></body>`);
+      expect(text, piece).toContain("Still read");
+      expect(performance.now() - started, piece).toBeLessThan(500);
+    }
+  });
+
+  it("drops closed blocks even when another kind is left open", () => {
+    const { text } = htmlToText(
+      "<body><nav>Menu<p>Kept, the menu never closes</p><script>hidden()</script><!-- note --><p>End</p></body>",
+    );
+    expect(text).toContain("Kept, the menu never closes");
+    expect(text).toContain("End");
+    expect(text).not.toContain("hidden");
+    expect(text).not.toContain("note");
+  });
+});
+
+describe("pinnedFetch", () => {
+  it("connects to the checked address, whatever the name would resolve to", async () => {
+    let seenHost = "";
+    const server = createServer((req, res) => {
+      seenHost = req.headers.host ?? "";
+      res.writeHead(200, { "content-type": "text/plain" }).end("from the pinned address");
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const { port } = server.address() as AddressInfo;
+    try {
+      // This name does not exist; only the pinned address can answer.
+      const res = await pinnedFetch(new URL(`http://pinned.invalid:${port}/page`), ["127.0.0.1"], {
+        headers: {},
+        signal: AbortSignal.timeout(5000),
+      });
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("from the pinned address");
+      expect(seenHost).toBe(`pinned.invalid:${port}`);
+    } finally {
+      server.close();
+    }
   });
 });
 
@@ -138,11 +184,22 @@ describe.skipIf(!db)("Built-in web search", () => {
     }
     return new Response("missing", { status: 404 });
   }) as typeof fetch;
+  /** Each page load, with the addresses it was allowed to connect to. */
+  const pinned: string[] = [];
   const lookup = async (host: string) =>
     host.endsWith(".lan") ? ["192.168.1.1"] : ["93.184.216.34"];
 
   beforeAll(async () => {
-    t = await testApp(db as string, { web: { fetch: fakeFetch, lookup } });
+    t = await testApp(db as string, {
+      web: {
+        fetch: fakeFetch,
+        lookup,
+        fetchPage: (url, addresses, init) => {
+          pinned.push(`${url.hostname} ${addresses.join(",")}`);
+          return fakeFetch(url, { redirect: "manual", ...init });
+        },
+      },
+    });
     ownerCookie = cookieOf(
       await api(
         "POST",
@@ -251,6 +308,9 @@ describe.skipIf(!db)("Built-in web search", () => {
     expect(out[1]).toContain("Bins go out on Tuesday.");
     expect(out[2]).toContain("More text here.");
     for (const refused of [out[3], out[4], out[5]]) expect(refused).toContain("home network");
+    // Pages are loaded from the addresses that were checked, and a refused one is never loaded.
+    expect(pinned).toContain("town.example 93.184.216.34");
+    expect(pinned.some((p) => p.startsWith("router.lan") || p.startsWith("192.168."))).toBe(false);
     expect(out[6]).toContain("Only http and https");
     expect(out[7]).toContain("not a page of text");
     // The private addresses were never fetched, not even after the redirect.

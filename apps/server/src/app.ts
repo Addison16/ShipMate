@@ -32,7 +32,6 @@ import { oidcRoutes } from "./routes/oidc.js";
 import { onboardingRoutes } from "./routes/onboarding.js";
 import { petRoutes } from "./routes/pets.js";
 import { profileRoutes } from "./routes/profiles.js";
-import { promptRoutes } from "./routes/prompts.js";
 import { providerRoutes } from "./routes/providers.js";
 import { pushRoutes } from "./routes/push.js";
 import { shipyardRoutes } from "./routes/shipyard.js";
@@ -234,7 +233,6 @@ export async function buildApp(
   await fileRoutes(app, services);
   await documentRoutes(app, services);
   await webRoutes(app, services);
-  await promptRoutes(app, services);
   await voiceRoutes(app, services);
   await petRoutes(app, services);
   await localAiRoutes(app, services);

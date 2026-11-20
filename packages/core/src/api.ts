@@ -301,6 +301,7 @@ export interface MemoryEntryDto {
 }
 /**
  * GET /api/crew/:slug/memory → { shared: MemoryEntryDto[], mine: MemoryEntryDto[] }
+ * PUT /api/crew/:slug/memory/:scope/:name { description, body } → { memory } (add or change)
  * DELETE /api/crew/:slug/memory/:scope/:name → { ok: true } (shared needs admin)
  */
 
@@ -1027,6 +1028,8 @@ export interface BackupSettingsDto {
  * POST /api/backups (owner) → { backup } (runs now)
  * GET /api/backups/:name (owner) → the file (download)
  * DELETE /api/backups/:name (owner) → { ok: true }
+ * POST /api/backups/:name/restore (owner) { confirm: "RESTORE" } → { ok, restarting, safety }
+ *   backs up the current state first (`safety`), replaces everything, then Shipmate restarts
  * PUT /api/backups/settings (owner) Partial<{ hourUtc, keep }> → { settings }
  * CLI: `shipmate backup [--out file]`, `shipmate restore <file> --yes`, `shipmate doctor`
  */

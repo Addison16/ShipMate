@@ -33,6 +33,7 @@ import { codexChoices, codexCliApi } from "../lib/codex-cli.js";
 import { cursorChoices, cursorCliApi } from "../lib/cursor-cli.js";
 import { formatTime } from "../lib/format.js";
 import { geminiChoices, geminiCliApi } from "../lib/gemini-cli.js";
+import { memoryName } from "../lib/memory.js";
 import { CREW_DEFAULT, modelLabel } from "../lib/models.js";
 import { useResource } from "../lib/useResource.js";
 import { href, navigate } from "../router.js";
@@ -612,6 +613,8 @@ function FileEditor({
 function MemoryPanel({ slug, admin }: { slug: string; admin: boolean }) {
   const memory = useResource(() => api.crewMemory(slug), [slug]);
   const [error, setError] = useState<string | null>(null);
+  /** The entry being written: an existing one by name, or a new one ("") in a scope. */
+  const [editing, setEditing] = useState<{ scope: "shared" | "user"; name: string } | null>(null);
 
   async function remove(entry: MemoryEntryDto) {
     if (!window.confirm(`Forget "${entry.name}"?`)) return;
@@ -624,36 +627,86 @@ function MemoryPanel({ slug, admin }: { slug: string; admin: boolean }) {
     }
   }
 
-  const section = (title: string, entries: MemoryEntryDto[], canDelete: boolean, empty: string) => (
+  async function save(
+    scope: "shared" | "user",
+    entry: MemoryEntryDto | null,
+    all: MemoryEntryDto[],
+    text: { description: string; body: string },
+  ) {
+    const name =
+      entry?.name ??
+      memoryName(
+        text.description,
+        all.map((m) => m.name),
+      );
+    await api.saveMemory(slug, scope, name, text);
+    setEditing(null);
+    await memory.reload();
+  }
+
+  const section = (
+    title: string,
+    scope: "shared" | "user",
+    entries: MemoryEntryDto[],
+    canChange: boolean,
+    empty: string,
+  ) => (
     <Card>
-      <h2 className="mb-3 font-semibold">{title}</h2>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="font-semibold">{title}</h2>
+        {canChange && (
+          <Button size="sm" onClick={() => setEditing({ scope, name: "" })}>
+            Add
+          </Button>
+        )}
+      </div>
+      {editing?.scope === scope && editing.name === "" && (
+        <MemoryForm
+          entry={null}
+          onCancel={() => setEditing(null)}
+          onSave={(text) => save(scope, null, entries, text)}
+        />
+      )}
       {entries.length === 0 ? (
         <Muted>{empty}</Muted>
       ) : (
         <ul className="divide-y divide-slate-200 dark:divide-slate-800">
           {entries.map((m) => (
             <li key={`${m.scope}:${m.name}`} className="py-2">
-              <div className="flex items-start justify-between gap-3">
-                <details className="min-w-0 flex-1">
-                  <summary className={cx("cursor-pointer rounded", focusRing)}>
-                    <span className="font-mono text-sm">{m.name}</span>
-                    {m.description && (
-                      <span className="ml-2 text-sm text-slate-500 dark:text-slate-400">
-                        {m.description}
-                      </span>
-                    )}
-                  </summary>
-                  <pre className="mt-2 rounded bg-slate-50 p-2 font-mono text-xs whitespace-pre-wrap dark:bg-slate-800/60">
-                    {m.body}
-                  </pre>
-                  <p className="mt-1 text-xs text-slate-500">Updated {formatTime(m.updatedAt)}</p>
-                </details>
-                {canDelete && (
-                  <Button size="sm" variant="danger" onClick={() => void remove(m)}>
-                    Delete
-                  </Button>
-                )}
-              </div>
+              {editing?.scope === scope && editing.name === m.name ? (
+                <MemoryForm
+                  entry={m}
+                  onCancel={() => setEditing(null)}
+                  onSave={(text) => save(scope, m, entries, text)}
+                />
+              ) : (
+                <div className="flex items-start justify-between gap-3">
+                  <details className="min-w-0 flex-1">
+                    <summary className={cx("cursor-pointer rounded", focusRing)}>
+                      <span className="font-mono text-sm">{m.name}</span>
+                      {m.description && (
+                        <span className="ml-2 text-sm text-slate-500 dark:text-slate-400">
+                          {m.description}
+                        </span>
+                      )}
+                    </summary>
+                    <pre className="mt-2 rounded bg-slate-50 p-2 font-mono text-xs whitespace-pre-wrap dark:bg-slate-800/60">
+                      {m.body}
+                    </pre>
+                    <p className="mt-1 text-xs text-slate-500">Updated {formatTime(m.updatedAt)}</p>
+                  </details>
+                  {canChange && (
+                    <div className="flex shrink-0 gap-2">
+                      <Button size="sm" onClick={() => setEditing({ scope, name: m.name })}>
+                        Edit
+                      </Button>
+                      <Button size="sm" variant="danger" onClick={() => void remove(m)}>
+                        Delete
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -669,13 +722,77 @@ function MemoryPanel({ slug, admin }: { slug: string; admin: boolean }) {
         <>
           {section(
             "Shared memory",
+            "shared",
             memory.data.shared,
             admin,
             "Nothing remembered for everyone yet.",
           )}
-          {section("About you", memory.data.mine, true, "Nothing remembered about you yet.")}
+          {section(
+            "About you",
+            "user",
+            memory.data.mine,
+            true,
+            "Nothing remembered about you yet.",
+          )}
         </>
       )}
     </div>
+  );
+}
+
+/** Write a new memory, or fix one the agent got wrong. */
+function MemoryForm({
+  entry,
+  onSave,
+  onCancel,
+}: {
+  entry: MemoryEntryDto | null;
+  onSave: (text: { description: string; body: string }) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [description, setDescription] = useState(entry?.description ?? "");
+  const [body, setBody] = useState(entry?.body ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await onSave({ description: description.trim(), body: body.trim() || description.trim() });
+    } catch (err) {
+      setError(errorMessage(err));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="mb-3 space-y-3">
+      <TextField
+        label="What to remember"
+        required
+        maxLength={200}
+        placeholder="Sam is vegetarian"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+      />
+      <TextAreaField
+        label="Details (optional)"
+        rows={3}
+        maxLength={8000}
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+      />
+      <ErrorText>{error}</ErrorText>
+      <div className="flex gap-2">
+        <Button type="submit" variant="primary" disabled={busy || !description.trim()}>
+          {busy ? "Saving…" : "Save"}
+        </Button>
+        <Button variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </form>
   );
 }

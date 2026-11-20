@@ -9,6 +9,12 @@ export const backupsApi = {
   list: () => request<{ backups: BackupDto[]; settings: BackupSettingsDto }>("GET", "/api/backups"),
   create: () => request<{ backup: BackupDto }>("POST", "/api/backups"),
   remove: (name: string) => request<{ ok: true }>("DELETE", `/api/backups/${enc(name)}`),
+  restore: (name: string, confirm: string) =>
+    request<{ ok: true; restarting: boolean; safety: BackupDto }>(
+      "POST",
+      `/api/backups/${enc(name)}/restore`,
+      { confirm },
+    ),
   updateSettings: (body: BackupSettingsUpdate) =>
     request<{ settings: BackupSettingsDto }>("PUT", "/api/backups/settings", body),
 };

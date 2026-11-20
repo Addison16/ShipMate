@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { requireRole } from "../auth.js";
+import { HttpError, requireRole } from "../auth.js";
 import type { Services } from "../services.js";
 
 const Settings = z.object({
@@ -25,6 +25,17 @@ export async function backupRoutes(app: FastifyInstance, s: Services) {
     requireRole(req.user, "owner");
     const patch = Settings.parse(req.body ?? {});
     return { settings: await s.backups.updateSettings(patch) };
+  });
+
+  app.post<{ Params: { name: string } }>("/api/backups/:name/restore", async (req) => {
+    requireRole(req.user, "owner");
+    const { confirm } = z.object({ confirm: z.string() }).parse(req.body ?? {});
+    // Typed by the person, so a stray tap cannot replace everything.
+    if (confirm.trim().toUpperCase() !== "RESTORE") {
+      throw new HttpError(400, "type RESTORE to confirm");
+    }
+    const { safety } = await s.backups.restore(req.params.name, req.user.id);
+    return { ok: true, restarting: true, safety };
   });
 
   app.get<{ Params: { name: string } }>("/api/backups/:name", async (req, reply) => {

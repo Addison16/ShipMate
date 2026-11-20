@@ -67,30 +67,34 @@ export async function authRoutes(app: FastifyInstance, s: Services) {
 
   app.post("/api/auth/login", async (req, reply) => {
     const body = z.object({ email: Email, password: z.string() }).parse(req.body);
-    // Checked before the password, so waiting cannot be skipped by guessing right.
-    const wait = limiter.waitSeconds(body.email, req.ip);
-    if (wait > 0) {
-      reply.header("retry-after", String(wait));
-      throw new HttpError(429, `Too many wrong tries. Wait ${waitWords(wait)} and try again.`);
-    }
-    const [user] = await s.db.select().from(users).where(eq(users.email, body.email)).limit(1);
-    if (!user || !(await verifyPassword(user.passwordHash, body.password))) {
-      limiter.failed(body.email, req.ip);
-      if (limiter.waitSeconds(body.email, req.ip) > 0) {
-        await s.audit
-          .record({
-            userId: user?.id ?? null,
-            crewMemberId: null,
-            action: "auth.login_blocked",
-            summary: `Sign-in paused for ${body.email} after too many wrong passwords`,
-            decision: null,
-            detail: { address: req.ip },
-          })
-          .catch(() => {});
+    // One at a time per address, so tries sent together are each counted before the next.
+    const user = await limiter.inTurn(req.ip, async () => {
+      // Checked before the password, so waiting cannot be skipped by guessing right.
+      const wait = limiter.waitSeconds(body.email, req.ip);
+      if (wait > 0) {
+        reply.header("retry-after", String(wait));
+        throw new HttpError(429, `Too many wrong tries. Wait ${waitWords(wait)} and try again.`);
       }
-      throw new HttpError(401, "Wrong email or password.");
-    }
-    limiter.succeeded(body.email, req.ip);
+      const [found] = await s.db.select().from(users).where(eq(users.email, body.email)).limit(1);
+      if (!found || !(await verifyPassword(found.passwordHash, body.password))) {
+        limiter.failed(body.email, req.ip);
+        if (limiter.waitSeconds(body.email, req.ip) > 0) {
+          await s.audit
+            .record({
+              userId: found?.id ?? null,
+              crewMemberId: null,
+              action: "auth.login_blocked",
+              summary: `Sign-in paused for ${body.email} after too many wrong passwords`,
+              decision: null,
+              detail: { address: req.ip },
+            })
+            .catch(() => {});
+        }
+        throw new HttpError(401, "Wrong email or password.");
+      }
+      limiter.succeeded(body.email, req.ip);
+      return found;
+    });
     await s.sessions.start(reply, user.id);
     return { user: toUserDto(user) };
   });

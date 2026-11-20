@@ -499,7 +499,7 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
         }
         const w = await host.createWatch(p);
         return text(
-          p.at || p.inMinutes
+          p.at || p.inMinutes !== undefined
             ? `Set the reminder "${w.name}". It runs once and shows on the Watches page.`
             : `Created watch "${w.name}". It shows on the Watches page.`,
         );

@@ -1064,11 +1064,12 @@ export class Bridge {
       },
       createWatch: async (spec) => {
         if (!this.#watches) throw new Error("watches are not available");
-        const onceAt = spec.inMinutes
-          ? new Date(Date.now() + Math.max(1, spec.inMinutes) * 60_000)
-          : spec.at
-            ? new Date(spec.at)
-            : null;
+        const onceAt =
+          spec.inMinutes !== undefined
+            ? new Date(Date.now() + Math.max(1, spec.inMinutes) * 60_000)
+            : spec.at
+              ? new Date(spec.at)
+              : null;
         if (onceAt && Number.isNaN(onceAt.getTime())) {
           throw new Error("`at` must be an ISO date-time such as 2026-11-20T17:00:00-06:00");
         }

@@ -54,6 +54,7 @@ export type IconName =
   | "trash"
   | "pin"
   | "download"
+  | "document"
   | "sparkle";
 
 const paths: Record<IconName, ReactNode> = {
@@ -234,6 +235,13 @@ const paths: Record<IconName, ReactNode> = {
     <>
       <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5" />
       <path d="M5 19.5h14" />
+    </>
+  ),
+  // A page with lines: the document library.
+  document: (
+    <>
+      <path d="M6.5 3.5h7l4 4v13h-11z" />
+      <path d="M13.5 3.5v4h4M9 12h6M9 15.5h6" />
     </>
   ),
   // Make something new with the AI.

@@ -6,6 +6,12 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Documents**: a new place under Settings → Documents for manuals, policies and letters
+  (PDFs and text files). Add them once and every agent can look things up in them: agents
+  get `search_documents`, `read_document` and `list_documents`, on every engine, and are told
+  to say which document an answer came from. Tick "Only for me" to keep a document private.
+  The page has a search box that runs the same search the agents use. Search matches words
+  (Postgres full-text), so it needs no extra model; scanned PDFs without text are refused.
 - **Restore a backup from Settings**: each backup under Settings → Backups has a Restore
   button (owner only). You type RESTORE to confirm, Shipmate first saves a backup of how
   things are now, puts the chosen backup back, then restarts and reloads the page. It relies

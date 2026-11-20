@@ -21,6 +21,7 @@ import { conversationRoutes } from "./routes/conversations.js";
 import { crewRoutes } from "./routes/crew.js";
 import { cursorCliRoutes } from "./routes/cursor-cli.js";
 import { discordRoutes } from "./routes/discord.js";
+import { documentRoutes } from "./routes/documents.js";
 import { fileRoutes } from "./routes/files.js";
 import { geminiCliRoutes } from "./routes/gemini-cli.js";
 import { healthRoutes } from "./routes/health.js";
@@ -225,6 +226,7 @@ export async function buildApp(
   await cliMcpRoutes(app, services.bridge.cliTools);
   await pushRoutes(app, services);
   await fileRoutes(app, services);
+  await documentRoutes(app, services);
   await voiceRoutes(app, services);
   await petRoutes(app, services);
   await localAiRoutes(app, services);

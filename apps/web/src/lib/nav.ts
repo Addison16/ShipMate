@@ -159,6 +159,16 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     keywords: ["instructions", "playbook", "abilities"],
   },
   {
+    id: "documents",
+    path: "/documents",
+    group: "Crew and tools",
+    label: "Documents",
+    hint: "Manuals and papers your agents can look things up in",
+    icon: "document",
+    access: "all",
+    keywords: ["pdf", "manual", "files", "library", "knowledge", "upload", "papers", "rag"],
+  },
+  {
     id: "mcp",
     path: "/mcp",
     group: "Crew and tools",
@@ -332,6 +342,7 @@ export function visibleSections(user: Pick<UserDto, "role">): SettingsSection[] 
 /** Older top-level paths that now live under Settings, and the section each one belongs to. */
 const SETTINGS_ROUTES: Record<string, string> = {
   skills: "skills",
+  documents: "documents",
   mcp: "mcp",
   bridges: "bridges",
   discord: "bridges",

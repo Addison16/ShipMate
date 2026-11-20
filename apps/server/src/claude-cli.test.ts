@@ -670,6 +670,12 @@ describe.skipIf(!db)("claude-code-cli backend through the Bridge", () => {
       const msgs = (await api("GET", `/api/conversations/${convId}/messages`)).json().messages;
       return msgs.at(-1)?.content === "Finished slowly";
     });
+    // The reply is saved a moment before the turn is over; the next test must not start in
+    // that moment, or it sees this turn's "done" and misses its own events.
+    await until(async () => {
+      const [row] = await sql`select turn_started_at from conversations where id = ${convId}`;
+      return row?.turn_started_at === null;
+    });
   });
 
   it("reports CLI errors with the sign-in hint", async () => {

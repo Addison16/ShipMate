@@ -72,6 +72,10 @@ export async function userRoutes(app: FastifyInstance, s: Services) {
       ? await s.db.update(users).set(values).where(eq(users.id, target.id)).returning()
       : [target];
     if (!user) throw new Error("update failed");
+    // A new password signs every other device out; the one that changed it stays signed in.
+    if (body.password !== undefined) {
+      await s.sessions.endOthers(target.id, self ? s.sessions.currentId(req) : null);
+    }
     return { user: toUserDto(user) };
   });
 

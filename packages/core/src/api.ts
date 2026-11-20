@@ -77,6 +77,23 @@ export interface LoginRequest {
   password: string;
 }
 
+/**
+ * One signed-in device (a browser session).
+ * GET /api/auth/sessions → { sessions: SessionDto[] }, this device first.
+ * DELETE /api/auth/sessions/:id → { ok: true } signs one out.
+ * POST /api/auth/sessions/end-others → { ended: number } signs out every other device.
+ */
+export interface SessionDto {
+  id: string;
+  /** The browser's User-Agent at sign-in; null for sessions older than this list. */
+  userAgent: string | null;
+  createdAt: string;
+  /** Last use, to within about ten minutes. */
+  lastSeenAt: string;
+  /** The device asking. */
+  current: boolean;
+}
+
 /** GET /api/users (owner, admin) → { users: UserDto[] } */
 /** POST /api/users (owner, admin; only owner may create admins) → { user: UserDto } */
 export interface CreateUserRequest {

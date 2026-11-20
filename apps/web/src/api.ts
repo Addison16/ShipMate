@@ -45,6 +45,7 @@ import type {
   ProviderDto,
   ProvidersResponse,
   PullRequestDto,
+  SessionDto,
   SettingsDto,
   SetupRequest,
   ShipyardStatusDto,
@@ -144,6 +145,9 @@ export const api = {
   updatePreferences: (body: UpdatePreferencesRequest) =>
     request<{ user: UserDto }>("PATCH", "/api/auth/preferences", body),
   logout: () => request<Ok>("POST", "/api/auth/logout"),
+  listSessions: () => request<{ sessions: SessionDto[] }>("GET", "/api/auth/sessions"),
+  endSession: (id: string) => request<Ok>("DELETE", `/api/auth/sessions/${id}`),
+  endOtherSessions: () => request<{ ended: number }>("POST", "/api/auth/sessions/end-others"),
 
   // first-launch guide (owner)
   updateOnboarding: (body: OnboardingUpdate) =>

@@ -91,6 +91,8 @@ function dataDirs(root: string) {
     workspaces: join(root, "workspaces"),
     /** Files people attach in chat, one per attachment id. */
     files: join(root, "files"),
+    /** The document library's original files, one per document id. */
+    documents: join(root, "documents"),
     claudeConfig: join(root, "claude"),
     /** pi's agent directory: auth.json, models.json, mcp logs. */
     pi: join(root, "pi"),

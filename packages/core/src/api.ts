@@ -1451,6 +1451,39 @@ export interface UpdateListItemRequest {
   position?: number;
 }
 
+// ---------- document library ----------
+
+export interface DocumentDto {
+  id: string;
+  name: string;
+  kind: "pdf" | "text";
+  size: number;
+  /** Characters of readable text found in it. */
+  chars: number;
+  /** false = only the person who added it (and their agents) can see it. */
+  shared: boolean;
+  /** Whether the signed-in person may rename, share or delete it. */
+  mine: boolean;
+  createdAt: string;
+}
+export interface DocumentHitDto {
+  documentId: string;
+  name: string;
+  /** Which passage of the document (1-based) and how many it has. */
+  part: number;
+  parts: number;
+  text: string;
+}
+/**
+ * GET /api/documents → { documents: DocumentDto[] } (shared ones and your own)
+ * POST /api/documents?private=1 (raw bytes, x-file-name, x-file-type) → { document }
+ * GET /api/documents/search?q= → { hits: DocumentHitDto[] }
+ * GET /api/documents/:id → the file (download)
+ * PATCH /api/documents/:id { name?, shared? } → { document }
+ * DELETE /api/documents/:id → { ok: true }
+ * Shared documents can be changed by whoever added them, or an admin.
+ */
+
 // ---------- household profiles (everyday life) ----------
 
 export interface ProfileDto extends PersonProfile {

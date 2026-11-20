@@ -69,6 +69,8 @@ export {
 export {
   type BriefingHost,
   briefingTools,
+  type DocumentHost,
+  documentTools,
   formatItems,
   type ListHost,
   type ListItemSummary,

@@ -526,6 +526,44 @@ export const attachments = pgTable(
   (t) => [index("attachments_conversation_idx").on(t.conversationId)],
 );
 
+// ---------- document library ----------
+
+/**
+ * Papers the household keeps for the crew to look things up in: manuals, policies, school
+ * letters. Owner null = shared with everyone; set = private to that person (like lists).
+ */
+export const documents = pgTable(
+  "documents",
+  {
+    id: id(),
+    ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }),
+    createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    /** pdf | text */
+    kind: text("kind").notNull(),
+    size: integer("size").notNull(),
+    /** Characters of readable text, and how many passages it was split into. */
+    chars: integer("chars").notNull().default(0),
+    parts: integer("parts").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index("documents_owner_idx").on(t.ownerId)],
+);
+
+/** A document's text in passages, searched with Postgres full-text search. */
+export const documentChunks = pgTable(
+  "document_chunks",
+  {
+    id: id(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    text: text("text").notNull(),
+  },
+  (t) => [index("document_chunks_doc_idx").on(t.documentId, t.position)],
+);
+
 // ---------- custom themes ----------
 
 /**

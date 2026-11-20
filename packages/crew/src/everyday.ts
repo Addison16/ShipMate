@@ -177,6 +177,56 @@ function changeSummary(
   return parts.join(" ");
 }
 
+// ---------- document library ----------
+
+/** The document library, already bound to the person and formatted for the model. */
+export interface DocumentHost {
+  list(): Promise<string>;
+  search(query: string): Promise<string>;
+  read(document: string, part: number): Promise<string>;
+}
+
+/** Manuals, policies and letters people saved once so any crew member can look things up. */
+export function documentTools(host: DocumentHost): ToolDefinition[] {
+  return [
+    defineTool({
+      name: "search_documents",
+      label: "Search documents",
+      description:
+        "Search inside the saved documents (manuals, policies, letters, notes) and get the passages that match best. Use plain keywords from the question. Do this before answering anything a saved document may cover.",
+      promptSnippet: "search_documents / read_document / list_documents: the saved documents",
+      parameters: Type.Object({
+        query: Type.String({ description: 'keywords, e.g. "dishwasher error E24"' }),
+      }),
+      async execute(_id, p) {
+        return text(await host.search(p.query));
+      },
+    }),
+    defineTool({
+      name: "read_document",
+      label: "Read document",
+      description:
+        "Read a saved document a stretch at a time. Start at part 1, or at the part a search result named, and ask for a later part to keep reading.",
+      parameters: Type.Object({
+        document: Type.String({ description: "the document's name" }),
+        part: Type.Optional(Type.Number({ description: "which part to start at, default 1" })),
+      }),
+      async execute(_id, p) {
+        return text(await host.read(p.document, p.part ?? 1));
+      },
+    }),
+    defineTool({
+      name: "list_documents",
+      label: "List documents",
+      description: "List the saved documents by name.",
+      parameters: Type.Object({}),
+      async execute() {
+        return text(await host.list());
+      },
+    }),
+  ];
+}
+
 // ---------- household profiles ----------
 
 /** The household facts and the profiles the crew may read, already formatted. */

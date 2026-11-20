@@ -120,6 +120,13 @@
       "when": 1795151906457,
       "tag": "0016_archive_chats",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795152822636,
+      "tag": "0017_documents",
+      "breakpoints": true
     }
   ]
 }

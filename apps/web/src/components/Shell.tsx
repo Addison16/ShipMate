@@ -16,6 +16,7 @@ import { BridgePage } from "../pages/Bridge.js";
 import { ChatBridgesPage } from "../pages/ChatBridges.js";
 import { CrewPage } from "../pages/Crew.js";
 import { DiscordPage } from "../pages/Discord.js";
+import { DocumentsPage } from "../pages/Documents.js";
 import { HealthPage } from "../pages/Health.js";
 import { ListsPage } from "../pages/Lists.js";
 import { McpPage } from "../pages/Mcp.js";
@@ -271,6 +272,9 @@ export function Shell() {
       break;
     case "skills":
       page = <SkillsPage skillId={route[1] ?? null} />;
+      break;
+    case "documents":
+      page = <DocumentsPage />;
       break;
     case "mcp":
       page = <McpPage />;

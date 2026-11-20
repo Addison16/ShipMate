@@ -3,6 +3,8 @@ import type { ListDetailDto, ListDto, ListKind } from "@shipmate/core";
 import {
   briefingTools,
   type CrewFolder,
+  type DocumentHost,
+  documentTools,
   type ListHost,
   type ListSummary,
   listTools,
@@ -13,6 +15,7 @@ import type { Db } from "@shipmate/db";
 import type { UserRow } from "./auth.js";
 import { PeopleSettings } from "./people.js";
 import { dateIn, recentActivity } from "./services/activity.js";
+import type { DocumentService } from "./services/documents.js";
 import type { ListService } from "./services/lists.js";
 import { hasAny, householdLines, type ProfileService, profileLines } from "./services/profiles.js";
 import { formatForecast, type WeatherService } from "./services/weather.js";
@@ -32,6 +35,7 @@ export class EverydayTools {
     private readonly deps: {
       db: Db;
       lists: ListService;
+      documents: DocumentService;
       profiles: ProfileService;
       weather: WeatherService;
     },
@@ -42,6 +46,7 @@ export class EverydayTools {
   tools(user: UserRow, crew: CrewFolder): ToolDefinition[] {
     return [
       ...listTools(this.#listHost(user, crew)),
+      ...documentTools(this.#documentHost(user)),
       ...profileTools({ read: () => this.#profilesText(user) }),
       ...weatherTools({
         forecast: async (place, days) => {
@@ -97,6 +102,13 @@ export class EverydayTools {
         `Shared profiles of ${others.map((o) => o.name).join(", ")} are available with \`read_profiles\`.`,
       );
     }
+    const saved = (await this.deps.documents.list(user)).length;
+    if (saved) {
+      parts.push(
+        "",
+        `Saved documents: ${saved}. Before answering a question a manual, policy or letter may cover, use \`search_documents\` and say which document the answer came from.`,
+      );
+    }
     parts.push(
       "",
       "Lists (groceries, to-dos, packing, bills) are kept with the list tools, not in memory. When someone tells you a lasting preference (diet, budget, timezone, schedule), suggest they add it to their profile in Settings so every crew member knows it.",
@@ -114,6 +126,32 @@ export class EverydayTools {
     out.push(...(hasAny(me) ? profileLines(me) : ["(no profile yet)"]));
     for (const o of others) out.push("", `# ${o.name} (shared)`, ...profileLines(o.profile));
     return out.join("\n");
+  }
+
+  #documentHost(user: UserRow): DocumentHost {
+    const docs = this.deps.documents;
+    const names = async () => {
+      const all = await docs.list(user);
+      return all.length
+        ? all.map((d) => `- ${d.name} (${d.shared ? "shared" : "private"})`).join("\n")
+        : "No documents are saved yet. People add them under Settings, Documents.";
+    };
+    return {
+      list: names,
+      search: async (query) => {
+        const hits = await docs.search(user, query);
+        if (!hits.length)
+          return `No passage matches "${query}". Saved documents:\n${await names()}`;
+        return hits
+          .map((h) => `### ${h.name} (part ${h.part} of ${h.parts})\n${h.text}`)
+          .join("\n\n");
+      },
+      read: async (ref, part) => {
+        const r = await docs.read(user, ref, part);
+        const more = r.to < r.parts ? `\n\n[More follows. Read on with part ${r.to + 1}.]` : "";
+        return `### ${r.document.name} (parts ${r.from} to ${r.to} of ${r.parts})\n${r.text || "(nothing there)"}${more}`;
+      },
+    };
   }
 
   #listHost(user: UserRow, crew: CrewFolder): ListHost {

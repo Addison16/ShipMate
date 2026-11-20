@@ -31,6 +31,7 @@ import { AuditService } from "./services/audit.js";
 import { BackupService } from "./services/backups.js";
 import { CrewService } from "./services/crew.js";
 import { CrewBundleService } from "./services/crew-bundles.js";
+import { DocumentService } from "./services/documents.js";
 import { GeminiKeyService } from "./services/gemini-key.js";
 import { type GoogleFetch, GoogleOAuthService } from "./services/google-oauth.js";
 import { ListService } from "./services/lists.js";
@@ -78,6 +79,7 @@ export interface Services {
   backups: BackupService;
   starters: StarterService;
   lists: ListService;
+  documents: DocumentService;
   profiles: ProfileService;
   crewBundles: CrewBundleService;
   push: PushService;
@@ -155,6 +157,7 @@ export async function createServices(
     ownerId ? bridge?.emit(ownerId, event) : bridge?.broadcast(event),
   );
   const files = new AttachmentService(db, config.dirs.files);
+  const documents = new DocumentService(db, config.dirs.documents);
   const themes = new ThemeService(db);
   const geminiKey = new GeminiKeyService(db, vault);
   bridge = new Bridge({
@@ -184,7 +187,13 @@ export async function createServices(
   bridge.attachPets(pets);
   const profiles = new ProfileService(db, settings);
   bridge.attachEveryday(
-    new EverydayTools({ db, lists, profiles, weather: options.weather ?? new WeatherService() }),
+    new EverydayTools({
+      db,
+      lists,
+      documents,
+      profiles,
+      weather: options.weather ?? new WeatherService(),
+    }),
   );
   const shipyard = new ShipyardService({
     db,
@@ -373,6 +382,7 @@ export async function createServices(
     slack,
     shipyard,
     lists,
+    documents,
     profiles,
     crewBundles: new CrewBundleService({ crew, settings, providers, mcp, skills }),
     starters: new StarterService(config.TEMPLATES_DIR, crew, mcp, watches),

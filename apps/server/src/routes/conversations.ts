@@ -33,14 +33,21 @@ export async function conversationRoutes(app: FastifyInstance, s: Services) {
       .object({
         title: z.string().trim().min(1).max(120).optional(),
         pinned: z.boolean().optional(),
+        archived: z.boolean().optional(),
       })
-      .refine((b) => b.title !== undefined || b.pinned !== undefined, "give a title or pinned")
+      .refine(
+        (b) => b.title !== undefined || b.pinned !== undefined || b.archived !== undefined,
+        "give a title, pinned or archived",
+      )
       .parse(req.body);
     let conversation = body.title
       ? await s.bridge.renameConversation(req.user, req.params.id, body.title)
       : undefined;
     if (body.pinned !== undefined) {
       conversation = await s.bridge.pinConversation(req.user, req.params.id, body.pinned);
+    }
+    if (body.archived !== undefined) {
+      conversation = await s.bridge.archiveConversation(req.user, req.params.id, body.archived);
     }
     return { conversation };
   });
@@ -54,7 +61,17 @@ export async function conversationRoutes(app: FastifyInstance, s: Services) {
     message: await s.bridge.resetConversation(req.user, req.params.id),
   }));
 
-  app.get<{ Params: { id: string } }>("/api/conversations/:id/messages", async (req) => ({
-    messages: await s.bridge.messages(req.user, req.params.id),
-  }));
+  app.get<{ Params: { id: string } }>("/api/conversations/:id/messages", async (req) => {
+    const { limit, before } = z
+      .object({
+        limit: z.coerce.number().int().min(1).max(500).optional(),
+        before: z.string().uuid().optional(),
+      })
+      .parse(req.query);
+    // No limit: the whole conversation, as before (other clients and older pages rely on it).
+    if (limit === undefined && !before) {
+      return { messages: await s.bridge.messages(req.user, req.params.id), more: false };
+    }
+    return s.bridge.messagePage(req.user, req.params.id, { limit: limit ?? 100, before });
+  });
 }

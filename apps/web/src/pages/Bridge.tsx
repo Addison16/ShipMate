@@ -41,6 +41,7 @@ import {
 } from "../components/ui.js";
 import { MicButton, speaker, useHandsFree, useVoiceStatus } from "../components/Voice.js";
 import { formatTime } from "../lib/format.js";
+import { enterAddsLine } from "../lib/keyboard.js";
 import { dockPets } from "../lib/pets.js";
 import { splitHighlights } from "../lib/search.js";
 import { surfaceLabel } from "../lib/shipyard.js";
@@ -697,7 +698,12 @@ function Thread({
     stick.current = true;
   }
 
+  // Try again and Edit are offered when a message could be sent right now.
+  const canResend = !readOnly && !state.busy && socketState === "open";
+
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    // On a touch keyboard there is no Shift+Enter, so Enter makes a new line and Send sends.
+    if (enterAddsLine()) return;
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       send();
@@ -935,7 +941,19 @@ function Thread({
                 : `Say hello. Ask for anything, and the right ${words.crewMember} picks it up.`}
             </EmptyState>
           )}
-          <TimelineView items={state.items} selfId={user.id} />
+          <TimelineView
+            items={state.items}
+            selfId={user.id}
+            onRetry={canResend ? (again) => send(undefined, again) : undefined}
+            onEdit={
+              canResend
+                ? (old) => {
+                    setText(old);
+                    inputRef.current?.focus();
+                  }
+                : undefined
+            }
+          />
           {restoredApprovals.length > 0 && (
             <div className="mt-4 space-y-4">
               {restoredApprovals.map((a) => (
@@ -1016,6 +1034,7 @@ function Thread({
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={onKeyDown}
+                enterKeyHint={enterAddsLine() ? "enter" : "send"}
                 onPaste={(e) => {
                   if (!e.clipboardData.files.length) return;
                   e.preventDefault();

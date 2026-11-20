@@ -1,5 +1,5 @@
 import type { AttachmentDto, MessageDto } from "@shipmate/core";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { useCrewName, useThemeText } from "../appearance.js";
 import { messageAttachments } from "../lib/files.js";
 import { formatTime } from "../lib/format.js";
@@ -9,10 +9,11 @@ import { ApprovalCard } from "./ApprovalCard.js";
 import { MessageFiles } from "./Attachments.js";
 import { Avatar } from "./Avatar.js";
 import { ChatError } from "./ChatError.js";
+import { CopyButton } from "./CopyButton.js";
 import { Markdown } from "./Markdown.js";
 import { PetPreviewCard } from "./Pet.js";
 import { ThemeChatCard } from "./ThemeCard.js";
-import { cx } from "./ui.js";
+import { cx, focusRing } from "./ui.js";
 import { ListenButton } from "./Voice.js";
 
 /** Three dots that bob in turn while a crew member is working on a reply. */
@@ -47,20 +48,22 @@ export function HandoffLine({ handoff }: { handoff: Handoff }) {
 }
 
 function Chip({ chip }: { chip: ToolChip }) {
-  return (
-    <span
-      title={chip.summary}
-      className={cx(
-        "inline-flex max-w-full animate-scale-in items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs",
-        chip.isError
-          ? "border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/50 dark:text-red-200"
-          : "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
-      )}
-    >
+  // Tap to read the whole line: a phone has no hover, and the line is cut to fit.
+  const [open, setOpen] = useState(false);
+  const cls = cx(
+    "inline-flex max-w-full animate-scale-in gap-1.5 border px-2 py-0.5 text-left text-xs",
+    open ? "items-start rounded-lg" : "items-center rounded-full",
+    chip.isError
+      ? "border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/50 dark:text-red-200"
+      : "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  );
+  const body = (
+    <>
       <span
         aria-hidden="true"
         className={cx(
           "size-1.5 shrink-0 rounded-full",
+          open && "mt-1.5",
           chip.running
             ? "animate-pulse bg-amber-500"
             : chip.isError
@@ -68,11 +71,26 @@ function Chip({ chip }: { chip: ToolChip }) {
               : "bg-emerald-500",
         )}
       />
-      <span className="font-mono font-medium">{chip.name}</span>
-      {chip.summary && <span className="truncate">{chip.summary}</span>}
+      <span className="shrink-0 font-mono font-medium">{chip.name}</span>
+      {chip.summary && (
+        <span className={open ? "min-w-0 break-words whitespace-pre-wrap" : "truncate"}>
+          {chip.summary}
+        </span>
+      )}
       {chip.isError && <span className="sr-only">(failed)</span>}
       {chip.running && <span className="sr-only">(running)</span>}
-    </span>
+    </>
+  );
+  if (!chip.summary) return <span className={cls}>{body}</span>;
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      onClick={() => setOpen((v) => !v)}
+      className={cx(cls, focusRing)}
+    >
+      {body}
+    </button>
   );
 }
 
@@ -165,7 +183,39 @@ function Bubble({
   );
 }
 
-function MessageView({ message, selfId }: { message: MessageDto; selfId: string }) {
+/** The small buttons beside a message's name. */
+const ACTION =
+  "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200";
+
+function ActionButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cx(
+        "inline-flex min-h-7 items-center rounded px-1.5 py-0.5 text-xs",
+        ACTION,
+        focusRing,
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function MessageView({
+  message,
+  selfId,
+  extra,
+  onRetry,
+}: {
+  message: MessageDto;
+  selfId: string;
+  /** Buttons only the newest messages get (Try again, Edit). */
+  extra?: ReactNode;
+  /** Set on a "stopped before finishing" note that can be tried again. */
+  onRetry?: (() => void) | undefined;
+}) {
   const crewName = useCrewName();
   const t = useThemeText();
   const a = message.author;
@@ -195,6 +245,11 @@ function MessageView({ message, selfId }: { message: MessageDto; selfId: string 
           message={`${t(message.content)} · ${formatTime(message.createdAt)}`}
           detail={typeof detail === "string" ? detail : null}
         />
+        {onRetry && (
+          <div className="mt-1 flex justify-end">
+            <ActionButton onClick={onRetry}>Try again</ActionButton>
+          </div>
+        )}
       </div>
     );
   }
@@ -217,9 +272,15 @@ function MessageView({ message, selfId }: { message: MessageDto; selfId: string 
         time={formatTime(message.createdAt)}
         tools={metaTools(message)}
         actions={
-          a.kind === "crew" && message.content ? (
-            <ListenButton id={message.id} text={message.content} />
-          ) : undefined
+          message.content ? (
+            <>
+              {a.kind === "crew" && <ListenButton id={message.id} text={message.content} />}
+              <CopyButton text={message.content} label="Copy message" className={ACTION} />
+              {extra}
+            </>
+          ) : (
+            extra
+          )
         }
         files={files}
       >
@@ -276,13 +337,64 @@ function AnsweredQuestion({ crew, text, answer }: Answered) {
   );
 }
 
-export function TimelineView({ items, selfId }: { items: TimelineItem[]; selfId: string }) {
+/** The last message you sent, when it can be sent again as it was: text only, no files. */
+export function lastOwnMessage(items: TimelineItem[], selfId: string): MessageDto | null {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i];
+    if (it?.kind !== "message") continue;
+    const m = it.message;
+    if (m.author.kind !== "user" || m.author.id !== selfId) continue;
+    return m.content.trim() && !messageAttachments(m).length ? m : null;
+  }
+  return null;
+}
+
+export function TimelineView({
+  items,
+  selfId,
+  onRetry,
+  onEdit,
+}: {
+  items: TimelineItem[];
+  selfId: string;
+  /** Send your last message again. Left out while a reply is being written. */
+  onRetry?: ((text: string) => void) | undefined;
+  /** Put your last message back in the message box to change it. */
+  onEdit?: ((text: string) => void) | undefined;
+}) {
   const crewName = useCrewName();
+  const own = lastOwnMessage(items, selfId);
+  const last = items[items.length - 1];
+  // Try again sits on the newest thing in the chat, when that is a reply (or a note that the
+  // reply failed) to your last message.
+  const retryKey =
+    own && onRetry && last?.kind === "message" && last.message.id !== own.id ? last.key : null;
   return (
     <div className="space-y-4">
       {items.map((it) => {
         if (it.kind === "message") {
-          return <MessageView key={it.key} message={it.message} selfId={selfId} />;
+          const retry =
+            it.key === retryKey && own && onRetry ? () => onRetry(own.content) : undefined;
+          const failed = it.message.meta?.turnError === true;
+          const edit =
+            own && onEdit && it.message.id === own.id ? (
+              <ActionButton onClick={() => onEdit(own.content)}>Edit</ActionButton>
+            ) : null;
+          return (
+            <MessageView
+              key={it.key}
+              message={it.message}
+              selfId={selfId}
+              extra={
+                retry && !failed && it.message.author.kind === "crew" ? (
+                  <ActionButton onClick={retry}>Try again</ActionButton>
+                ) : (
+                  edit
+                )
+              }
+              onRetry={failed ? retry : undefined}
+            />
+          );
         }
         if (it.kind === "handoff") return <HandoffLine key={it.key} handoff={it} />;
         if (it.kind === "approval") return <ApprovalCard key={it.key} approval={it.approval} />;

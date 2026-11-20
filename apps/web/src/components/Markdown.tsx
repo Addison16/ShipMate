@@ -1,5 +1,7 @@
 import { type ReactNode, useMemo } from "react";
-import { type Block, type Inline, parseMarkdown } from "../lib/markdown.js";
+import { highlight, type TokenKind } from "../lib/highlight.js";
+import { type Block, type Inline, parseMarkdown, type TableAlign } from "../lib/markdown.js";
+import { CopyButton } from "./CopyButton.js";
 
 function renderInline(nodes: Inline[]): ReactNode[] {
   return nodes.map((n, i) => {
@@ -26,6 +28,8 @@ function renderInline(nodes: Inline[]): ReactNode[] {
         );
       case "em":
         return <em key={key}>{renderInline(n.children)}</em>;
+      case "del":
+        return <del key={key}>{renderInline(n.children)}</del>;
       case "link":
         return (
           <a
@@ -44,18 +48,93 @@ function renderInline(nodes: Inline[]): ReactNode[] {
   });
 }
 
+const ALIGN: Record<NonNullable<TableAlign> | "none", string> = {
+  left: "text-left",
+  center: "text-center",
+  right: "text-right",
+  none: "text-left",
+};
+
+/** Code blocks are always dark, so one set of colors serves light and dark mode. */
+const TOKEN: Record<TokenKind, string> = {
+  comment: "text-slate-400 italic",
+  string: "text-emerald-300",
+  number: "text-amber-300",
+  keyword: "text-sky-300",
+};
+
+function CodeBlock({ lang, text }: { lang: string; text: string }) {
+  const tokens = useMemo(() => highlight(text, lang), [text, lang]);
+  let offset = 0;
+  return (
+    <div className="overflow-hidden rounded-md bg-slate-900 text-slate-100 dark:bg-black/50">
+      <div className="flex items-center justify-between gap-2 pr-1 pl-3 text-xs text-slate-400">
+        <span className="font-mono">{lang || "code"}</span>
+        <CopyButton text={text} label="Copy code" className="text-slate-300 hover:bg-white/10" />
+      </div>
+      <pre className="overflow-x-auto px-3 pb-3 font-mono text-[0.85em] leading-relaxed">
+        <code>
+          {tokens.map((tok) => {
+            const k = offset;
+            offset += tok.text.length;
+            return tok.kind ? (
+              <span key={k} className={TOKEN[tok.kind]}>
+                {tok.text}
+              </span>
+            ) : (
+              tok.text
+            );
+          })}
+        </code>
+      </pre>
+    </div>
+  );
+}
+
 function renderBlock(b: Block, key: number): ReactNode {
   switch (b.t) {
     case "p":
       return <p key={key}>{renderInline(b.children)}</p>;
     case "code":
+      return <CodeBlock key={key} lang={b.lang} text={b.text} />;
+    case "hr":
+      return <hr key={key} className="border-slate-200 dark:border-slate-700" />;
+    case "table":
       return (
-        <pre
-          key={key}
-          className="overflow-x-auto rounded-md bg-slate-900 p-3 font-mono text-[0.85em] leading-relaxed text-slate-100 dark:bg-black/50"
-        >
-          <code>{b.text}</code>
-        </pre>
+        // Wide tables scroll sideways inside the bubble instead of stretching the page.
+        <div key={key} className="max-w-full overflow-x-auto">
+          <table className="border-collapse text-[0.92em]">
+            <thead>
+              <tr>
+                {b.head.map((cell, i) => (
+                  <th
+                    // biome-ignore lint/suspicious/noArrayIndexKey: static parsed content
+                    key={i}
+                    className={`border-b border-current/25 px-2.5 py-1.5 font-semibold ${ALIGN[b.align[i] ?? "none"]}`}
+                  >
+                    {renderInline(cell)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {b.rows.map((row, r) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: static parsed content
+                <tr key={r} className="border-b border-current/10 last:border-0">
+                  {row.map((cell, i) => (
+                    <td
+                      // biome-ignore lint/suspicious/noArrayIndexKey: static parsed content
+                      key={i}
+                      className={`px-2.5 py-1.5 align-top ${ALIGN[b.align[i] ?? "none"]}`}
+                    >
+                      {renderInline(cell)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       );
     case "heading": {
       const cls = "font-semibold";
@@ -78,6 +157,33 @@ function renderBlock(b: Block, key: number): ReactNode {
       );
     }
     case "list": {
+      const checks = b.checks;
+      if (checks) {
+        return (
+          <ul key={key} className="space-y-1">
+            {b.items.map((it, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: static parsed content
+              <li key={i} className="flex items-start gap-2">
+                {checks[i] === null || checks[i] === undefined ? (
+                  <span aria-hidden="true" className="w-4 shrink-0 text-center">
+                    •
+                  </span>
+                ) : (
+                  <input
+                    type="checkbox"
+                    checked={checks[i] === true}
+                    readOnly
+                    disabled
+                    aria-label={checks[i] ? "Done" : "Not done"}
+                    className="mt-1.5 size-4 shrink-0 accent-accent-600"
+                  />
+                )}
+                <span className="min-w-0">{renderInline(it)}</span>
+              </li>
+            ))}
+          </ul>
+        );
+      }
       const items = b.items.map((it, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: static parsed content
         <li key={i}>{renderInline(it)}</li>

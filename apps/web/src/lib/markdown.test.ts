@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseInline, parseMarkdown, safeHref } from "./markdown.js";
+import { parseInline, parseMarkdown, safeHref, splitRow } from "./markdown.js";
 
 describe("parseMarkdown", () => {
   it("keeps raw HTML as plain text nodes", () => {
@@ -100,5 +100,76 @@ describe("safeHref", () => {
     expect(safeHref("javascript:alert(1)")).toBeNull();
     expect(safeHref("data:text/html,hi")).toBeNull();
     expect(safeHref("//evil.com")).toBeNull();
+  });
+});
+
+describe("tables, rules, checklists and strikethrough", () => {
+  const text = (s: string) => [{ t: "text", text: s }];
+
+  it("parses a table with alignment and short rows", () => {
+    const src = "| Item | Price |\n| :--- | ---: |\n| Milk | 3 |\n| Bread |\nafter";
+    expect(parseMarkdown(src)).toEqual([
+      {
+        t: "table",
+        align: ["left", "right"],
+        head: [text("Item"), text("Price")],
+        rows: [
+          [text("Milk"), text("3")],
+          [text("Bread"), []],
+        ],
+      },
+      { t: "p", children: text("after") },
+    ]);
+  });
+
+  it("parses a table without the outer bars", () => {
+    const [b] = parseMarkdown("a | b\n--|--\n1 | 2");
+    expect(b).toMatchObject({
+      t: "table",
+      head: [text("a"), text("b")],
+      rows: [[text("1"), text("2")]],
+    });
+  });
+
+  it("shows a table header alone while the rows are still streaming", () => {
+    expect(parseMarkdown("| a | b |\n|---|---|")).toEqual([
+      { t: "table", align: [null, null], head: [text("a"), text("b")], rows: [] },
+    ]);
+  });
+
+  it("does not take a sentence with a bar, or a mismatched rule, for a table", () => {
+    expect(parseMarkdown("a | b\nplain")[0]?.t).toBe("p");
+    expect(parseMarkdown("a | b | c\n---|---")[0]?.t).toBe("p");
+    expect(parseMarkdown("Heading\n---")[0]?.t).toBe("p");
+  });
+
+  it("keeps bars inside code and escaped bars in one cell", () => {
+    expect(splitRow("| `a|b` | c \\| d |")).toEqual(["`a|b`", "c | d"]);
+  });
+
+  it("parses rules, but not list items, as rules", () => {
+    expect(parseMarkdown("---\n***\n- - -").map((b) => b.t)).toEqual(["hr", "hr", "hr"]);
+    expect(parseMarkdown("- one")[0]?.t).toBe("list");
+  });
+
+  it("parses checklists", () => {
+    expect(parseMarkdown("- [x] done\n- [ ] todo\n- plain")).toEqual([
+      {
+        t: "list",
+        ordered: false,
+        start: 1,
+        items: [text("done"), text("todo"), text("plain")],
+        checks: [true, false, null],
+      },
+    ]);
+  });
+
+  it("parses strikethrough", () => {
+    expect(parseInline("was ~~10~~ 8")).toEqual([
+      { t: "text", text: "was " },
+      { t: "del", children: text("10") },
+      { t: "text", text: " 8" },
+    ]);
+    expect(parseInline("a ~~ b")).toEqual(text("a ~~ b"));
   });
 });

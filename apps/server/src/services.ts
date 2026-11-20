@@ -47,6 +47,7 @@ import { ThemeService } from "./services/themes.js";
 import { UsageService } from "./services/usage.js";
 import { WatchService } from "./services/watches.js";
 import { WeatherService } from "./services/weather.js";
+import { type WebDeps, WebService } from "./services/web.js";
 import { DockerClient, endpointFromEnv } from "./shipyard/docker.js";
 import { ShipyardService } from "./shipyard/service.js";
 import type { SlackPort } from "./slack/port.js";
@@ -80,6 +81,7 @@ export interface Services {
   starters: StarterService;
   lists: ListService;
   documents: DocumentService;
+  web: WebService;
   profiles: ProfileService;
   crewBundles: CrewBundleService;
   push: PushService;
@@ -112,6 +114,7 @@ export async function createServices(
     oidcDiscover?: OidcDiscover;
     /** Stand-in for Open-Meteo (tests). */
     weather?: WeatherService;
+    web?: WebDeps;
     /** Stand-in for the Web Push services (tests). */
     pushFetch?: PushFetch;
     /** Stand-in for speech services (tests). */
@@ -186,11 +189,14 @@ export async function createServices(
   );
   bridge.attachPets(pets);
   const profiles = new ProfileService(db, settings);
+  const web = new WebService(settings, options.web);
+  await web.getSettings();
   bridge.attachEveryday(
     new EverydayTools({
       db,
       lists,
       documents,
+      web,
       profiles,
       weather: options.weather ?? new WeatherService(),
     }),
@@ -383,6 +389,7 @@ export async function createServices(
     shipyard,
     lists,
     documents,
+    web,
     profiles,
     crewBundles: new CrewBundleService({ crew, settings, providers, mcp, skills }),
     starters: new StarterService(config.TEMPLATES_DIR, crew, mcp, watches),

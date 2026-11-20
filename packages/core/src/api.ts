@@ -1484,6 +1484,20 @@ export interface DocumentHitDto {
  * Shared documents can be changed by whoever added them, or an admin.
  */
 
+// ---------- built-in web search ----------
+
+export interface WebSearchSettingsDto {
+  /** Address of the household's SearXNG, e.g. http://192.168.1.10:8080; "" = search is off. */
+  searxngUrl: string;
+  /** Whether crew may read public web pages (`read_web_page`). */
+  readPages: boolean;
+}
+/**
+ * GET /api/settings/web → { web: WebSearchSettingsDto }
+ * PUT /api/settings/web (admin) Partial<WebSearchSettingsDto> → { web }
+ * POST /api/settings/web/test (admin) { searxngUrl } → { ok, message }
+ */
+
 // ---------- household profiles (everyday life) ----------
 
 export interface ProfileDto extends PersonProfile {

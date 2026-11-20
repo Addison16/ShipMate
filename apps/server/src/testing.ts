@@ -12,6 +12,7 @@ import { loadConfig } from "./config.js";
 import type { DiscordClientPort } from "./discord/port.js";
 import type { PushFetch } from "./push/webpush.js";
 import type { WeatherService } from "./services/weather.js";
+import type { WebDeps } from "./services/web.js";
 import type { SlackPort } from "./slack/port.js";
 import type { TelegramPort } from "./telegram/port.js";
 import type { VoiceFetch } from "./voice/service.js";
@@ -44,6 +45,7 @@ export async function testApp(
     telegramPort?: TelegramPort;
     slackPort?: SlackPort;
     weather?: WeatherService;
+    web?: WebDeps;
     pushFetch?: PushFetch;
     voiceFetch?: VoiceFetch;
     googleFetch?: typeof fetch;
@@ -85,6 +87,7 @@ export async function testApp(
     ...(options.telegramPort ? { telegramPort: options.telegramPort } : {}),
     ...(options.slackPort ? { slackPort: options.slackPort } : {}),
     ...(options.weather ? { weather: options.weather } : {}),
+    ...(options.web ? { web: options.web } : {}),
     ...(options.pushFetch ? { pushFetch: options.pushFetch } : {}),
     ...(options.voiceFetch ? { voiceFetch: options.voiceFetch } : {}),
     ...(options.googleFetch ? { googleFetch: options.googleFetch } : {}),

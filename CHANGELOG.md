@@ -6,6 +6,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Built-in web search**: every agent, on every engine, can now look things up without an
+  MCP server. Paste your SearXNG address once under Settings → General → Web search (there is
+  a Test button) and agents get `search_web`. `read_web_page` reads a public page as text and
+  needs no setup; it can be turned off. Page reading only goes to the public web: addresses on
+  your home network are refused, also after a redirect. SearXNG has to allow the `json` format.
 - **Documents**: a new place under Settings → Documents for manuals, policies and letters
   (PDFs and text files). Add them once and every agent can look things up in them: agents
   get `search_documents`, `read_document` and `list_documents`, on every engine, and are told

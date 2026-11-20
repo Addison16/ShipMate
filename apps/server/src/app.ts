@@ -43,6 +43,7 @@ import { settingsRoutes, usageRoutes } from "./routes/usage.js";
 import { userRoutes } from "./routes/users.js";
 import { voiceRoutes } from "./routes/voice.js";
 import { watchRoutes } from "./routes/watches.js";
+import { webRoutes } from "./routes/web.js";
 import { GOOGLE_CALLBACK_PATH } from "./services/google-oauth.js";
 import { createServices } from "./services.js";
 
@@ -227,6 +228,7 @@ export async function buildApp(
   await pushRoutes(app, services);
   await fileRoutes(app, services);
   await documentRoutes(app, services);
+  await webRoutes(app, services);
   await voiceRoutes(app, services);
   await petRoutes(app, services);
   await localAiRoutes(app, services);

@@ -27,6 +27,7 @@ import {
   TextField,
 } from "../components/ui.js";
 import { VoiceSettings } from "../components/VoiceSettings.js";
+import { WebSearchSettings } from "../components/WebSearchSettings.js";
 import { claudeCliApi } from "../lib/claude-cli.js";
 import { codexChoices, codexCliApi } from "../lib/codex-cli.js";
 import { cursorChoices, cursorCliApi } from "../lib/cursor-cli.js";
@@ -80,6 +81,7 @@ export function SettingsPage({ section }: { section: string }) {
       return (
         <SettingsSectionPage title="General">
           <InstanceSettings />
+          <WebSearchSettings />
           <SetupGuide />
         </SettingsSectionPage>
       );

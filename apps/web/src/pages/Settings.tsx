@@ -5,6 +5,7 @@ import { useCrewName, useThemeText, useThemeWords } from "../appearance.js";
 import { useAuth, useUser } from "../auth.js";
 import { AppearanceSettings } from "../components/AppearanceSettings.js";
 import { BackupSettings } from "../components/BackupSettings.js";
+import { DeviceSettings } from "../components/DeviceSettings.js";
 import { NavIcon } from "../components/icons.js";
 import { ModelSelect } from "../components/ModelSelect.js";
 import { OidcSettings } from "../components/OidcSettings.js";
@@ -60,6 +61,7 @@ export function SettingsPage({ section }: { section: string }) {
         <SettingsSectionPage title="Profile and account">
           <ProfileSettings />
           <MyAccount />
+          <DeviceSettings />
         </SettingsSectionPage>
       );
     case "appearance":

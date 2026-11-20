@@ -6,6 +6,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Safer sign-in**: after five wrong passwords for an account from one address, sign-in for
+  it pauses for 15 minutes (and after 30 wrong tries from one address, for any account). The
+  pause is noted in the audit log. Settings → Profile and account has a new "Signed-in devices"
+  list: see where you are signed in, sign one device out, or sign out all the others. Changing
+  a password now signs every other device out.
 - **Chat basics**: every message has a Copy button, and so does every block of code. Replies
   now show tables as tables (wide ones scroll sideways), plus checklists, crossed-out text,
   divider lines and colored code. Your newest message has Edit, which puts it back in the

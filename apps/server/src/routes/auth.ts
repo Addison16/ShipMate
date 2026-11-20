@@ -10,6 +10,7 @@ import { eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { HttpError, hashPassword, toUserDto, verifyPassword } from "../auth.js";
+import { LoginLimiter, waitWords } from "../login-limit.js";
 import type { Services } from "../services.js";
 import { ONBOARDING_KEY, onboardingState } from "./onboarding.js";
 
@@ -17,6 +18,8 @@ const Email = z.string().trim().toLowerCase().email();
 const Password = z.string().min(8, "passwords need at least 8 characters").max(200);
 
 export async function authRoutes(app: FastifyInstance, s: Services) {
+  const limiter = new LoginLimiter();
+
   const setupRequired = async () => {
     const [row] = await s.db.select({ n: sql<number>`count(*)::int` }).from(users);
     return (row?.n ?? 0) === 0;
@@ -64,10 +67,30 @@ export async function authRoutes(app: FastifyInstance, s: Services) {
 
   app.post("/api/auth/login", async (req, reply) => {
     const body = z.object({ email: Email, password: z.string() }).parse(req.body);
+    // Checked before the password, so waiting cannot be skipped by guessing right.
+    const wait = limiter.waitSeconds(body.email, req.ip);
+    if (wait > 0) {
+      reply.header("retry-after", String(wait));
+      throw new HttpError(429, `Too many wrong tries. Wait ${waitWords(wait)} and try again.`);
+    }
     const [user] = await s.db.select().from(users).where(eq(users.email, body.email)).limit(1);
     if (!user || !(await verifyPassword(user.passwordHash, body.password))) {
+      limiter.failed(body.email, req.ip);
+      if (limiter.waitSeconds(body.email, req.ip) > 0) {
+        await s.audit
+          .record({
+            userId: user?.id ?? null,
+            crewMemberId: null,
+            action: "auth.login_blocked",
+            summary: `Sign-in paused for ${body.email} after too many wrong passwords`,
+            decision: null,
+            detail: { address: req.ip },
+          })
+          .catch(() => {});
+      }
       throw new HttpError(401, "Wrong email or password.");
     }
+    limiter.succeeded(body.email, req.ip);
     await s.sessions.start(reply, user.id);
     return { user: toUserDto(user) };
   });
@@ -104,6 +127,21 @@ export async function authRoutes(app: FastifyInstance, s: Services) {
       .returning();
     if (!user) throw new HttpError(404, "user not found");
     return { user: toUserDto(user) };
+  });
+
+  app.get("/api/auth/sessions", async (req) => ({
+    sessions: await s.sessions.list(req.user.id, s.sessions.currentId(req)),
+  }));
+
+  app.post("/api/auth/sessions/end-others", async (req) => ({
+    ended: await s.sessions.endOthers(req.user.id, s.sessions.currentId(req)),
+  }));
+
+  app.delete<{ Params: { id: string } }>("/api/auth/sessions/:id", async (req) => {
+    if (!(await s.sessions.endOne(req.user.id, req.params.id))) {
+      throw new HttpError(404, "that device is already signed out");
+    }
+    return { ok: true };
   });
 
   app.post("/api/auth/logout", async (req, reply) => {

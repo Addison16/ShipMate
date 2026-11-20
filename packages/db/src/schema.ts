@@ -192,6 +192,10 @@ export const authSessions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /** The browser's User-Agent at sign-in, so the person can tell their devices apart. */
+    userAgent: text("user_agent"),
+    /** When the session was last used, to within a few minutes. */
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [index("auth_sessions_user_idx").on(t.userId)],

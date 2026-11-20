@@ -1,12 +1,19 @@
 import { createHash, randomBytes } from "node:crypto";
 import { hash, verify } from "@node-rs/argon2";
-import { parseUserPreferences, type UserDto, type UserRole, welcomePending } from "@shipmate/core";
+import {
+  parseUserPreferences,
+  type SessionDto,
+  type UserDto,
+  type UserRole,
+  welcomePending,
+} from "@shipmate/core";
 import { authSessions, type Db, users } from "@shipmate/db";
-import { and, eq, gt, lt } from "drizzle-orm";
+import { and, eq, gt, lt, ne } from "drizzle-orm";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
 export const SESSION_COOKIE = "shipmate_session";
 const SESSION_DAYS = 30;
+const SEEN_EVERY_MS = 10 * 60_000;
 
 export type UserRow = typeof users.$inferSelect;
 
@@ -53,7 +60,14 @@ export class SessionStore {
   async start(reply: FastifyReply, userId: string): Promise<void> {
     const token = randomBytes(32).toString("base64url");
     const expiresAt = new Date(Date.now() + SESSION_DAYS * 86_400_000);
-    await this.db.insert(authSessions).values({ id: tokenId(token), userId, expiresAt });
+    const agent = reply.request.headers["user-agent"];
+    await this.db.insert(authSessions).values({
+      id: tokenId(token),
+      userId,
+      expiresAt,
+      userAgent: typeof agent === "string" ? agent.slice(0, 300) : null,
+      lastSeenAt: new Date(),
+    });
     reply.setCookie(SESSION_COOKIE, token, {
       path: "/",
       httpOnly: true,
@@ -73,17 +87,70 @@ export class SessionStore {
   async user(request: FastifyRequest): Promise<UserRow | null> {
     const token = request.cookies[SESSION_COOKIE];
     if (!token) return null;
+    const id = tokenId(token);
     const [row] = await this.db
-      .select({ user: users })
+      .select({ user: users, lastSeenAt: authSessions.lastSeenAt })
       .from(authSessions)
       .innerJoin(users, eq(users.id, authSessions.userId))
-      .where(and(eq(authSessions.id, tokenId(token)), gt(authSessions.expiresAt, new Date())))
+      .where(and(eq(authSessions.id, id), gt(authSessions.expiresAt, new Date())))
       .limit(1);
-    return row?.user ?? null;
+    if (!row) return null;
+    // "Last used" only needs to be roughly right, so most requests write nothing.
+    if (!row.lastSeenAt || Date.now() - row.lastSeenAt.getTime() > SEEN_EVERY_MS) {
+      await this.db
+        .update(authSessions)
+        .set({ lastSeenAt: new Date() })
+        .where(eq(authSessions.id, id))
+        .catch(() => {});
+    }
+    return row.user;
   }
 
-  async endAllFor(userId: string): Promise<void> {
-    await this.db.delete(authSessions).where(eq(authSessions.userId, userId));
+  /** The id of the session a request is signed in with (what `list` calls `current`). */
+  currentId(request: FastifyRequest): string | null {
+    const token = request.cookies[SESSION_COOKIE];
+    return token ? tokenId(token) : null;
+  }
+
+  /** A person's signed-in devices, most recently used first. */
+  async list(userId: string, currentId: string | null): Promise<SessionDto[]> {
+    const rows = await this.db
+      .select()
+      .from(authSessions)
+      .where(and(eq(authSessions.userId, userId), gt(authSessions.expiresAt, new Date())));
+    return rows
+      .map((r) => ({
+        id: r.id,
+        userAgent: r.userAgent,
+        createdAt: r.createdAt.toISOString(),
+        lastSeenAt: (r.lastSeenAt ?? r.createdAt).toISOString(),
+        current: r.id === currentId,
+      }))
+      .sort(
+        (a, b) => Number(b.current) - Number(a.current) || (a.lastSeenAt < b.lastSeenAt ? 1 : -1),
+      );
+  }
+
+  /** Sign one of a person's own devices out. False when it is not theirs (or already gone). */
+  async endOne(userId: string, id: string): Promise<boolean> {
+    const gone = await this.db
+      .delete(authSessions)
+      .where(and(eq(authSessions.userId, userId), eq(authSessions.id, id)))
+      .returning({ id: authSessions.id });
+    return gone.length > 0;
+  }
+
+  /** Sign a person out everywhere except the session given. */
+  async endOthers(userId: string, keepId: string | null): Promise<number> {
+    const gone = await this.db
+      .delete(authSessions)
+      .where(
+        keepId
+          ? and(eq(authSessions.userId, userId), ne(authSessions.id, keepId))
+          : eq(authSessions.userId, userId),
+      )
+      .returning({ id: authSessions.id });
+    return gone.length;
   }
 
   async prune(): Promise<void> {

@@ -149,6 +149,41 @@ export async function crewRoutes(app: FastifyInstance, s: Services) {
     };
   });
 
+  /** Add a memory, or change one (the same name replaces it). */
+  app.put<{ Params: { slug: string; scope: string; name: string } }>(
+    "/api/crew/:slug/memory/:scope/:name",
+    async (req) => {
+      const scope = z.enum(["shared", "user"]).parse(req.params.scope);
+      if (scope === "shared") requireRole(req.user, "admin");
+      await s.crew.assertVisible(req.params.slug, req.user);
+      const body = z
+        .object({
+          description: z.string().trim().min(1).max(200),
+          body: z.string().trim().min(1).max(8000),
+        })
+        .parse(req.body);
+      const memory = s.crew.memory(req.params.slug);
+      const before = memory
+        .list(scope, scope === "user" ? req.user.id : undefined)
+        .find((m) => m.name === req.params.name);
+      try {
+        const entry = memory.write(scope, req.user.id, {
+          name: req.params.name,
+          description: body.description,
+          // An edit keeps the kind of memory the agent gave it.
+          ...(before?.type ? { type: before.type } : {}),
+          body: body.body,
+        });
+        return { memory: toMemoryDto(entry) };
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          throw new HttpError(400, "use a short name of lowercase letters, numbers and dashes");
+        }
+        throw err;
+      }
+    },
+  );
+
   app.delete<{ Params: { slug: string; scope: string; name: string } }>(
     "/api/crew/:slug/memory/:scope/:name",
     async (req) => {

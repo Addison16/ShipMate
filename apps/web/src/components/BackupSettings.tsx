@@ -10,7 +10,21 @@ import {
   TRIGGER_LABEL,
 } from "../lib/backups.js";
 import { useResource } from "../lib/useResource.js";
-import { Badge, Button, Card, ErrorText, SelectField, Table, TextField, td, th } from "./ui.js";
+import { Badge, Button, Card, ErrorText, SelectField, TextField } from "./ui.js";
+
+/** Poll until Shipmate answers again after a restart (it goes away first), or give up. */
+async function waitForRestart(tries = 90): Promise<void> {
+  await new Promise((r) => setTimeout(r, 4000));
+  for (let i = 0; i < tries; i++) {
+    try {
+      const res = await fetch("/healthz", { cache: "no-store" });
+      if (res.ok) return;
+    } catch {
+      // Still down.
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+}
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
@@ -29,6 +43,7 @@ function BackupSettingsCard() {
   const [saved, setSaved] = useState(false);
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [restoring, setRestoring] = useState<string | null>(null);
 
   useEffect(() => {
     const s = res.data?.settings;
@@ -58,6 +73,28 @@ function BackupSettingsCard() {
       await res.reload();
     } catch (err) {
       setError(errorMessage(err));
+    }
+  }
+
+  async function restore(b: BackupDto) {
+    const typed = window.prompt(
+      `Restore ${new Date(b.createdAt).toLocaleString()}?\n\nEverything changed since then is replaced: chats, agents, settings and files. A backup of how things are now is made first. Shipmate then restarts, which takes about a minute.\n\nType RESTORE to go ahead.`,
+    );
+    if (typed === null) return;
+    if (typed.trim().toUpperCase() !== "RESTORE") {
+      setError("Nothing was restored. Type RESTORE to confirm.");
+      return;
+    }
+    setError(null);
+    setRestoring(b.name);
+    try {
+      await backupsApi.restore(b.name, typed);
+      // Shipmate is restarting; wait for it, then load the restored state.
+      await waitForRestart();
+      window.location.reload();
+    } catch (err) {
+      setError(errorMessage(err));
+      setRestoring(null);
     }
   }
 
@@ -97,62 +134,61 @@ function BackupSettingsCard() {
       <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
         The database and the data folder (crew, skills, settings; workspaces are left out) in one
         .tar.gz{res.data ? ` in ${res.data.settings.dir}` : ""}. Stored keys stay encrypted, so keep
-        SHIPMATE_SECRET (or the .secret file, which is included) safe. Restore with{" "}
-        <code className="text-xs">shipmate restore &lt;file&gt; --yes</code> while the server is
-        stopped.
+        SHIPMATE_SECRET (or the .secret file, which is included) safe. Restore puts everything back
+        to how it was in a backup.
       </p>
       <ErrorText>{res.error}</ErrorText>
       <ErrorText>{error}</ErrorText>
+      {restoring && (
+        <p
+          role="status"
+          className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100"
+        >
+          Restoring. Shipmate restarts when it is done, and this page reloads by itself. If it has
+          not come back after a few minutes, start the Shipmate container.
+        </p>
+      )}
 
       {res.data && (
         <>
           {backups.length === 0 ? (
             <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">No backups yet.</p>
           ) : (
-            <div className="mb-4">
-              <Table>
-                <thead>
-                  <tr>
-                    <th className={th}>Backup</th>
-                    <th className={th}>Size</th>
-                    <th className={th}>Kind</th>
-                    <th className={th}>
-                      <span className="sr-only">Actions</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {backups.map((b) => (
-                    <tr key={b.name}>
-                      <td className={td}>
-                        <div className="font-medium">{new Date(b.createdAt).toLocaleString()}</div>
-                        <div className="text-xs break-all text-slate-500 dark:text-slate-400">
-                          {b.name}
-                        </div>
-                      </td>
-                      <td className={`${td} whitespace-nowrap`}>{formatBytes(b.sizeBytes)}</td>
-                      <td className={td}>
-                        <Badge tone={b.trigger === "scheduled" ? "accent" : "neutral"}>
-                          {TRIGGER_LABEL[b.trigger] ?? b.trigger}
-                        </Badge>
-                      </td>
-                      <td className={`${td} text-right whitespace-nowrap`}>
-                        <a
-                          href={backupDownloadUrl(b.name)}
-                          download={b.name}
-                          className="mr-2 text-sm font-medium text-accent-700 hover:underline dark:text-accent-300"
-                        >
-                          Download
-                        </a>
-                        <Button size="sm" variant="danger" onClick={() => void remove(b)}>
-                          Delete
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            </div>
+            <ul className="mb-4 divide-y divide-slate-200 rounded-lg border border-slate-200 dark:divide-slate-700 dark:border-slate-700">
+              {backups.map((b) => (
+                <li
+                  key={b.name}
+                  className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-3 py-3"
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                      {new Date(b.createdAt).toLocaleString()}
+                      <Badge tone={b.trigger === "scheduled" ? "accent" : "neutral"}>
+                        {TRIGGER_LABEL[b.trigger] ?? b.trigger}
+                      </Badge>
+                    </div>
+                    <div className="text-xs break-all text-slate-500 dark:text-slate-400">
+                      {formatBytes(b.sizeBytes)} · {b.name}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <a
+                      href={backupDownloadUrl(b.name)}
+                      download={b.name}
+                      className="mr-1 text-sm font-medium text-accent-700 hover:underline dark:text-accent-300"
+                    >
+                      Download
+                    </a>
+                    <Button size="sm" disabled={restoring !== null} onClick={() => void restore(b)}>
+                      Restore
+                    </Button>
+                    <Button size="sm" variant="danger" onClick={() => void remove(b)}>
+                      Delete
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
 
           <form onSubmit={save} className="grid gap-4 sm:grid-cols-2">

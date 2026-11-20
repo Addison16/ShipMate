@@ -120,6 +120,8 @@ export async function createServices(
     petFetch?: PetFetch;
     /** Stand-in for pictures made through the Codex CLI (tests). */
     codexPainter?: CodexPainter;
+    /** What "restart Shipmate" does after a restore (tests); the default ends the process. */
+    restart?: () => void;
   } = {},
 ): Promise<Services> {
   const vault = new SecretVault(config.SHIPMATE_SECRET);
@@ -259,6 +261,11 @@ export async function createServices(
     audit,
     config.dirs.root,
     process.env.SHIPMATE_BACKUP_DIR || `${config.dirs.root}/backups`,
+    {
+      databaseUrl: config.DATABASE_URL,
+      // The container's restart policy brings Shipmate back up on the restored data.
+      restart: options.restart ?? (() => process.exit(0)),
+    },
   );
   const health = new HealthService(
     {

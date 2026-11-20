@@ -49,6 +49,8 @@ export async function testApp(
     googleFetch?: typeof fetch;
     petFetch?: typeof fetch;
     codexPainter?: import("./pets/codex.js").CodexPainter;
+    /** Called where a real server would restart itself (after a restore). */
+    restart?: () => void;
     /** Extra config variables (e.g. SHIPMATE_UPDATE_CHECK). */
     env?: Record<string, string>;
   } = {},
@@ -88,6 +90,8 @@ export async function testApp(
     ...(options.googleFetch ? { googleFetch: options.googleFetch } : {}),
     ...(options.petFetch ? { petFetch: options.petFetch } : {}),
     ...(options.codexPainter ? { codexPainter: options.codexPainter } : {}),
+    // Never the real one: it ends the process.
+    restart: options.restart ?? (() => {}),
   });
   await app.ready();
   return { app, faux, config };

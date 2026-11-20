@@ -3,7 +3,16 @@ import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { BackupDto, BackupSettingsDto } from "@shipmate/core";
 import { SHIPMATE_VERSION } from "@shipmate/core";
-import { BACKUP_NAME_RE, backupFileName, backupTrigger, createBackup, type Db } from "@shipmate/db";
+import {
+  BACKUP_NAME_RE,
+  backupFileName,
+  backupTrigger,
+  buildMigrationLevel,
+  createBackup,
+  type Db,
+  readBackupManifest,
+  restoreBackup,
+} from "@shipmate/db";
 import { Cron } from "croner";
 import { HttpError } from "../auth.js";
 import type { AuditService } from "./audit.js";
@@ -21,6 +30,7 @@ export class BackupService {
   #job: Cron | null = null;
   #running: Promise<BackupDto> | null = null;
   #started = false;
+  #restoring = false;
 
   constructor(
     private readonly db: Db,
@@ -28,6 +38,12 @@ export class BackupService {
     private readonly audit: AuditService,
     private readonly dataDir: string,
     readonly dir: string,
+    /** What a restore needs; without it, restoring from Settings is off. */
+    private readonly restorer?: {
+      databaseUrl: string;
+      /** Ends the process so the container starts Shipmate again on the restored data. */
+      restart: () => void;
+    },
   ) {}
 
   async getSettings(): Promise<BackupSettingsDto> {
@@ -149,6 +165,54 @@ export class BackupService {
       summary: `Deleted backup ${name}`,
       decision: null,
     });
+  }
+
+  /**
+   * Replace the database and the data folder with a backup, then restart. A backup of how
+   * things are now is made first, so a restore can itself be undone. Shipmate has to restart
+   * afterwards: everything it holds in memory (sign-ins, schedules, keys) is from before.
+   */
+  async restore(name: string, userId: string): Promise<{ safety: BackupDto }> {
+    if (!this.restorer) throw new HttpError(400, "restoring is not available on this install");
+    if (this.#restoring) throw new HttpError(409, "a restore is already running");
+    const { path } = await this.file(name);
+    let manifest: Awaited<ReturnType<typeof readBackupManifest>>;
+    try {
+      manifest = await readBackupManifest(path);
+    } catch {
+      throw new HttpError(400, "that file is not a Shipmate backup");
+    }
+    const build = buildMigrationLevel();
+    if (manifest.migrations.count > build.count) {
+      throw new HttpError(
+        400,
+        `This backup was made by a newer Shipmate (${manifest.shipmateVersion}). Update Shipmate first, then restore.`,
+      );
+    }
+    this.#restoring = true;
+    try {
+      const safety = await this.run("manual", userId);
+      await this.audit.record({
+        userId,
+        crewMemberId: null,
+        action: "backup.restore",
+        summary: `Restoring ${name} (kept ${safety.name} first)`,
+        decision: null,
+        detail: { name, safety: safety.name },
+      });
+      await restoreBackup({
+        url: this.restorer.databaseUrl,
+        dataDir: this.dataDir,
+        file: path,
+        keep: [this.dir],
+      });
+      // After the reply has gone out.
+      setTimeout(() => this.restorer?.restart(), 1500).unref?.();
+      return { safety };
+    } catch (err) {
+      this.#restoring = false;
+      throw err;
+    }
   }
 
   // ---------- schedule ----------

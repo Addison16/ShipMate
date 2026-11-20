@@ -103,6 +103,8 @@ export async function buildApp(
     googleFetch?: import("./services/google-oauth.js").GoogleFetch;
     /** Stand-in for image models (tests). */
     petFetch?: import("./pets/service.js").PetFetch;
+    /** What "restart Shipmate" does after a restore (tests). */
+    restart?: () => void;
   } = {},
 ) {
   const app = Fastify({

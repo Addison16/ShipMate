@@ -203,6 +203,17 @@ export const api = {
       "GET",
       `/api/crew/${enc(slug)}/memory`,
     ),
+  saveMemory: (
+    slug: string,
+    scope: "shared" | "user",
+    name: string,
+    body: { description: string; body: string },
+  ) =>
+    request<{ memory: MemoryEntryDto }>(
+      "PUT",
+      `/api/crew/${enc(slug)}/memory/${enc(scope)}/${enc(name)}`,
+      body,
+    ),
   deleteMemory: (slug: string, scope: "shared" | "user", name: string) =>
     request<Ok>("DELETE", `/api/crew/${enc(slug)}/memory/${enc(scope)}/${enc(name)}`),
   previewCrewImport: (body: { text: string } | { url: string }) =>

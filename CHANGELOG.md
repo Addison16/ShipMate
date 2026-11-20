@@ -6,6 +6,13 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Restore a backup from Settings**: each backup under Settings → Backups has a Restore
+  button (owner only). You type RESTORE to confirm, Shipmate first saves a backup of how
+  things are now, puts the chosen backup back, then restarts and reloads the page. It relies
+  on the container restarting itself, which the compose file and Unraid template already do.
+- **Add and change what an agent remembers**: the memory list on an agent's page has Add and
+  Edit, so you can write a note yourself or fix one the agent got wrong. Shared notes need an
+  admin.
 - **Chat upkeep**: type your next message while a reply is still coming and it sends itself
   when the reply is done ("Send when done", or Enter on a computer; Cancel puts it back in the
   message box). A chat's ⋯ menu has **Save as file** (the whole chat as a Markdown file) and

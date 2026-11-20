@@ -6,6 +6,9 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Fix**: restoring a backup could fail now and then with "relation … does not exist" while
+  it reset the table counters, because that step sometimes looked at Postgres's own tables.
+  It now looks only at Shipmate's tables.
 - **Built-in web search**: every agent, on every engine, can now look things up without an
   MCP server. `search_web` uses DuckDuckGo out of the box, or your own SearXNG: choose under
   Settings → General → Web search (there is a Test button, and Off). DuckDuckGo has no official

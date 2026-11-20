@@ -7,10 +7,13 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 ## Unreleased
 
 - **Built-in web search**: every agent, on every engine, can now look things up without an
-  MCP server. Paste your SearXNG address once under Settings → General → Web search (there is
-  a Test button) and agents get `search_web`. `read_web_page` reads a public page as text and
-  needs no setup; it can be turned off. Page reading only goes to the public web: addresses on
-  your home network are refused, also after a redirect. SearXNG has to allow the `json` format.
+  MCP server. `search_web` uses DuckDuckGo out of the box, or your own SearXNG: choose under
+  Settings → General → Web search (there is a Test button, and Off). DuckDuckGo has no official
+  service for apps, so Shipmate reads its results page and it can be limited for a while;
+  SearXNG is steadier and has to allow the `json` format. `read_web_page` reads a public page
+  as text and can be turned off. It only goes to the public web: addresses on your home
+  network are refused, also after a redirect.
+- Two documents can no longer share a name: a second "manual.pdf" becomes "manual (2).pdf".
 - **Documents**: a new place under Settings → Documents for manuals, policies and letters
   (PDFs and text files). Add them once and every agent can look things up in them: agents
   get `search_documents`, `read_document` and `list_documents`, on every engine, and are told

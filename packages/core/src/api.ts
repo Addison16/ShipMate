@@ -1486,8 +1486,14 @@ export interface DocumentHitDto {
 
 // ---------- built-in web search ----------
 
+export type WebSearchSource = "duckduckgo" | "searxng" | "off";
 export interface WebSearchSettingsDto {
-  /** Address of the household's SearXNG, e.g. http://192.168.1.10:8080; "" = search is off. */
+  /**
+   * Where `search_web` looks: DuckDuckGo's web page (no setup; it has no official API, so it
+   * can be limited), the household's own SearXNG, or nowhere.
+   */
+  source: WebSearchSource;
+  /** Address of the household's SearXNG, e.g. http://192.168.1.10:8080. */
   searxngUrl: string;
   /** Whether crew may read public web pages (`read_web_page`). */
   readPages: boolean;
@@ -1495,7 +1501,7 @@ export interface WebSearchSettingsDto {
 /**
  * GET /api/settings/web → { web: WebSearchSettingsDto }
  * PUT /api/settings/web (admin) Partial<WebSearchSettingsDto> → { web }
- * POST /api/settings/web/test (admin) { searxngUrl } → { ok, message }
+ * POST /api/settings/web/test (admin) { source, searxngUrl } → { ok, message }
  */
 
 // ---------- household profiles (everyday life) ----------

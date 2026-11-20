@@ -1,7 +1,7 @@
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import type { ServerEvent } from "@shipmate/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { htmlToText, isPrivateAddress } from "./services/web.js";
+import { htmlToText, isPrivateAddress, parseDuckDuckGo } from "./services/web.js";
 import { TEST_DATABASE_URL, testApp } from "./testing.js";
 
 const db = TEST_DATABASE_URL;
@@ -46,6 +46,30 @@ describe("web helpers", () => {
     expect(text).not.toContain("alert");
     expect(text).not.toContain("Home");
     expect(text).not.toContain("Contact us");
+  });
+});
+
+const DDG_PAGE = `<div class="result results_links results_links_deep web-result">
+  <h2 class="result__title"><a rel="nofollow" class="result__a"
+    href="//duckduckgo.com/l/?uddg=https%3A%2F%2Ftown.example%2Fbins%3Fa%3D1&amp;rut=abc">Bin <b>days</b> &amp; times</a></h2>
+  <a class="result__snippet" href="//duckduckgo.com/l/?uddg=x">Bins go out on <b>Tuesday</b>.</a>
+</div>
+<div class="result result--ad"><a rel="nofollow" class="result__a"
+    href="https://duckduckgo.com/y.js?ad_domain=shop.example">Buy bins</a>
+  <a class="result__snippet">An ad.</a></div>
+<div class="result"><a class="result__a" rel="nofollow" href="https://council.example/waste">Waste</a></div>`;
+
+describe("DuckDuckGo results", () => {
+  it("reads results, their real addresses and summaries, and skips ads", () => {
+    expect(parseDuckDuckGo(DDG_PAGE)).toEqual([
+      {
+        title: "Bin days & times",
+        url: "https://town.example/bins?a=1",
+        snippet: "Bins go out on Tuesday.",
+      },
+      { title: "Waste", url: "https://council.example/waste", snippet: "" },
+    ]);
+    expect(parseDuckDuckGo("<html>nothing</html>")).toEqual([]);
   });
 });
 
@@ -95,6 +119,11 @@ describe.skipIf(!db)("Built-in web search", () => {
         ],
       });
     }
+    if (url.startsWith("https://html.duckduckgo.com/html/")) {
+      return url.includes("blocked")
+        ? page('<form id="challenge-form">anomaly</form>', { status: 202 })
+        : page(DDG_PAGE);
+    }
     if (url.startsWith("http://locked.lan/search")) return new Response("no", { status: 403 });
     if (url === "https://town.example/bins") {
       return page(
@@ -137,39 +166,64 @@ describe.skipIf(!db)("Built-in web search", () => {
     await t?.app.close();
   });
 
-  it("starts with page reading on and search off until an address is saved", async () => {
+  it("starts on DuckDuckGo with page reading on, and only admins change it", async () => {
     expect((await api("GET", "/api/settings/web", undefined, kidCookie)).json().web).toEqual({
+      source: "duckduckgo",
       searxngUrl: "",
       readPages: true,
     });
-    expect(
-      (await api("PUT", "/api/settings/web", { searxngUrl: "http://x" }, kidCookie)).statusCode,
-    ).toBe(403);
+    expect((await api("PUT", "/api/settings/web", { source: "off" }, kidCookie)).statusCode).toBe(
+      403,
+    );
     expect((await api("PUT", "/api/settings/web", { searxngUrl: "nonsense" })).statusCode).toBe(
       400,
     );
-    // Without an address the agent has no search tool at all, only page reading.
+    expect((await api("PUT", "/api/settings/web", { source: "searxng" })).statusCode).toBe(400);
+    t.faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("search_web", { query: "bin day" })]),
+      fauxAssistantMessage([fauxToolCall("search_web", { query: "blocked" })]),
+      fauxAssistantMessage("Tuesday."),
+    ]);
+    const out = (await turn("when do the bins go out?")).map((e) =>
+      e.type === "tool" ? e.summary : "",
+    );
+    expect(out[0]).toContain("1. Bin days & times");
+    expect(out[0]).toContain("https://town.example/bins?a=1");
+    expect(out[1]).toContain("DuckDuckGo is limiting searches");
+  });
+
+  it("has no search tool when search is turned off", async () => {
+    await api("PUT", "/api/settings/web", { source: "off" });
     t.faux.setResponses([
       fauxAssistantMessage([fauxToolCall("search_web", { query: "bin day" })]),
       fauxAssistantMessage("Could not."),
     ]);
     const [tool] = await turn("when do the bins go out?");
-    expect(tool?.type === "tool" && tool.summary).toMatch(/not found|unknown|no tool/i);
+    expect(tool?.type === "tool" && tool.summary).not.toContain("Bin days");
   });
 
-  it("tests an address without saving it, then saves it", async () => {
-    const bad = (
-      await api("POST", "/api/settings/web/test", { searxngUrl: "http://locked.lan" })
-    ).json();
+  it("tests a source without saving it, then saves SearXNG", async () => {
+    const test = async (body: object) => (await api("POST", "/api/settings/web/test", body)).json();
+    expect(await test({ source: "duckduckgo" })).toEqual({
+      ok: true,
+      message: "It works: 2 results came back.",
+    });
+    const bad = await test({ source: "searxng", searxngUrl: "http://locked.lan" });
     expect(bad.ok).toBe(false);
     expect(bad.message).toContain("json");
-    const good = (
-      await api("POST", "/api/settings/web/test", { searxngUrl: "http://searx.lan:8080/" })
-    ).json();
-    expect(good).toEqual({ ok: true, message: "It works: 1 results came back." });
-    expect((await api("GET", "/api/settings/web")).json().web.searxngUrl).toBe("");
-    const saved = await api("PUT", "/api/settings/web", { searxngUrl: "http://searx.lan:8080/" });
-    expect(saved.json().web.searxngUrl).toBe("http://searx.lan:8080");
+    expect(await test({ source: "searxng", searxngUrl: "http://searx.lan:8080/" })).toEqual({
+      ok: true,
+      message: "It works: 1 results came back.",
+    });
+    expect((await api("GET", "/api/settings/web")).json().web.source).toBe("off");
+    const saved = await api("PUT", "/api/settings/web", {
+      source: "searxng",
+      searxngUrl: "http://searx.lan:8080/",
+    });
+    expect(saved.json().web).toMatchObject({
+      source: "searxng",
+      searxngUrl: "http://searx.lan:8080",
+    });
   });
 
   it("lets agents search and read public pages, and refuses the home network", async () => {

@@ -52,7 +52,7 @@ export class EverydayTools {
       ...listTools(this.#listHost(user, crew)),
       ...documentTools(this.#documentHost(user)),
       ...webTools(this.#webHost(), {
-        search: !!this.deps.web.snapshot.searxngUrl,
+        search: this.deps.web.snapshot.source !== "off",
         read: this.deps.web.snapshot.readPages,
       }),
       ...profileTools({ read: () => this.#profilesText(user) }),

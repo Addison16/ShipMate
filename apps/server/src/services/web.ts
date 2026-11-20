@@ -1,6 +1,6 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
-import type { WebSearchSettingsDto } from "@shipmate/core";
+import type { WebSearchSettingsDto, WebSearchSource } from "@shipmate/core";
 import { HttpError } from "../auth.js";
 import type { SettingsService } from "./settings.js";
 
@@ -24,7 +24,12 @@ export interface WebDeps {
   lookup?: (host: string) => Promise<string[]>;
 }
 
-const DEFAULTS: WebSearchSettingsDto = { searxngUrl: "", readPages: true };
+const DEFAULTS: WebSearchSettingsDto = { source: "duckduckgo", searxngUrl: "", readPages: true };
+const SOURCES: WebSearchSource[] = ["duckduckgo", "searxng", "off"];
+const DUCKDUCKGO = "https://html.duckduckgo.com/html/";
+/** DuckDuckGo turns away clients that do not look like a browser. */
+const BROWSER_AGENT =
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
 
 /** True for loopback, private, link-local and other addresses that are not the public web. */
 export function isPrivateAddress(address: string): boolean {
@@ -143,6 +148,9 @@ export class WebService {
   async getSettings(): Promise<WebSearchSettingsDto> {
     const saved = await this.settings.getJson<Partial<WebSearchSettingsDto>>(KEY);
     this.snapshot = {
+      source: SOURCES.includes(saved?.source as WebSearchSource)
+        ? (saved?.source as WebSearchSource)
+        : DEFAULTS.source,
       searxngUrl: typeof saved?.searxngUrl === "string" ? saved.searxngUrl : DEFAULTS.searxngUrl,
       readPages: typeof saved?.readPages === "boolean" ? saved.readPages : DEFAULTS.readPages,
     };
@@ -166,14 +174,23 @@ export class WebService {
         throw new HttpError(400, "The address must start with http:// or https://");
       }
     }
+    if (next.source === "searxng" && !next.searxngUrl) {
+      throw new HttpError(400, "Enter your SearXNG address first.");
+    }
     await this.settings.setJson(KEY, next);
     this.snapshot = next;
     return next;
   }
 
-  /** Search through SearXNG's JSON API. Throws a plain sentence when it cannot. */
-  async search(query: string, limit = 6, address?: string): Promise<WebResult[]> {
-    const searxngUrl = address ?? (await this.getSettings()).searxngUrl;
+  /** Search with the chosen source. Throws a plain sentence when it cannot. */
+  async search(
+    query: string,
+    limit = 6,
+    using?: { source: WebSearchSource; searxngUrl: string },
+  ): Promise<WebResult[]> {
+    const { source, searxngUrl } = using ?? (await this.getSettings());
+    if (source === "off") throw new Error("Web search is turned off under Settings, General.");
+    if (source === "duckduckgo") return this.#duckDuckGo(query, limit);
     if (!searxngUrl) {
       throw new Error(
         "Web search is not set up. An admin can paste a SearXNG address under Settings, General.",
@@ -216,15 +233,43 @@ export class WebService {
     return out;
   }
 
-  /** Whether the address answers a search, for the Test button. Nothing is saved. */
-  async test(searxngUrl: string): Promise<{ ok: boolean; message: string }> {
+  /** Search DuckDuckGo's plain web page. It is not an official API and can be limited. */
+  async #duckDuckGo(query: string, limit: number): Promise<WebResult[]> {
+    let res: Response;
+    try {
+      res = await this.#fetch(`${DUCKDUCKGO}?q=${encodeURIComponent(query)}`, {
+        headers: { accept: "text/html", "user-agent": BROWSER_AGENT },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+    } catch {
+      throw new Error("Could not reach DuckDuckGo.");
+    }
+    const html = res.ok ? await readCapped(res, MAX_PAGE_BYTES) : "";
+    const results = parseDuckDuckGo(html).slice(0, limit);
+    if (results.length) return results;
+    if (res.status !== 200 || /anomaly|challenge-form|captcha/i.test(html)) {
+      throw new Error(
+        "DuckDuckGo is limiting searches from this server right now. Try again later, or an admin can switch to a SearXNG address under Settings, General.",
+      );
+    }
+    return [];
+  }
+
+  /** Whether a source answers a search, for the Test button. Nothing is saved. */
+  async test(
+    source: WebSearchSource,
+    searxngUrl: string,
+  ): Promise<{ ok: boolean; message: string }> {
     const address = searxngUrl.trim().replace(/\/+$/, "");
-    if (!/^https?:\/\/\S+$/i.test(address)) {
+    if (source === "off") return { ok: false, message: "Search is turned off." };
+    if (source === "searxng" && !/^https?:\/\/\S+$/i.test(address)) {
       return { ok: false, message: "The address must start with http:// or https://" };
     }
     try {
-      const results = await this.search("weather", 6, address);
-      return { ok: true, message: `It works: ${results.length} results came back.` };
+      const results = await this.search("weather", 6, { source, searxngUrl: address });
+      return results.length
+        ? { ok: true, message: `It works: ${results.length} results came back.` }
+        : { ok: false, message: "It answered, but with no results." };
     } catch (err) {
       return { ok: false, message: (err as Error).message };
     }
@@ -305,6 +350,46 @@ export class WebService {
     }
     return url;
   }
+}
+
+/** The results on DuckDuckGo's plain results page; ads and its own links are left out. */
+export function parseDuckDuckGo(html: string): WebResult[] {
+  const out: WebResult[] = [];
+  const plain = (s: string) =>
+    decodeEntities(s.replace(/<[^>]+>/g, ""))
+      .replace(/\s+/g, " ")
+      .trim();
+  const links = [
+    ...html.matchAll(/<a\b([^>]*\bclass="[^"]*\bresult__a\b[^"]*"[^>]*)>([\s\S]*?)<\/a>/gi),
+  ];
+  links.forEach((m, i) => {
+    const href = decodeEntities(m[1]?.match(/\bhref="([^"]*)"/i)?.[1] ?? "");
+    let url = href.startsWith("//") ? `https:${href}` : href;
+    try {
+      const parsed = new URL(url);
+      // Results go through a redirect that carries the real address in `uddg`.
+      if (/(^|\.)duckduckgo\.com$/i.test(parsed.hostname)) {
+        url = parsed.searchParams.get("uddg") ?? "";
+      }
+      if (!/^https?:\/\//i.test(url) || /(^|\.)duckduckgo\.com$/i.test(new URL(url).hostname)) {
+        return;
+      }
+    } catch {
+      return;
+    }
+    // The summary sits between this result's link and the next one.
+    const from = (m.index ?? 0) + m[0].length;
+    const to = links[i + 1]?.index ?? html.length;
+    const snippet = html
+      .slice(from, to)
+      .match(/class="[^"]*\bresult__snippet\b[^"]*"[^>]*>([\s\S]*?)<\/(?:a|div|td)>/i)?.[1];
+    out.push({
+      title: plain(m[2] ?? "").slice(0, 200) || url,
+      url,
+      snippet: plain(snippet ?? "").slice(0, 400),
+    });
+  });
+  return out;
 }
 
 async function readCapped(res: Response, max: number): Promise<string> {

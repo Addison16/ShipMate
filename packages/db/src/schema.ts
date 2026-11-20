@@ -564,6 +564,23 @@ export const documentChunks = pgTable(
   (t) => [index("document_chunks_doc_idx").on(t.documentId, t.position)],
 );
 
+// ---------- saved prompts ----------
+
+/** Messages people send often, picked from the "/" menu in chat. Owner null = for everyone. */
+export const savedPrompts = pgTable(
+  "saved_prompts",
+  {
+    id: id(),
+    ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }),
+    createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("saved_prompts_owner_idx").on(t.ownerId)],
+);
+
 // ---------- custom themes ----------
 
 /**

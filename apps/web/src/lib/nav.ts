@@ -149,6 +149,16 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     keywords: ["push", "alerts", "devices", "phone"],
   },
   {
+    id: "prompts",
+    path: "/prompts",
+    group: "You",
+    label: "Saved prompts",
+    hint: "Messages you send often, one tap away",
+    icon: "sparkle",
+    access: "all",
+    keywords: ["prompt", "template", "shortcut", "slash", "snippet", "reuse"],
+  },
+  {
     id: "skills",
     path: "/skills",
     group: "Crew and tools",
@@ -346,6 +356,7 @@ export function visibleSections(user: Pick<UserDto, "role">): SettingsSection[] 
 const SETTINGS_ROUTES: Record<string, string> = {
   skills: "skills",
   documents: "documents",
+  prompts: "prompts",
   mcp: "mcp",
   bridges: "bridges",
   discord: "bridges",

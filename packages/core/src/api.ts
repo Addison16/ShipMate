@@ -1484,6 +1484,26 @@ export interface DocumentHitDto {
  * Shared documents can be changed by whoever added them, or an admin.
  */
 
+// ---------- saved prompts ----------
+
+export interface SavedPromptDto {
+  id: string;
+  title: string;
+  body: string;
+  /** false = only the person who saved it sees it. */
+  shared: boolean;
+  /** Whether the signed-in person may change or delete it. */
+  mine: boolean;
+  updatedAt: string;
+}
+/**
+ * GET /api/prompts → { prompts: SavedPromptDto[] } (shared ones and your own, by title)
+ * POST /api/prompts { title, body, shared? } → { prompt }
+ * PATCH /api/prompts/:id { title?, body?, shared? } → { prompt }
+ * DELETE /api/prompts/:id → { ok: true }
+ * Shared prompts can be changed by whoever saved them, or an admin.
+ */
+
 // ---------- built-in web search ----------
 
 export type WebSearchSource = "duckduckgo" | "searxng" | "off";

@@ -39,6 +39,7 @@ import { LocalAiService } from "./services/local-ai.js";
 import { McpService } from "./services/mcp.js";
 import { type OidcDiscover, OidcService } from "./services/oidc.js";
 import { ProfileService } from "./services/profiles.js";
+import { PromptService } from "./services/prompts.js";
 import { ProviderService } from "./services/providers.js";
 import { SettingsService } from "./services/settings.js";
 import { SkillService } from "./services/skills.js";
@@ -81,6 +82,7 @@ export interface Services {
   starters: StarterService;
   lists: ListService;
   documents: DocumentService;
+  prompts: PromptService;
   web: WebService;
   profiles: ProfileService;
   crewBundles: CrewBundleService;
@@ -389,6 +391,7 @@ export async function createServices(
     shipyard,
     lists,
     documents,
+    prompts: new PromptService(db),
     web,
     profiles,
     crewBundles: new CrewBundleService({ crew, settings, providers, mcp, skills }),

@@ -6,6 +6,10 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Saved prompts**: keep the messages you send often under Settings → Saved prompts, for
+  yourself or shared with everyone. In any chat, type `/` and a list opens above the message
+  box; pick one and it lands in the box, ready to edit and send. Typing more after the `/`
+  narrows the list, and `/new` is in the same list.
 - **Fix**: restoring a backup could fail now and then with "relation … does not exist" while
   it reset the table counters, because that step sometimes looked at Postgres's own tables.
   It now looks only at Shipmate's tables.

@@ -38,3 +38,16 @@ export function useKeyboardInset(active: boolean): { inset: number; height: numb
   }, [active]);
   return state;
 }
+
+/**
+ * Whether Enter in the message box should make a new line instead of sending. True on phones
+ * and tablets: their keyboards have no Shift+Enter, so sending on Enter would leave no way to
+ * write a second line. The Send button sends there.
+ */
+export function enterAddsLine(
+  match: ((query: string) => { matches: boolean }) | undefined = typeof window !== "undefined"
+    ? window.matchMedia?.bind(window)
+    : undefined,
+): boolean {
+  return match?.("(pointer: coarse) and (hover: none)").matches === true;
+}

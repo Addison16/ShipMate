@@ -32,6 +32,7 @@ import { oidcRoutes } from "./routes/oidc.js";
 import { onboardingRoutes } from "./routes/onboarding.js";
 import { petRoutes } from "./routes/pets.js";
 import { profileRoutes } from "./routes/profiles.js";
+import { promptRoutes } from "./routes/prompts.js";
 import { providerRoutes } from "./routes/providers.js";
 import { pushRoutes } from "./routes/push.js";
 import { shipyardRoutes } from "./routes/shipyard.js";
@@ -88,7 +89,8 @@ export async function buildApp(
   options: {
     modelRuntime?: ModelRuntime;
     extraProviders?: string[];
-    logger?: boolean;
+    /** false = silent; "error" = only server errors (tests, so a surprise 500 shows its cause). */
+    logger?: boolean | "error";
     /** Schedule watches (default on); tests run them by hand. */
     watches?: boolean;
     /** Stand-in for discord.js (tests). */
@@ -110,7 +112,10 @@ export async function buildApp(
   } = {},
 ) {
   const app = Fastify({
-    logger: options.logger === false ? false : { level: process.env.LOG_LEVEL ?? "info" },
+    logger:
+      options.logger === false
+        ? false
+        : { level: options.logger === "error" ? "error" : (process.env.LOG_LEVEL ?? "info") },
     // Behind a reverse proxy: the browser's address and https come from X-Forwarded-*.
     trustProxy: config.trustProxy,
   });
@@ -229,6 +234,7 @@ export async function buildApp(
   await fileRoutes(app, services);
   await documentRoutes(app, services);
   await webRoutes(app, services);
+  await promptRoutes(app, services);
   await voiceRoutes(app, services);
   await petRoutes(app, services);
   await localAiRoutes(app, services);

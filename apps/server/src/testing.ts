@@ -81,7 +81,7 @@ export async function testApp(
   const app = await buildApp(config, {
     modelRuntime,
     extraProviders: ["faux"],
-    logger: false,
+    logger: "error",
     watches: options.watches ?? false,
     ...(options.discordPort ? { discordPort: options.discordPort } : {}),
     ...(options.telegramPort ? { telegramPort: options.telegramPort } : {}),

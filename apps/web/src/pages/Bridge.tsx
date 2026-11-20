@@ -76,6 +76,8 @@ function useProjectNames(needed: boolean): Map<string, string> {
   return new Map((projects.data ?? []).map((p) => [p.id, p.name]));
 }
 
+const IMPORT_NAMES: Record<string, string> = { chatgpt: "ChatGPT", claude: "Claude" };
+
 function ConversationTags({
   c,
   projectNames,
@@ -93,6 +95,7 @@ function ConversationTags({
   return (
     <>
       {surface && <Badge tone={c.surface === "discord" ? "accent" : "neutral"}>{surface}</Badge>}
+      {c.importedFrom && <Badge>From {IMPORT_NAMES[c.importedFrom] ?? "another app"}</Badge>}
       {c.projectId &&
         (linkProject ? (
           <a

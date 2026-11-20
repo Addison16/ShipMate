@@ -1,6 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { IMPORT_SOURCES } from "../services/chat-import.js";
 import type { Services } from "../services.js";
+
+/** One batch of imported chats; the browser keeps each batch well under this. */
+const IMPORT_BODY_BYTES = 8 * 1024 * 1024;
+const IMPORT_MESSAGE_CHARS = 200_000;
 
 export async function conversationRoutes(app: FastifyInstance, s: Services) {
   app.get("/api/conversations", async (req) => ({
@@ -26,6 +31,49 @@ export async function conversationRoutes(app: FastifyInstance, s: Services) {
       })
       .parse(req.body ?? {});
     return { conversation: await s.bridge.createConversation(req.user, body) };
+  });
+
+  // Chats from a ChatGPT or Claude export; the browser reads the file and sends them in batches.
+  app.post("/api/conversations/import", { bodyLimit: IMPORT_BODY_BYTES }, async (req) => {
+    const body = z
+      .object({
+        source: z.enum(["chatgpt", "claude"]),
+        archive: z.boolean().optional(),
+        chats: z
+          .array(
+            z.object({
+              externalId: z.string().min(1).max(200),
+              title: z.string().max(500),
+              createdAt: z.string().max(40),
+              updatedAt: z.string().max(40),
+              messages: z
+                .array(
+                  z.object({
+                    role: z.enum(["user", "assistant"]),
+                    text: z.string().max(IMPORT_MESSAGE_CHARS),
+                    at: z.string().max(40),
+                  }),
+                )
+                .max(5000),
+            }),
+          )
+          .min(1)
+          .max(100),
+      })
+      .parse(req.body);
+    const result = await s.chatImport.import(req.user, body.source, body.chats, {
+      archive: body.archive,
+    });
+    if (result.imported > 0) {
+      await s.audit.record({
+        userId: req.user.id,
+        crewMemberId: null,
+        action: "chats.import",
+        summary: `Imported ${result.imported} chat${result.imported === 1 ? "" : "s"} from ${IMPORT_SOURCES[body.source]}`,
+        decision: null,
+      });
+    }
+    return result;
   });
 
   app.patch<{ Params: { id: string } }>("/api/conversations/:id", async (req) => {

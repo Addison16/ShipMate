@@ -72,6 +72,8 @@ export const conversations = pgTable(
     /** Where it lives: web, discord, routine. */
     surface: text("surface").notNull().default("web"),
     externalId: text("external_id"),
+    /** Brought over from another app ("chatgpt" | "claude"); null = started here. */
+    importedFrom: text("imported_from"),
     /** For "direct" conversations: the crew member being talked to. */
     crewMemberId: uuid("crew_member_id").references(() => crewMembers.id, { onDelete: "set null" }),
     /** Shipyard project whose workspace this conversation works in. */

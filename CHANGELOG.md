@@ -6,6 +6,12 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Import chats from ChatGPT and Claude.** Settings → Import chats: pick the export .zip (or
+  the conversations.json inside it) and your old chats appear in your own chat list, marked
+  "From ChatGPT" or "From Claude", with their original dates. The file is read on your device
+  and only the words are sent; pictures, files and voice recordings are left out. Importing
+  the same file twice adds nothing twice, imports can go straight to Archived, search finds
+  them, and when you carry one on the agent is shown the last part of it.
 - **Saved prompts**: keep the messages you send often under Settings → Saved prompts, for
   yourself or shared with everyone. In any chat, type `/` and a list opens above the message
   box; pick one and it lands in the box, ready to edit and send. Typing more after the `/`

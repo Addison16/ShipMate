@@ -18,6 +18,7 @@ import { CrewPage } from "../pages/Crew.js";
 import { DiscordPage } from "../pages/Discord.js";
 import { DocumentsPage } from "../pages/Documents.js";
 import { HealthPage } from "../pages/Health.js";
+import { ImportChatsPage } from "../pages/ImportChats.js";
 import { ListsPage } from "../pages/Lists.js";
 import { McpPage } from "../pages/Mcp.js";
 import { PromptsPage } from "../pages/Prompts.js";
@@ -276,6 +277,9 @@ export function Shell() {
       break;
     case "prompts":
       page = <PromptsPage />;
+      break;
+    case "import":
+      page = <ImportChatsPage />;
       break;
     case "documents":
       page = <DocumentsPage />;

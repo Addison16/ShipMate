@@ -323,8 +323,33 @@ export interface ConversationDto {
   archived: boolean;
   /** The latest thing said ("You: …" for the person's own words); only in the list. */
   preview: string | null;
+  /** Brought over from another app ("chatgpt" | "claude"); null = started here. */
+  importedFrom: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export type ChatImportSource = "chatgpt" | "claude";
+
+/** One chat from another app's export, already reduced to who said what and when. */
+export interface ImportedChat {
+  /** The chat's id in the other app, so importing the same file twice adds nothing. */
+  externalId: string;
+  title: string;
+  /** ISO times; messages are oldest first. */
+  createdAt: string;
+  updatedAt: string;
+  messages: Array<{ role: "user" | "assistant"; text: string; at: string }>;
+}
+
+/**
+ * POST /api/conversations/import { source, chats: ImportedChat[], archive? }
+ * → { imported, skipped }. Adds the chats to the caller's own list; chats already imported
+ * (same source and id) and empty ones are skipped. Send a large export in several calls.
+ */
+export interface ChatImportResult {
+  imported: number;
+  skipped: number;
 }
 
 export type MessageAuthor =

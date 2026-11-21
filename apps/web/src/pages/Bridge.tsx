@@ -28,6 +28,8 @@ import {
 } from "../components/CrewChat.js";
 import { NavIcon } from "../components/icons.js";
 import { PetDock } from "../components/Pet.js";
+import { SidePanel } from "../components/SidePanel.js";
+import { SidePanelProvider } from "../components/SidePanelContext.js";
 import { SlashMenu, slashItems } from "../components/SlashMenu.js";
 import { TimelineView } from "../components/Timeline.js";
 import { TopBarTitle } from "../components/TopBar.js";
@@ -209,170 +211,174 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
           .
         </div>
       )}
-      <div className="flex min-h-0 flex-1">
-        <aside
-          className={cx(
-            "w-full shrink-0 flex-col border-r border-slate-200 bg-white md:flex md:w-72 dark:border-slate-800 dark:bg-slate-900",
-            conversationId ? "hidden" : "flex",
-          )}
-          aria-label="Conversations"
-        >
-          <div className="space-y-2 border-b border-slate-200 p-3 dark:border-slate-800">
-            <div className="flex gap-2">
-              <Button
-                variant="primary"
-                className="flex-1"
-                disabled={creating}
-                onClick={() => void createBridge()}
-              >
-                New chat
-              </Button>
-              {canDirect && (
+      <SidePanelProvider scope={conversationId ?? ""}>
+        {/* With something open beside the chat, the chat list gives up its room on all but the widest screens. */}
+        <div className="flex min-h-0 flex-1 max-2xl:[&:has([data-side-panel])>aside]:hidden">
+          <aside
+            className={cx(
+              "w-full shrink-0 flex-col border-r border-slate-200 bg-white md:flex md:w-72 dark:border-slate-800 dark:bg-slate-900",
+              conversationId ? "hidden" : "flex",
+            )}
+            aria-label="Conversations"
+          >
+            <div className="space-y-2 border-b border-slate-200 p-3 dark:border-slate-800">
+              <div className="flex gap-2">
                 <Button
+                  variant="primary"
+                  className="flex-1"
                   disabled={creating}
-                  title="Chat with one of them yourself"
-                  aria-haspopup="dialog"
-                  onClick={() => setPicking(true)}
+                  onClick={() => void createBridge()}
                 >
-                  Chat with…
+                  New chat
                 </Button>
-              )}
-            </div>
-            <ErrorText>{createError}</ErrorText>
-            <CrewStrip
-              crew={crewList}
-              creating={creating}
-              onNewBridge={() => void createBridge()}
-              onOpened={opened}
-            />
-            <div className="relative">
-              <label htmlFor="conv-search" className="sr-only">
-                Search conversations
-              </label>
-              <input
-                id="conv-search"
-                type="search"
-                value={search.query}
-                onChange={(e) => search.setQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") search.setQuery("");
-                }}
-                placeholder="Search conversations"
-                className={cx(
-                  "w-full rounded-md border border-control bg-white px-3 py-2 text-sm dark:bg-slate-900",
-                  focusRing,
+                {canDirect && (
+                  <Button
+                    disabled={creating}
+                    title="Chat with one of them yourself"
+                    aria-haspopup="dialog"
+                    onClick={() => setPicking(true)}
+                  >
+                    Chat with…
+                  </Button>
                 )}
-              />
-            </div>
-          </div>
-          {search.active ? (
-            <SearchResults
-              search={search}
-              conversationId={conversationId}
-              crewList={crewList}
-              projectNames={projectNames}
-            />
-          ) : (
-            <div className="relative min-h-0 flex-1 overflow-y-auto p-2 md:pb-[calc(0.5rem+var(--safe-bottom))]">
-              {conversations.error && <ErrorText>{conversations.error}</ErrorText>}
-              {conversations.data?.length === 0 && (
-                <p className="p-3 text-sm text-slate-500 dark:text-slate-400">
-                  No conversations yet. Start a new chat.
-                </p>
-              )}
-              <ul className="stagger space-y-0.5">
-                {shown.map((c, i, all) => (
-                  <li key={c.id}>
-                    {c.pinned && i === 0 && <ListLabel>Pinned</ListLabel>}
-                    {!c.pinned && !c.archived && i > 0 && all[i - 1]?.pinned && (
-                      <ListLabel>Recent</ListLabel>
-                    )}
-                    {c.archived && !all[i - 1]?.archived && <ListLabel>Archived</ListLabel>}
-                    <ConversationRow
-                      c={c}
-                      title={conversationTitle(c, crewList, crewName, t)}
-                      who={withWhom(c, crewList, captainName, crewName, t)}
-                      active={c.id === conversationId}
-                      projectNames={projectNames}
-                      onRenamed={(next) =>
-                        conversations.setData(
-                          (conversations.data ?? []).map((x) => (x.id === next.id ? next : x)),
-                        )
-                      }
-                      onPinned={() => void conversations.reload()}
-                      onDeleted={() => {
-                        conversations.setData(
-                          (conversations.data ?? []).filter((x) => x.id !== c.id),
-                        );
-                        if (c.id === conversationId) navigate("/bridge");
-                      }}
-                    />
-                  </li>
-                ))}
-              </ul>
-              {archivedCount > 0 && (
-                <button
-                  type="button"
-                  aria-expanded={showArchived}
-                  onClick={() => setShowArchived((v) => !v)}
-                  className={cx(
-                    "mt-1 w-full rounded-md px-3 py-2.5 text-left text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
-                    focusRing,
-                  )}
-                >
-                  {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
-                </button>
-              )}
-            </div>
-          )}
-        </aside>
-
-        <section
-          className={cx("min-w-0 flex-1 flex-col", conversationId ? "flex" : "hidden md:flex")}
-        >
-          {conversationId ? (
-            <Thread
-              key={conversationId}
-              conversationId={conversationId}
-              conversation={current}
-              title={current ? conversationTitle(current, crewList, crewName, t) : ""}
-              crew={crewList}
-              member={
-                current?.kind === "direct"
-                  ? (crewList.find((m) => m.slug === current.crewSlug) ?? null)
-                  : (crewList.find((m) => m.captain) ?? null)
-              }
-              tags={
-                current ? (
-                  <ConversationTags c={current} projectNames={projectNames} linkProject />
-                ) : null
-              }
-              onRenamed={(c) =>
-                conversations.setData(
-                  (conversations.data ?? []).map((x) => (x.id === c.id ? c : x)),
-                )
-              }
-              onPinned={() => void conversations.reload()}
-              onDeleted={() => {
-                conversations.setData(
-                  (conversations.data ?? []).filter((x) => x.id !== conversationId),
-                );
-                navigate("/bridge");
-              }}
-            />
-          ) : (
-            <div className="relative min-h-0 flex-1 overflow-y-auto">
-              <ChatLanding
+              </div>
+              <ErrorText>{createError}</ErrorText>
+              <CrewStrip
                 crew={crewList}
-                conversations={conversations.data}
                 creating={creating}
                 onNewBridge={() => void createBridge()}
                 onOpened={opened}
               />
+              <div className="relative">
+                <label htmlFor="conv-search" className="sr-only">
+                  Search conversations
+                </label>
+                <input
+                  id="conv-search"
+                  type="search"
+                  value={search.query}
+                  onChange={(e) => search.setQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") search.setQuery("");
+                  }}
+                  placeholder="Search conversations"
+                  className={cx(
+                    "w-full rounded-md border border-control bg-white px-3 py-2 text-sm dark:bg-slate-900",
+                    focusRing,
+                  )}
+                />
+              </div>
             </div>
-          )}
-        </section>
-      </div>
+            {search.active ? (
+              <SearchResults
+                search={search}
+                conversationId={conversationId}
+                crewList={crewList}
+                projectNames={projectNames}
+              />
+            ) : (
+              <div className="relative min-h-0 flex-1 overflow-y-auto p-2 md:pb-[calc(0.5rem+var(--safe-bottom))]">
+                {conversations.error && <ErrorText>{conversations.error}</ErrorText>}
+                {conversations.data?.length === 0 && (
+                  <p className="p-3 text-sm text-slate-500 dark:text-slate-400">
+                    No conversations yet. Start a new chat.
+                  </p>
+                )}
+                <ul className="stagger space-y-0.5">
+                  {shown.map((c, i, all) => (
+                    <li key={c.id}>
+                      {c.pinned && i === 0 && <ListLabel>Pinned</ListLabel>}
+                      {!c.pinned && !c.archived && i > 0 && all[i - 1]?.pinned && (
+                        <ListLabel>Recent</ListLabel>
+                      )}
+                      {c.archived && !all[i - 1]?.archived && <ListLabel>Archived</ListLabel>}
+                      <ConversationRow
+                        c={c}
+                        title={conversationTitle(c, crewList, crewName, t)}
+                        who={withWhom(c, crewList, captainName, crewName, t)}
+                        active={c.id === conversationId}
+                        projectNames={projectNames}
+                        onRenamed={(next) =>
+                          conversations.setData(
+                            (conversations.data ?? []).map((x) => (x.id === next.id ? next : x)),
+                          )
+                        }
+                        onPinned={() => void conversations.reload()}
+                        onDeleted={() => {
+                          conversations.setData(
+                            (conversations.data ?? []).filter((x) => x.id !== c.id),
+                          );
+                          if (c.id === conversationId) navigate("/bridge");
+                        }}
+                      />
+                    </li>
+                  ))}
+                </ul>
+                {archivedCount > 0 && (
+                  <button
+                    type="button"
+                    aria-expanded={showArchived}
+                    onClick={() => setShowArchived((v) => !v)}
+                    className={cx(
+                      "mt-1 w-full rounded-md px-3 py-2.5 text-left text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
+                      focusRing,
+                    )}
+                  >
+                    {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
+                  </button>
+                )}
+              </div>
+            )}
+          </aside>
+
+          <section
+            className={cx("min-w-0 flex-1 flex-col", conversationId ? "flex" : "hidden md:flex")}
+          >
+            {conversationId ? (
+              <Thread
+                key={conversationId}
+                conversationId={conversationId}
+                conversation={current}
+                title={current ? conversationTitle(current, crewList, crewName, t) : ""}
+                crew={crewList}
+                member={
+                  current?.kind === "direct"
+                    ? (crewList.find((m) => m.slug === current.crewSlug) ?? null)
+                    : (crewList.find((m) => m.captain) ?? null)
+                }
+                tags={
+                  current ? (
+                    <ConversationTags c={current} projectNames={projectNames} linkProject />
+                  ) : null
+                }
+                onRenamed={(c) =>
+                  conversations.setData(
+                    (conversations.data ?? []).map((x) => (x.id === c.id ? c : x)),
+                  )
+                }
+                onPinned={() => void conversations.reload()}
+                onDeleted={() => {
+                  conversations.setData(
+                    (conversations.data ?? []).filter((x) => x.id !== conversationId),
+                  );
+                  navigate("/bridge");
+                }}
+              />
+            ) : (
+              <div className="relative min-h-0 flex-1 overflow-y-auto">
+                <ChatLanding
+                  crew={crewList}
+                  conversations={conversations.data}
+                  creating={creating}
+                  onNewBridge={() => void createBridge()}
+                  onOpened={opened}
+                />
+              </div>
+            )}
+          </section>
+          <SidePanel />
+        </div>
+      </SidePanelProvider>
       <CrewPicker
         open={picking}
         onClose={() => setPicking(false)}

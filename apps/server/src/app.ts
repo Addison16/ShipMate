@@ -43,6 +43,7 @@ import { settingsRoutes, usageRoutes } from "./routes/usage.js";
 import { userRoutes } from "./routes/users.js";
 import { voiceRoutes } from "./routes/voice.js";
 import { watchRoutes } from "./routes/watches.js";
+import { webRoutes } from "./routes/web.js";
 import { GOOGLE_CALLBACK_PATH } from "./services/google-oauth.js";
 import { createServices } from "./services.js";
 
@@ -87,7 +88,8 @@ export async function buildApp(
   options: {
     modelRuntime?: ModelRuntime;
     extraProviders?: string[];
-    logger?: boolean;
+    /** false = silent; "error" = only server errors (tests, so a surprise 500 shows its cause). */
+    logger?: boolean | "error";
     /** Schedule watches (default on); tests run them by hand. */
     watches?: boolean;
     /** Stand-in for discord.js (tests). */
@@ -109,7 +111,10 @@ export async function buildApp(
   } = {},
 ) {
   const app = Fastify({
-    logger: options.logger === false ? false : { level: process.env.LOG_LEVEL ?? "info" },
+    logger:
+      options.logger === false
+        ? false
+        : { level: options.logger === "error" ? "error" : (process.env.LOG_LEVEL ?? "info") },
     // Behind a reverse proxy: the browser's address and https come from X-Forwarded-*.
     trustProxy: config.trustProxy,
   });
@@ -227,6 +232,7 @@ export async function buildApp(
   await pushRoutes(app, services);
   await fileRoutes(app, services);
   await documentRoutes(app, services);
+  await webRoutes(app, services);
   await voiceRoutes(app, services);
   await petRoutes(app, services);
   await localAiRoutes(app, services);

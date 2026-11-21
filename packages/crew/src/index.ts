@@ -79,7 +79,9 @@ export {
   type ProfileHost,
   profileTools,
   type WeatherHost,
+  type WebHost,
   weatherTools,
+  webTools,
 } from "./everyday.js";
 export { type CrewFolder, loadCrewFolder, writeCrewFolder } from "./folder.js";
 export {

@@ -676,12 +676,18 @@ export async function restoreBackup(options: RestoreBackupOptions): Promise<Rest
           rows[name] = count;
         }
         // Serial/identity columns continue after the restored rows.
-        const seqs = await tx<Array<{ t: string; c: string; seq: string }>>`
-          select table_name as t, column_name as c,
-                 pg_get_serial_sequence(quote_ident(table_name), column_name) as seq
-          from information_schema.columns
-          where table_schema = 'public'
-            and pg_get_serial_sequence(quote_ident(table_name), column_name) is not null`;
+        // Asked of the catalog with the schema spelled out, and with the sequence lookup only
+        // in the select list. In a WHERE clause Postgres may run it on other schemas' tables
+        // first, where the bare table name does not resolve and the whole restore fails.
+        const found = await tx<Array<{ t: string; c: string; seq: string | null }>>`
+          select c.relname as t, a.attname as c,
+                 pg_get_serial_sequence(format('%I.%I', n.nspname, c.relname), a.attname) as seq
+          from pg_catalog.pg_class c
+          join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+          join pg_catalog.pg_attribute a on a.attrelid = c.oid
+          where n.nspname = 'public' and c.relkind in ('r', 'p')
+            and a.attnum > 0 and not a.attisdropped`;
+        const seqs = found.filter((s): s is { t: string; c: string; seq: string } => !!s.seq);
         for (const s of seqs) {
           await tx.unsafe(
             `select setval($1, coalesce((select max(${q(s.c)}) from ${q(s.t)}), 0) + 1, false)`,

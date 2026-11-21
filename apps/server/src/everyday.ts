@@ -9,7 +9,9 @@ import {
   type ListSummary,
   listTools,
   profileTools,
+  type WebHost,
   weatherTools,
+  webTools,
 } from "@shipmate/crew";
 import type { Db } from "@shipmate/db";
 import type { UserRow } from "./auth.js";
@@ -19,6 +21,7 @@ import type { DocumentService } from "./services/documents.js";
 import type { ListService } from "./services/lists.js";
 import { hasAny, householdLines, type ProfileService, profileLines } from "./services/profiles.js";
 import { formatForecast, type WeatherService } from "./services/weather.js";
+import type { WebService } from "./services/web.js";
 
 /** Keeps the profile part of every crew member's system prompt short. */
 const CONTEXT_FIELD_CHARS = 300;
@@ -38,6 +41,7 @@ export class EverydayTools {
       documents: DocumentService;
       profiles: ProfileService;
       weather: WeatherService;
+      web: WebService;
     },
   ) {
     this.people = new PeopleSettings(deps.db, deps.profiles);
@@ -47,6 +51,10 @@ export class EverydayTools {
     return [
       ...listTools(this.#listHost(user, crew)),
       ...documentTools(this.#documentHost(user)),
+      ...webTools(this.#webHost(), {
+        search: this.deps.web.snapshot.source !== "off",
+        read: this.deps.web.snapshot.readPages,
+      }),
       ...profileTools({ read: () => this.#profilesText(user) }),
       ...weatherTools({
         forecast: async (place, days) => {
@@ -86,6 +94,8 @@ export class EverydayTools {
    * member works for, so nobody has to repeat their diet or timezone to each bot.
    */
   async context(user: UserRow, now = new Date()): Promise<string> {
+    // Keeps the snapshot that decides the web tools fresh for the next session.
+    await this.deps.web.getSettings().catch(() => {});
     const { household, me, others } = await this.deps.profiles.forCrew(user);
     const parts = ["## Household"];
     const home = householdLines(household, CONTEXT_FIELD_CHARS * 2);
@@ -126,6 +136,25 @@ export class EverydayTools {
     out.push(...(hasAny(me) ? profileLines(me) : ["(no profile yet)"]));
     for (const o of others) out.push("", `# ${o.name} (shared)`, ...profileLines(o.profile));
     return out.join("\n");
+  }
+
+  #webHost(): WebHost {
+    const web = this.deps.web;
+    return {
+      search: async (query) => {
+        const results = await web.search(query);
+        if (!results.length) return `No results for "${query}". Try other words.`;
+        return results
+          .map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}${r.snippet ? `\n   ${r.snippet}` : ""}`)
+          .join("\n");
+      },
+      read: async (url, from) => {
+        const page = await web.read(url, from);
+        const end = page.from + page.text.length;
+        const more = end < page.total ? `\n\n[More follows. Read on with from: ${end}.]` : "";
+        return `<web-page url="${page.url}"${page.title ? ` title="${page.title.replaceAll('"', "'")}"` : ""}>\n${page.text || "(no readable text on this page)"}\n</web-page>${more}`;
+      },
+    };
   }
 
   #documentHost(user: UserRow): DocumentHost {

@@ -178,6 +178,20 @@ describe.skipIf(!db)("Document library", () => {
     expect(await names(kidCookie)).not.toContain("Payslip.txt");
   });
 
+  it("gives a second document with the same name a name of its own", async () => {
+    const again = (await upload("dishwasher MANUAL.txt", "A different manual.", kidCookie)).json()
+      .document;
+    expect(again.name).toBe("dishwasher MANUAL (2).txt");
+    const renamed = await api(
+      "PATCH",
+      `/api/documents/${again.id}`,
+      { name: "Dishwasher manual.txt" },
+      kidCookie,
+    );
+    expect(renamed.json().document.name).toBe("Dishwasher manual (2).txt");
+    await api("DELETE", `/api/documents/${again.id}`, undefined, kidCookie);
+  });
+
   it("refuses photos, empty files and unknown types", async () => {
     const png = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), Buffer.alloc(20)]);
     expect((await upload("photo.png", png)).statusCode).toBe(415);

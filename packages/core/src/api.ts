@@ -1484,6 +1484,26 @@ export interface DocumentHitDto {
  * Shared documents can be changed by whoever added them, or an admin.
  */
 
+// ---------- built-in web search ----------
+
+export type WebSearchSource = "duckduckgo" | "searxng" | "off";
+export interface WebSearchSettingsDto {
+  /**
+   * Where `search_web` looks: DuckDuckGo's web page (no setup; it has no official API, so it
+   * can be limited), the household's own SearXNG, or nowhere.
+   */
+  source: WebSearchSource;
+  /** Address of the household's SearXNG, e.g. http://192.168.1.10:8080. */
+  searxngUrl: string;
+  /** Whether crew may read public web pages (`read_web_page`). */
+  readPages: boolean;
+}
+/**
+ * GET /api/settings/web → { web: WebSearchSettingsDto }
+ * PUT /api/settings/web (admin) Partial<WebSearchSettingsDto> → { web }
+ * POST /api/settings/web/test (admin) { source, searxngUrl } → { ok, message }
+ */
+
 // ---------- household profiles (everyday life) ----------
 
 export interface ProfileDto extends PersonProfile {

@@ -121,13 +121,14 @@ export class DocumentService {
     if (n >= MAX_DOCUMENTS) throw new HttpError(400, "The library is full. Delete some first.");
 
     const passages = splitPassages(text);
+    const stored = await this.#freeName(name);
     const row = await this.db.transaction(async (tx) => {
       const [doc] = await tx
         .insert(documents)
         .values({
           ownerId: input.shared ? null : user.id,
           createdById: user.id,
-          name,
+          name: stored,
           kind: found.kind,
           size: input.data.length,
           chars: text.length,
@@ -164,7 +165,9 @@ export class DocumentService {
     const [next] = await this.db
       .update(documents)
       .set({
-        ...(patch.name !== undefined ? { name: cleanName(patch.name) } : {}),
+        ...(patch.name !== undefined
+          ? { name: await this.#freeName(cleanName(patch.name), row.id) }
+          : {}),
         ...(patch.shared !== undefined
           ? { ownerId: patch.shared ? null : (row.createdById ?? user.id) }
           : {}),
@@ -266,6 +269,22 @@ export class DocumentService {
       parts: doc.parts,
       text: chunks.map((c) => c.text).join("\n\n"),
     };
+  }
+
+  /**
+   * A name no other document has: "manual.pdf" becomes "manual (2).pdf". Crew find documents
+   * by name, so two with the same name would let a search hit lead to the wrong one.
+   */
+  async #freeName(name: string, except?: string): Promise<string> {
+    const rows = await this.db.select({ id: documents.id, name: documents.name }).from(documents);
+    const taken = new Set(rows.filter((r) => r.id !== except).map((r) => r.name.toLowerCase()));
+    if (!taken.has(name.toLowerCase())) return name;
+    const dot = name.lastIndexOf(".");
+    const [base, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
+    for (let n = 2; ; n++) {
+      const next = `${base} (${n})${ext}`;
+      if (!taken.has(next.toLowerCase())) return next;
+    }
   }
 
   async #visible(user: UserRow, id: string): Promise<Row> {

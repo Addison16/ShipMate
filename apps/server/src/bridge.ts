@@ -11,6 +11,7 @@ import { createBashToolDefinition } from "@earendil-works/pi-coding-agent";
 import {
   type AttachmentDto,
   type ChatContextDto,
+  type ChatPeopleDto,
   ClaudeCliSettings,
   CODEX_PROVIDER,
   type ConversationDto,
@@ -56,6 +57,7 @@ import {
   themeTools,
 } from "@shipmate/crew";
 import {
+  conversationMembers,
   conversations,
   crewMembers,
   type Db,
@@ -68,6 +70,7 @@ import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, lt, ne, sql } fr
 import { accessSummary } from "./access-summary.js";
 import { HttpError, type UserRow } from "./auth.js";
 import { chatTitle } from "./chat/title.js";
+import { chatOpenTo } from "./chat-access.js";
 import { ClaudeCliTurns, cliModelFromRef, onCrewDefault } from "./claude-cli-turn.js";
 import { CliToolServer } from "./cli-mcp.js";
 import { CodexCliTurns, codexModels } from "./codex-cli-turn.js";
@@ -103,6 +106,19 @@ const IDLE_MS = 30 * 60_000;
 export const PRIVATE_IDLE_MS = 60 * 60_000;
 
 /** In a private chat's system prompt, on every engine. */
+/** Most people that can be added to one group chat. */
+const MAX_GROUP_PEOPLE = 20;
+/** Events everyone in a group chat receives, not only the person who wrote the message. */
+const GROUP_EVENTS = new Set<ServerEvent["type"]>([
+  "message",
+  "stream_start",
+  "delta",
+  "tool",
+  "stream_end",
+  "handoff",
+  "status",
+]);
+
 const PRIVATE_CHAT_NOTE =
   "## Private chat\n\nThis is a private chat. It is deleted when it ends, and nothing from it may outlive it: do not save anything said here to memory, lists, notes, documents, skills or files, do not set reminders or routines from it, and do not pass it to other crew members, unless the person asks for exactly that in this chat. You cannot use `remember` or `forget` here.";
 
@@ -247,6 +263,8 @@ interface Run {
   unprompted?: number;
   /** When the person last wrote here. */
   wroteAt?: Date;
+  /** Whose message the sessions were opened for (see `send`). */
+  actingUserId?: string | undefined;
 }
 
 /**
@@ -258,6 +276,8 @@ interface Run {
 export class Bridge {
   #sockets = new Map<string, Set<Send>>();
   #taps = new Set<(userId: string, event: ServerEvent) => void>();
+  /** Group chats: conversation id → the people added to it (the starter is not listed). */
+  #groups = new Map<string, Set<string>>();
   #runs = new Map<string, Run>();
   /** Per conversation, the turn in progress as a page that opens now should show it. */
   #live = new Map<string, LiveTurn>();
@@ -340,8 +360,146 @@ export class Bridge {
 
   emit(userId: string, event: ServerEvent) {
     this.#track(event);
+    for (const id of this.#audience(userId, event)) {
+      for (const send of this.#sockets.get(id) ?? []) send(event);
+      for (const tap of this.#taps) tap(id, event);
+    }
+  }
+
+  /**
+   * Who an event goes to: the person named, plus, for what happens in a group chat (messages,
+   * replies as they are written, busy state), everyone else in that chat. Approvals and
+   * questions stay with the person whose message the agent is working on.
+   */
+  #audience(userId: string, event: ServerEvent): Iterable<string> {
+    if (!GROUP_EVENTS.has(event.type) || !("conversationId" in event)) return [userId];
+    const group = event.conversationId ? this.#groups.get(event.conversationId) : undefined;
+    if (!group) return [userId];
+    return new Set([userId, ...group]);
+  }
+
+  #dto(
+    c: ConversationRow,
+    slug: string | null,
+    preview: string | null = null,
+    viewerId: string = c.userId,
+  ): ConversationDto {
+    return toConversationDto(c, slug, preview, {
+      group: this.#groups.has(c.id),
+      mine: viewerId === c.userId,
+    });
+  }
+
+  // ---------- group chats ----------
+
+  /** Read who is in which group chat. Called once at startup. */
+  async loadGroups(): Promise<void> {
+    const rows = await this.deps.db
+      .select({
+        c: conversationMembers.conversationId,
+        u: conversationMembers.userId,
+        owner: conversations.userId,
+      })
+      .from(conversationMembers)
+      .innerJoin(conversations, eq(conversations.id, conversationMembers.conversationId));
+    this.#groups.clear();
+    for (const r of rows) this.#group(r.c, r.owner).add(r.u);
+  }
+
+  /** The member set of a group chat, made on first use. It always carries the starter too. */
+  #group(conversationId: string, ownerId: string): Set<string> {
+    let set = this.#groups.get(conversationId);
+    if (!set) {
+      set = new Set([ownerId]);
+      this.#groups.set(conversationId, set);
+    }
+    return set;
+  }
+
+  /** A conversation the person may read and write in: their own, or a group chat they are in. */
+  async openConversation(user: UserRow, id: string): Promise<ConversationRow> {
+    const [c] = await this.deps.db
+      .select()
+      .from(conversations)
+      .where(and(eq(conversations.id, id), chatOpenTo(user.id)))
+      .limit(1);
+    if (!c) throw new HttpError(404, "conversation not found");
+    return c;
+  }
+
+  async people(user: UserRow, id: string): Promise<ChatPeopleDto> {
+    const conv = await this.openConversation(user, id);
+    const everyone = await this.deps.db
+      .select({ id: users.id, name: users.displayName })
+      .from(users)
+      .orderBy(asc(users.displayName));
+    const inChat = this.#groups.get(id) ?? new Set([conv.userId]);
+    return {
+      people: everyone
+        .filter((p) => inChat.has(p.id))
+        .map((p) => ({ ...p, starter: p.id === conv.userId }))
+        .sort((a, b) => Number(b.starter) - Number(a.starter)),
+      household: conv.userId === user.id ? everyone.filter((p) => p.id !== user.id) : [],
+    };
+  }
+
+  /** Set who else is in a chat (the starter only). An empty list makes it an ordinary chat again. */
+  async setPeople(user: UserRow, id: string, userIds: string[]): Promise<ChatPeopleDto> {
+    const conv = await this.conversation(user, id);
+    if (conv.privateChat)
+      throw new HttpError(400, "A private chat cannot have other people in it.");
+    if (conv.surface !== "web" || conv.projectId) {
+      throw new HttpError(400, "Only ordinary chats can have other people in them.");
+    }
+    const wanted = [...new Set(userIds)].filter((u) => u !== user.id);
+    if (wanted.length > MAX_GROUP_PEOPLE) throw new HttpError(400, "That is too many people.");
+    if (wanted.length) {
+      const known = await this.deps.db
+        .select({ id: users.id })
+        .from(users)
+        .where(inArray(users.id, wanted));
+      if (known.length !== wanted.length) throw new HttpError(404, "person not found");
+    }
+    const before = this.#groups.get(id) ?? new Set<string>();
+    await this.deps.db.transaction(async (tx) => {
+      await tx.delete(conversationMembers).where(eq(conversationMembers.conversationId, id));
+      if (wanted.length) {
+        await tx
+          .insert(conversationMembers)
+          .values(wanted.map((userId) => ({ conversationId: id, userId })));
+      }
+    });
+    if (wanted.length) this.#groups.set(id, new Set([conv.userId, ...wanted]));
+    else this.#groups.delete(id);
+    // Everyone affected reloads their chat list: the chat appears, changes or goes.
+    for (const person of new Set([...before, ...wanted, conv.userId])) {
+      this.#notify(person, { type: "chats_changed" });
+    }
+    return this.people(user, id);
+  }
+
+  /** Someone who was added takes themselves out. */
+  async leave(user: UserRow, id: string): Promise<void> {
+    const conv = await this.openConversation(user, id);
+    if (conv.userId === user.id) {
+      throw new HttpError(400, "You started this chat. Remove the others, or delete it.");
+    }
+    await this.deps.db
+      .delete(conversationMembers)
+      .where(
+        and(eq(conversationMembers.conversationId, id), eq(conversationMembers.userId, user.id)),
+      );
+    const set = this.#groups.get(id);
+    set?.delete(user.id);
+    if (set && set.size <= 1) this.#groups.delete(id);
+    for (const person of new Set([user.id, conv.userId, ...(set ?? [])])) {
+      this.#notify(person, { type: "chats_changed" });
+    }
+  }
+
+  /** Send to one person's open pages only (no fan-out, no push). */
+  #notify(userId: string, event: ServerEvent) {
     for (const send of this.#sockets.get(userId) ?? []) send(event);
-    for (const tap of this.#taps) tap(userId, event);
   }
 
   /**
@@ -352,7 +510,7 @@ export class Bridge {
     user: UserRow,
     conversationId: string,
   ): Promise<Extract<ServerEvent, { type: "live" }>> {
-    await this.conversation(user, conversationId);
+    await this.openConversation(user, conversationId);
     const live = this.#live.get(conversationId);
     return {
       type: "live",
@@ -452,7 +610,7 @@ export class Bridge {
         slug: crewMembers.slug,
         // The latest thing said, for the list; the person's own words start with "You: ".
         preview: sql<string | null>`(
-          select case when m.role = 'user' then 'You: ' else '' end
+          select case when m.role = 'user' and m.user_id = ${userId} then 'You: ' else '' end
             || left(regexp_replace(m.content, '[[:space:]]+', ' ', 'g'), ${PREVIEW_CHARS})
           from ${messages} m
           where m.conversation_id = ${conversations.id} and m.role <> 'system' and m.content <> ''
@@ -464,7 +622,7 @@ export class Bridge {
       .leftJoin(crewMembers, eq(crewMembers.id, conversations.crewMemberId))
       .where(
         and(
-          eq(conversations.userId, userId),
+          chatOpenTo(userId),
           // Web chats, chats other apps started with a key, plus each watch's latest run, so its result reads like any reply.
           sql`(${conversations.surface} in ('web', 'api') or ${conversations.id} in (
             select distinct on (r.watch_id) r.conversation_id
@@ -480,7 +638,7 @@ export class Bridge {
         sql`${conversations.pinnedAt} desc nulls last`,
         desc(conversations.updatedAt),
       );
-    return rows.map((r) => toConversationDto(r.c, r.slug, r.preview));
+    return rows.map((r) => this.#dto(r.c, r.slug, r.preview, userId));
   }
 
   /**
@@ -581,7 +739,7 @@ export class Bridge {
       .from(conversations)
       .leftJoin(crewMembers, eq(crewMembers.id, conversations.crewMemberId))
       .where(inArray(conversations.id, ids));
-    const convs = new Map(convRows.map((r) => [r.c.id, toConversationDto(r.c, r.slug)]));
+    const convs = new Map(convRows.map((r) => [r.c.id, this.#dto(r.c, r.slug)]));
     return ids.flatMap((id) => {
       const conversation = convs.get(id);
       const entry = byConv.get(id);
@@ -609,7 +767,7 @@ export class Bridge {
       .where(eq(conversations.id, id))
       .returning();
     if (!c) throw new HttpError(404, "conversation not found");
-    return toConversationDto(c, await this.#slugOf(c.crewMemberId));
+    return this.#dto(c, await this.#slugOf(c.crewMemberId));
   }
 
   async archiveConversation(
@@ -625,7 +783,7 @@ export class Bridge {
       .where(eq(conversations.id, id))
       .returning();
     if (!c) throw new HttpError(404, "conversation not found");
-    return toConversationDto(c, await this.#slugOf(c.crewMemberId));
+    return this.#dto(c, await this.#slugOf(c.crewMemberId));
   }
 
   async createConversation(
@@ -670,7 +828,7 @@ export class Bridge {
           )
           .orderBy(desc(conversations.updatedAt))
           .limit(1);
-        if (existing) return toConversationDto(existing, slug);
+        if (existing) return this.#dto(existing, slug);
       }
     }
     const [c] = await this.deps.db
@@ -688,7 +846,7 @@ export class Bridge {
       })
       .returning();
     if (!c) throw new Error("insert failed");
-    return toConversationDto(c, slug);
+    return this.#dto(c, slug);
   }
 
   async conversation(user: UserRow, id: string): Promise<ConversationRow> {
@@ -709,7 +867,7 @@ export class Bridge {
       .where(eq(conversations.id, id))
       .returning();
     if (!c) throw new HttpError(404, "conversation not found");
-    return toConversationDto(c, await this.#slugOf(c.crewMemberId));
+    return this.#dto(c, await this.#slugOf(c.crewMemberId));
   }
 
   /**
@@ -775,6 +933,11 @@ export class Bridge {
     }
     const records = this.#sessionRecords(conv);
     this.#dispose(conv.id);
+    const group = this.#groups.get(conv.id);
+    this.#groups.delete(conv.id);
+    for (const person of group ?? []) {
+      if (person !== conv.userId) this.#notify(person, { type: "chats_changed" });
+    }
     const files = await this.deps.files.idsIn(conv.id);
     await this.deps.db.delete(conversations).where(eq(conversations.id, conv.id));
     await this.deps.files.removeFiles(files);
@@ -829,7 +992,7 @@ export class Bridge {
     id: string,
     options: { limit: number; before?: string | undefined },
   ): Promise<{ messages: MessageDto[]; more: boolean }> {
-    await this.conversation(user, id);
+    await this.openConversation(user, id);
     let cut: Date | undefined;
     if (options.before) {
       const [edge] = await this.deps.db
@@ -869,7 +1032,7 @@ export class Bridge {
   }
 
   async messages(user: UserRow, id: string): Promise<MessageDto[]> {
-    await this.conversation(user, id);
+    await this.openConversation(user, id);
     const rows = await this.deps.db
       .select({
         m: messages,
@@ -905,7 +1068,7 @@ export class Bridge {
   ): Promise<void> {
     const content = text.trim();
     if (!content && !attachmentIds.length) return;
-    const conv = await this.conversation(user, conversationId);
+    const conv = await this.openConversation(user, conversationId);
     // Checked before the turn is claimed, so a stale file id is a plain error, not a stuck run.
     const files = await this.deps.files.claim(user.id, conversationId, attachmentIds);
     const run = this.#run(conversationId);
@@ -926,6 +1089,14 @@ export class Bridge {
     run.unprompted = 0;
     run.wroteAt = new Date();
     clearTimeout(run.idleTimer);
+    // In a group chat the agents act for whoever wrote the message: their role, their lists,
+    // their spending cap. Sessions hold the person they were opened for, so a change of writer
+    // reopens them (from their files, so nothing said is lost).
+    if (run.actingUserId !== undefined && run.actingUserId !== user.id) {
+      for (const s of run.sessions.values()) s.dispose();
+      run.sessions.clear();
+    }
+    run.actingUserId = user.id;
     await this.#freshen(run);
     this.emit(user.id, { type: "status", conversationId, busy: true });
     try {
@@ -974,7 +1145,7 @@ export class Bridge {
           ? await this.#tasks?.statusNote(conv.id, user.displayName).catch(() => "")
           : "";
       const prompt = open ? `${said}\n\n${open}` : said;
-      await this.#turn(user, conv, run, slug, prompt, {
+      await this.#turn(user, conv, run, slug, (await this.#groupNote(conv, user)) + prompt, {
         ...(prepared.images.length
           ? { images: prepared.images, imageNames: prepared.imageNames }
           : {}),
@@ -1108,6 +1279,19 @@ export class Bridge {
     }
   }
 
+  /** In a group chat, a line ahead of each message saying who is in the chat and who wrote it. */
+  async #groupNote(conv: ConversationRow, writer: UserRow): Promise<string> {
+    const group = this.#groups.get(conv.id);
+    if (!group) return "";
+    const rows = await this.deps.db
+      .select({ name: users.displayName })
+      .from(users)
+      .where(inArray(users.id, [...group]))
+      .orderBy(asc(users.displayName));
+    const names = rows.map((r) => r.name).join(", ");
+    return `[Group chat between ${names}. Everyone in it reads your reply. This message is from ${writer.displayName}.]\n\n`;
+  }
+
   /**
    * A turn that failed. The reason is saved in the chat (and pushed when no page is open), so a
    * person who left mid-reply finds out why there is no answer when they come back.
@@ -1179,7 +1363,7 @@ export class Bridge {
   }
 
   async abort(user: UserRow, conversationId: string): Promise<void> {
-    await this.conversation(user, conversationId);
+    await this.openConversation(user, conversationId);
     const run = this.#runs.get(conversationId);
     if (!run?.busy) return;
     run.aborted = true;
@@ -2995,7 +3179,8 @@ function lastError(session: CrewSession): string | undefined {
 function toConversationDto(
   c: ConversationRow,
   slug: string | null,
-  preview: string | null = null,
+  preview: string | null,
+  access: { group: boolean; mine: boolean },
 ): ConversationDto {
   return {
     id: c.id,
@@ -3010,6 +3195,8 @@ function toConversationDto(
     importedFrom: c.importedFrom,
     private: c.privateChat,
     shared: c.shareToken !== null,
+    group: access.group,
+    mine: access.mine,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   };

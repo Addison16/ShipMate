@@ -109,6 +109,22 @@ export async function conversationRoutes(app: FastifyInstance, s: Services) {
     return { ok: true };
   });
 
+  // ---------- group chats ----------
+
+  app.get<{ Params: { id: string } }>("/api/conversations/:id/people", async (req) =>
+    s.bridge.people(req.user, req.params.id),
+  );
+
+  app.put<{ Params: { id: string } }>("/api/conversations/:id/people", async (req) => {
+    const { userIds } = z.object({ userIds: z.array(z.string().uuid()).max(50) }).parse(req.body);
+    return s.bridge.setPeople(req.user, req.params.id, userIds);
+  });
+
+  app.post<{ Params: { id: string } }>("/api/conversations/:id/leave", async (req) => {
+    await s.bridge.leave(req.user, req.params.id);
+    return { ok: true };
+  });
+
   // ---------- a read-only link to one chat ----------
 
   app.get<{ Params: { id: string } }>("/api/conversations/:id/share", async (req) => ({

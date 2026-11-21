@@ -33,6 +33,7 @@ import {
   useDraft,
 } from "../components/CrewChat.js";
 import { NavIcon } from "../components/icons.js";
+import { PeopleDialog } from "../components/PeopleDialog.js";
 import { PetDock } from "../components/Pet.js";
 import { ShareDialog } from "../components/ShareDialog.js";
 import { SidePanel } from "../components/SidePanel.js";
@@ -130,6 +131,7 @@ function ConversationTags({
       {c.importedFrom && <Badge>From {IMPORT_NAMES[c.importedFrom] ?? "another app"}</Badge>}
       {c.private && <Badge tone="accent">Private</Badge>}
       {c.shared && <Badge tone="accent">Shared</Badge>}
+      {c.group && <Badge tone="accent">Group</Badge>}
       {c.projectId &&
         (linkProject ? (
           <a
@@ -170,6 +172,8 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
 
   useServerEvents((ev) => {
     if (ev.type === "crew_changed") void crew.reload();
+    // Added to, or taken out of, a group chat.
+    if (ev.type === "chats_changed") void conversations.reload();
     if (ev.type === "message") {
       // Titles and ordering change as messages land; refetch the list, debounced.
       if (refreshTimer.current) clearTimeout(refreshTimer.current);
@@ -474,7 +478,8 @@ function ConversationRow({
   const [renaming, setRenaming] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const editable = c.surface === "web";
+  // Someone else's group chat: reading and writing only.
+  const editable = c.surface === "web" && c.mine;
 
   async function run(fn: () => Promise<void>) {
     setBusy(true);
@@ -662,6 +667,7 @@ function Thread({
   const [sendError, setSendError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [people, setPeople] = useState(false);
   /** Whether older messages remain on the server; null until the first load. */
   const [more, setMore] = useState<boolean | null>(null);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
@@ -1064,7 +1070,27 @@ function Thread({
                 Hands-free
               </Button>
             )}
-            {conversation?.surface === "web" && (
+            {people && conversation && (
+              <PeopleDialog
+                conversationId={conversationId}
+                mine={conversation.mine}
+                onClose={() => setPeople(false)}
+                onChanged={onPinned}
+                onLeft={onDeleted}
+              />
+            )}
+            {conversation?.surface === "web" && !conversation.mine && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="shrink-0"
+                onClick={() => setPeople(true)}
+              >
+                <NavIcon name="users" size={16} />
+                People
+              </Button>
+            )}
+            {conversation?.surface === "web" && conversation.mine && (
               <>
                 {/* Icons only until there is room for words, so the title keeps its space. */}
                 <Button
@@ -1110,6 +1136,15 @@ function Thread({
                         icon: "pencil",
                         onSelect: () => setRenaming(conversation.title ?? ""),
                       },
+                      ...(conversation.private || conversation.projectId
+                        ? []
+                        : [
+                            {
+                              label: conversation.group ? "People" : "Add people",
+                              icon: "users" as const,
+                              onSelect: () => setPeople(true),
+                            },
+                          ]),
                       ...(conversation.private
                         ? []
                         : [
@@ -1162,6 +1197,12 @@ function Thread({
                     <NavIcon name="pencil" size={16} />
                     Rename
                   </Button>
+                  {!conversation.private && !conversation.projectId && (
+                    <Button size="sm" variant="ghost" onClick={() => setPeople(true)}>
+                      <NavIcon name="users" size={16} />
+                      People
+                    </Button>
+                  )}
                   {!conversation.private && (
                     <Button size="sm" variant="ghost" onClick={() => setSharing(true)}>
                       <NavIcon name="share" size={16} />
@@ -1465,7 +1506,7 @@ function withWhom(
 
 type MenuItem = {
   label: string;
-  icon: "pin" | "pencil" | "trash" | "download" | "backup" | "lists" | "share";
+  icon: "pin" | "pencil" | "trash" | "download" | "backup" | "lists" | "share" | "users";
   danger?: boolean;
   onSelect: () => void;
 };

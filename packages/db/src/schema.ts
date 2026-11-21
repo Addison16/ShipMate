@@ -9,6 +9,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -108,6 +109,27 @@ export const conversations = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("conversations_user_idx").on(t.userId, t.updatedAt)],
+);
+
+/**
+ * The other people in a group chat. The chat still belongs to the person who started it
+ * (conversations.userId); members can read it and write in it, nothing more.
+ */
+export const conversationMembers = pgTable(
+  "conversation_members",
+  {
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.conversationId, t.userId] }),
+    index("conversation_members_user_idx").on(t.userId),
+  ],
 );
 
 export const messages = pgTable(

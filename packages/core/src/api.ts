@@ -388,6 +388,10 @@ export interface ConversationDto {
   private: boolean;
   /** A read-only link to this chat exists (see ChatShareDto). */
   shared: boolean;
+  /** A group chat: other people of the household are in it too (see ChatPeopleDto). */
+  group: boolean;
+  /** The asker started this chat. False for a group chat someone else added them to. */
+  mine: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -512,6 +516,20 @@ export interface TaskRef {
  * without `conversationId`, the caller's open tasks and their latest finished ones.
  * POST /api/tasks/:id/stop → { task }.
  */
+
+/**
+ * The people in a group chat. Everyone in it sees everything said in it and can write in it;
+ * only the person who started it can add or remove people, rename or delete it.
+ * GET /api/conversations/:id/people → ChatPeopleDto
+ * PUT /api/conversations/:id/people { userIds } → ChatPeopleDto (the starter only)
+ * POST /api/conversations/:id/leave → { ok: true } (someone who was added)
+ */
+export interface ChatPeopleDto {
+  /** Who is in the chat, the person who started it first. */
+  people: { id: string; name: string; starter: boolean }[];
+  /** Everyone who could be added. Only filled for the person who started the chat. */
+  household: { id: string; name: string }[];
+}
 
 /**
  * A read-only link to one chat. Anyone who has the link can read the chat as it was when it was
@@ -1911,6 +1929,8 @@ export type ServerEvent =
   | { type: "context"; conversationId: string; context: ChatContextDto }
   /** Crew roster changed (recruit, edit, retire); refetch /api/crew. */
   | { type: "crew_changed" }
+  /** The person's chat list changed from elsewhere (added to or removed from a group chat). */
+  | { type: "chats_changed" }
   /** `detail` is the raw provider text behind a short message, shown behind "More details". */
   | { type: "error"; conversationId?: string; message: string; detail?: string }
   /** A crew member wants to run a consequential tool; show a card with allow/deny/always. */

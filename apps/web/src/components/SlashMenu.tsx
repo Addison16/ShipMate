@@ -1,4 +1,5 @@
 import type { SavedPromptDto } from "@shipmate/core";
+import { useEffect, useRef } from "react";
 import { href } from "../router.js";
 import { cx } from "./ui.js";
 
@@ -32,8 +33,15 @@ export function slashItems(
 
 /** The list that opens above the message box while the message is just "/…". */
 export function SlashMenu({ items, active }: { items: SlashItem[]; active: number }) {
+  const list = useRef<HTMLDivElement>(null);
+  // The message box keeps the focus, so the browser does not bring the chosen row into view.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the chosen row changes
+  useEffect(() => {
+    list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: "nearest" });
+  }, [active]);
   return (
     <div
+      ref={list}
       role="listbox"
       aria-label="Saved prompts"
       className="absolute right-0 bottom-[calc(100%+0.5rem)] left-0 z-20 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"

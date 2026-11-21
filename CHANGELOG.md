@@ -6,6 +6,12 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Private chat.** Under New chat there is a Private chat button for a one-off talk. The
+  agent cannot save anything from it to memory, it is left out of search and of activity
+  summaries, and it is deleted when you press End chat or after an hour without use. Limits:
+  what it costs still counts toward usage, a backup taken while one is open includes it, and
+  agents that run on Claude Code, Codex, Cursor or Gemini keep their own record of the talk
+  on your server, which Shipmate does not remove.
 - **Open things beside the chat.** A page, picture (SVG), document or long piece of code in a
   reply gets an Open button. It opens next to the chat on a wide screen and full screen on a
   phone, with Preview and Code views, Copy and Save. A page an agent wrote runs in a locked

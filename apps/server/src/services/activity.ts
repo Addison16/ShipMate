@@ -62,6 +62,8 @@ export async function recentActivity(db: Db, user: UserRow, hours: number): Prom
         gte(messages.createdAt, since),
         // Watch runs are listed above.
         sql`${conversations.surface} <> 'watch'`,
+        // What is said in a private chat stays out of everyone's summaries.
+        eq(conversations.privateChat, false),
       ),
     )
     .groupBy(conversations.id, conversations.title, conversations.surface, crewMembers.name)

@@ -28,6 +28,7 @@ export async function conversationRoutes(app: FastifyInstance, s: Services) {
         kind: z.enum(["bridge", "direct"]).optional(),
         crewSlug: z.string().optional(),
         reuse: z.boolean().optional(),
+        private: z.boolean().optional(),
       })
       .parse(req.body ?? {});
     return { conversation: await s.bridge.createConversation(req.user, body) };

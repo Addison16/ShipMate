@@ -141,6 +141,13 @@
       "when": 1795206153956,
       "tag": "0019_chat_import",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795234652777,
+      "tag": "0020_private_chat",
+      "breakpoints": true
     }
   ]
 }

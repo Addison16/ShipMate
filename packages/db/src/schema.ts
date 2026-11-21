@@ -74,6 +74,8 @@ export const conversations = pgTable(
     externalId: text("external_id"),
     /** Brought over from another app ("chatgpt" | "claude"); null = started here. */
     importedFrom: text("imported_from"),
+    /** A private chat: deleted when ended or left idle, kept out of search and agents' memory. */
+    privateChat: boolean("private_chat").notNull().default(false),
     /** For "direct" conversations: the crew member being talked to. */
     crewMemberId: uuid("crew_member_id").references(() => crewMembers.id, { onDelete: "set null" }),
     /** Shipyard project whose workspace this conversation works in. */

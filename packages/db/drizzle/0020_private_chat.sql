@@ -1,0 +1,1 @@
+ALTER TABLE "conversations" ADD COLUMN "private_chat" boolean DEFAULT false NOT NULL;

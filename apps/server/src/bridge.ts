@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { rm } from "node:fs/promises";
+import { isAbsolute } from "node:path";
 import type { Api, AssistantMessage, ImageContent, Model } from "@earendil-works/pi-ai";
 import type {
   AgentSessionEvent,
@@ -94,6 +96,28 @@ type ConversationRow = typeof conversations.$inferSelect;
 type Send = (event: ServerEvent) => void;
 
 const IDLE_MS = 30 * 60_000;
+/** A private chat left alone this long is deleted. */
+export const PRIVATE_IDLE_MS = 60 * 60_000;
+
+/** In a private chat's system prompt, on every engine. */
+const PRIVATE_CHAT_NOTE =
+  "## Private chat\n\nThis is a private chat. It is deleted when it ends, and nothing from it may outlive it: do not save anything said here to memory, lists, notes, documents, skills or files, do not set reminders or routines from it, and do not pass it to other crew members, unless the person asks for exactly that in this chat. You cannot use `remember` or `forget` here.";
+
+/** Memory tools that write; a private chat does not get them. */
+const MEMORY_WRITES = new Set(["remember", "forget"]);
+const forChat = <T extends { name: string }>(conv: { privateChat: boolean }, tools: T[]): T[] =>
+  conv.privateChat ? tools.filter((t) => !MEMORY_WRITES.has(t.name)) : tools;
+
+/**
+ * Remove the session files pi kept for a deleted chat. Values that are not files (the session
+ * ids of the CLI engines, which keep their own records) are left alone.
+ */
+async function removeSessionRecords(sessionFiles: Record<string, string>): Promise<void> {
+  for (const file of Object.values(sessionFiles)) {
+    if (!isAbsolute(file) || !file.endsWith(".jsonl")) continue;
+    await rm(file, { force: true }).catch(() => {});
+  }
+}
 /** How much of the latest message the conversation list shows. */
 const PREVIEW_CHARS = 140;
 
@@ -441,7 +465,11 @@ export class Bridge {
     const vector = sql`to_tsvector('english', ${messages.content})`;
     const rank = sql<number>`ts_rank(${vector}, ${tsquery})`;
     const options = `StartSel=${SEARCH_MARK.start}, StopSel=${SEARCH_MARK.end}, MaxWords=24, MinWords=8, MaxFragments=2, FragmentDelimiter=" … "`;
-    const matched = and(eq(conversations.userId, user.id), sql`${vector} @@ ${tsquery}`);
+    const matched = and(
+      eq(conversations.userId, user.id),
+      eq(conversations.privateChat, false),
+      sql`${vector} @@ ${tsquery}`,
+    );
     // Pick the best conversations first, so one long chat can't crowd the others out.
     const top = await this.deps.db
       .select({ conversationId: messages.conversationId, best: sql<number>`max(${rank})` })
@@ -491,7 +519,13 @@ export class Bridge {
     const titled = await this.deps.db
       .select({ id: conversations.id })
       .from(conversations)
-      .where(and(eq(conversations.userId, user.id), ilike(conversations.title, pattern)))
+      .where(
+        and(
+          eq(conversations.userId, user.id),
+          eq(conversations.privateChat, false),
+          ilike(conversations.title, pattern),
+        ),
+      )
       .orderBy(desc(conversations.updatedAt))
       .limit(limit);
 
@@ -575,6 +609,8 @@ export class Bridge {
       title?: string | undefined;
       /** Direct chats: reopen the person's latest web chat with that crew member, if any. */
       reuse?: boolean | undefined;
+      /** A private chat (see PRIVATE_IDLE_MS); never a reused one. */
+      private?: boolean | undefined;
     },
   ): Promise<ConversationDto> {
     const kind = input.kind ?? "bridge";
@@ -585,7 +621,7 @@ export class Bridge {
       const row = await this.deps.crew.assertVisible(input.crewSlug, user);
       crewMemberId = row.id;
       slug = row.slug;
-      if (input.reuse && (input.surface ?? "web") === "web" && !input.projectId) {
+      if (input.reuse && !input.private && (input.surface ?? "web") === "web" && !input.projectId) {
         const [existing] = await this.deps.db
           .select()
           .from(conversations)
@@ -595,6 +631,7 @@ export class Bridge {
               eq(conversations.kind, "direct"),
               eq(conversations.crewMemberId, row.id),
               eq(conversations.surface, "web"),
+              eq(conversations.privateChat, false),
               isNull(conversations.projectId),
             ),
           )
@@ -612,7 +649,9 @@ export class Bridge {
         surface: input.surface ?? "web",
         externalId: input.externalId ?? null,
         projectId: input.projectId ?? null,
-        title: input.title ?? null,
+        // Named up front, so the list never shows a name made from what was said in it.
+        title: input.private ? "Private chat" : (input.title ?? null),
+        privateChat: input.private === true,
       })
       .returning();
     if (!c) throw new Error("insert failed");
@@ -674,11 +713,40 @@ export class Bridge {
   }
 
   async deleteConversation(user: UserRow, id: string): Promise<void> {
-    await this.conversation(user, id);
-    this.#dispose(id);
-    const files = await this.deps.files.idsIn(id);
-    await this.deps.db.delete(conversations).where(eq(conversations.id, id));
+    const conv = await this.conversation(user, id);
+    await this.#remove(conv);
+  }
+
+  /** Delete a chat with everything kept for it: messages, its files and the agents' records. */
+  async #remove(conv: ConversationRow): Promise<void> {
+    this.#dispose(conv.id);
+    const files = await this.deps.files.idsIn(conv.id);
+    await this.deps.db.delete(conversations).where(eq(conversations.id, conv.id));
     await this.deps.files.removeFiles(files);
+    await removeSessionRecords(conv.sessionFiles);
+  }
+
+  /**
+   * Delete private chats nobody has used for PRIVATE_IDLE_MS. Runs at start and on a timer, so
+   * one that was left open in a closed tab, or cut off by a restart, does not stay.
+   */
+  async sweepPrivateChats(now = new Date()): Promise<number> {
+    const stale = await this.deps.db
+      .select()
+      .from(conversations)
+      .where(
+        and(
+          eq(conversations.privateChat, true),
+          lt(conversations.updatedAt, new Date(now.getTime() - PRIVATE_IDLE_MS)),
+        ),
+      );
+    let removed = 0;
+    for (const conv of stale) {
+      if (this.#runs.get(conv.id)?.busy) continue;
+      await this.#remove(conv);
+      removed++;
+    }
+    return removed;
   }
 
   /**
@@ -1474,6 +1542,7 @@ export class Bridge {
                     picture: codex ? undefined : picture,
                   },
                   isCaptain,
+                  conv.privateChat,
                 ),
               ],
               gate: (call) =>
@@ -1497,6 +1566,7 @@ export class Bridge {
                   (r): r is string => r !== null,
                 )
               : []),
+            ...(conv.privateChat ? [PRIVATE_CHAT_NOTE] : []),
             ...((codex || cursor || gemini) && folder.manifest.mcp.length
               ? [
                   `Its MCP servers (${folder.manifest.mcp.join(", ")}) are not available on ${engine}; switch to the Shipmate or Claude Code engine to use them.`,
@@ -1915,9 +1985,12 @@ export class Bridge {
       customTools: helperId
         ? // A helper does its one task: no crew management, questions or helpers of its own,
           // and no Shipyard pushes or comments (the crew member it works for decides those).
-          [...memoryTools(memory, acting), ...(this.#everyday?.tools(user, folder) ?? [])]
+          [
+            ...forChat(conv, memoryTools(memory, acting)),
+            ...(this.#everyday?.tools(user, folder) ?? []),
+          ]
         : [
-            ...memoryTools(memory, acting),
+            ...forChat(conv, memoryTools(memory, acting)),
             ...skillTools({
               createSkill: async ({ scope, content }) =>
                 skills.createByCrew(
@@ -1968,6 +2041,7 @@ export class Bridge {
           : []),
         ...(workspace ? [workspace.prompt] : []),
         ...(importRecap ? [importRecap] : []),
+        ...(conv.privateChat ? [PRIVATE_CHAT_NOTE] : []),
       ],
       ...(mode ? { inMemory: true } : {}),
       ...(!mode && conv.sessionFiles[folder.slug]
@@ -2171,11 +2245,12 @@ export class Bridge {
       picture?: PictureHost | undefined;
     },
     isCaptain: boolean,
+    privateChat = false,
   ): ToolDefinition[] {
     const acting: ActingUser = { id: user.id, displayName: user.displayName, role: user.role };
     const skills = this.deps.skills;
     return [
-      ...memoryTools(new MemoryStore(folder.dir), acting),
+      ...forChat({ privateChat }, memoryTools(new MemoryStore(folder.dir), acting)),
       ...skillTools({
         createSkill: async ({ scope, content }) =>
           skills.createByCrew(
@@ -2616,6 +2691,7 @@ function toConversationDto(
     archived: c.archivedAt !== null,
     preview,
     importedFrom: c.importedFrom,
+    private: c.privateChat,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   };

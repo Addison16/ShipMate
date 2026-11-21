@@ -127,6 +127,7 @@ export async function buildApp(
   app.decorate("services", services);
   app.decorateRequest("user", null as unknown as UserRow);
   let fileSweep: NodeJS.Timeout | undefined;
+  let privateSweep: NodeJS.Timeout | undefined;
   app.addHook("onReady", async () => {
     // Replies cut off by a restart get a note in their chat, so nobody waits for them.
     await services.bridge.recover().catch((err: Error) => app.log.error(err, "recover failed"));
@@ -141,6 +142,11 @@ export async function buildApp(
     void services.files.sweep().catch(() => {});
     fileSweep = setInterval(() => void services.files.sweep().catch(() => {}), 3600_000);
     fileSweep.unref();
+    // Private chats left alone for an hour are deleted, also ones a restart cut off.
+    const sweepPrivate = () => void services.bridge.sweepPrivateChats().catch(() => {});
+    sweepPrivate();
+    privateSweep = setInterval(sweepPrivate, 5 * 60_000);
+    privateSweep.unref();
     // Chat bridges connect in the background when configured; problems show on their pages.
     void services.telegram.start();
     void services.slack.start();
@@ -156,6 +162,7 @@ export async function buildApp(
   });
   app.addHook("onClose", async () => {
     clearInterval(fileSweep);
+    clearInterval(privateSweep);
     await services.backups.stop();
     services.localAi.close();
     await services.watches.stop();

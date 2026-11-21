@@ -19,7 +19,7 @@ import { backupRoutes } from "./routes/backups.js";
 import { claudeCliRoutes } from "./routes/claude-cli.js";
 import { cliLoginRoutes } from "./routes/cli-login.js";
 import { codexCliRoutes } from "./routes/codex-cli.js";
-import { conversationRoutes } from "./routes/conversations.js";
+import { conversationRoutes, SHARED_PREFIX } from "./routes/conversations.js";
 import { crewRoutes } from "./routes/crew.js";
 import { cursorCliRoutes } from "./routes/cursor-cli.js";
 import { discordRoutes } from "./routes/discord.js";
@@ -67,7 +67,13 @@ const PUBLIC = new Set([
   GOOGLE_CALLBACK_PATH,
 ]);
 /** Prefixes reachable without signing in; each route checks its own credential (a token). */
-const PUBLIC_PREFIXES = ["/api/hooks/", "/api/push/act/", API_V1_PREFIX, CLI_MCP_PATH];
+const PUBLIC_PREFIXES = [
+  "/api/hooks/",
+  "/api/push/act/",
+  API_V1_PREFIX,
+  SHARED_PREFIX,
+  CLI_MCP_PATH,
+];
 
 /** How often the Bridge's WebSocket is pinged, under common proxy idle timeouts (60 s). */
 const WS_PING_MS = 25_000;

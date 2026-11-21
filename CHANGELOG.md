@@ -6,6 +6,12 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Share a chat as a link.** In a chat's menu, Share link makes a read-only link. Anyone who
+  has it can read the chat as it was at that moment, without signing in: the words only, no
+  files or tool details. Later messages stay out until you press "Include new messages".
+  Shared chats carry a "Shared" tag, and Stop sharing (or deleting the chat) ends the link.
+  Private chats cannot be shared. The link works for people who can reach your Shipmate's
+  address.
 - **Sign-in codes (two-step sign-in).** Settings → Profile and account → Sign-in codes: add
   Shipmate to an authenticator app (tap on a phone, or scan the picture from a computer), and
   sign-in then asks for the app's code after your password. You get eight backup codes for a

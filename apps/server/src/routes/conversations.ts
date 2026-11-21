@@ -7,6 +7,9 @@ import type { Services } from "../services.js";
 const IMPORT_BODY_BYTES = 8 * 1024 * 1024;
 const IMPORT_MESSAGE_CHARS = 200_000;
 
+/** Where shared chats are read without signing in. */
+export const SHARED_PREFIX = "/api/shared/";
+
 export async function conversationRoutes(app: FastifyInstance, s: Services) {
   app.get("/api/conversations", async (req) => ({
     conversations: await s.bridge.listConversations(req.user.id),
@@ -104,6 +107,36 @@ export async function conversationRoutes(app: FastifyInstance, s: Services) {
   app.delete<{ Params: { id: string } }>("/api/conversations/:id", async (req) => {
     await s.bridge.deleteConversation(req.user, req.params.id);
     return { ok: true };
+  });
+
+  // ---------- a read-only link to one chat ----------
+
+  app.get<{ Params: { id: string } }>("/api/conversations/:id/share", async (req) => ({
+    share: await s.chatShare.get(req.user, req.params.id),
+  }));
+
+  app.post<{ Params: { id: string } }>("/api/conversations/:id/share", async (req) => {
+    const share = await s.chatShare.share(req.user, req.params.id);
+    await s.audit.record({
+      userId: req.user.id,
+      crewMemberId: null,
+      action: "chats.share",
+      summary: "Shared a chat as a link",
+      decision: null,
+      detail: { conversationId: req.params.id },
+    });
+    return { share };
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/conversations/:id/share", async (req) => {
+    await s.chatShare.stop(req.user, req.params.id);
+    return { ok: true };
+  });
+
+  // No sign-in: the link's secret is the key. Listed as public in app.ts.
+  app.get<{ Params: { token: string } }>(`${SHARED_PREFIX}:token`, async (req, reply) => {
+    reply.header("cache-control", "no-store").header("x-robots-tag", "noindex, nofollow");
+    return s.chatShare.view(req.params.token);
   });
 
   app.post<{ Params: { id: string } }>("/api/conversations/:id/reset", async (req) => ({

@@ -82,6 +82,10 @@ export const conversations = pgTable(
     externalId: text("external_id"),
     /** Brought over from another app ("chatgpt" | "claude"); null = started here. */
     importedFrom: text("imported_from"),
+    /** The secret in this chat's read-only link; null = not shared. */
+    shareToken: text("share_token").unique(),
+    /** The link shows messages up to this moment, so later ones stay private until re-shared. */
+    sharedThrough: timestamp("shared_through", { withTimezone: true }),
     /** A private chat: deleted when ended or left idle, kept out of search and agents' memory. */
     privateChat: boolean("private_chat").notNull().default(false),
     /** For "direct" conversations: the crew member being talked to. */

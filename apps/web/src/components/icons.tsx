@@ -56,6 +56,7 @@ export type IconName =
   | "download"
   | "document"
   | "sparkle"
+  | "share"
   | "terminal";
 
 const paths: Record<IconName, ReactNode> = {
@@ -223,6 +224,7 @@ const paths: Record<IconName, ReactNode> = {
       <path d="M7 9.5l3 2.5-3 2.5M12.5 15H17" />
     </>
   ),
+  share: <path d="M12 15V4M8 8l4-4 4 4M5 12v7h14v-7" />,
   back: <path d="M15 5l-7 7 7 7" />,
   chevron: <path d="M9 5l7 7-7 7" />,
   pencil: (

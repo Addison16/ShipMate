@@ -31,6 +31,7 @@ import { ApprovalService } from "./services/approvals.js";
 import { AuditService } from "./services/audit.js";
 import { BackupService } from "./services/backups.js";
 import { ChatImportService } from "./services/chat-import.js";
+import { ChatShareService } from "./services/chat-share.js";
 import { CrewService } from "./services/crew.js";
 import { CrewBundleService } from "./services/crew-bundles.js";
 import { DocumentService } from "./services/documents.js";
@@ -90,6 +91,7 @@ export interface Services {
   lists: ListService;
   documents: DocumentService;
   prompts: PromptService;
+  chatShare: ChatShareService;
   twoStep: TwoStepService;
   apiKeys: ApiKeyService;
   chatImport: ChatImportService;
@@ -412,6 +414,7 @@ export async function createServices(
     lists,
     documents,
     prompts: new PromptService(db),
+    chatShare: new ChatShareService(db, bridge),
     twoStep: new TwoStepService(db, vault, config.SHIPMATE_SIGN_IN_CODES === "on"),
     apiKeys: new ApiKeyService({ db, bridge, crew }),
     chatImport: new ChatImportService(db),

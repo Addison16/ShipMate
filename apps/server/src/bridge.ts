@@ -432,8 +432,8 @@ export class Bridge {
       .where(
         and(
           eq(conversations.userId, userId),
-          // Web chats, plus each watch's latest run, so its result reads like any reply.
-          sql`(${conversations.surface} = 'web' or ${conversations.id} in (
+          // Web chats, chats other apps started with a key, plus each watch's latest run, so its result reads like any reply.
+          sql`(${conversations.surface} in ('web', 'api') or ${conversations.id} in (
             select distinct on (r.watch_id) r.conversation_id
             from ${watchRuns} r
             where r.conversation_id is not null

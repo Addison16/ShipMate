@@ -6,6 +6,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Keys for other apps.** Settings → Other apps makes a personal key so Siri Shortcuts, Home
+  Assistant or a script can send a message to one of your agents and read the reply. A key can
+  only message agents and read the chats it started: not your other chats, files or settings.
+  Chats it starts show in your list marked "Other app", their cost counts as yours, and a key
+  can be removed at any time. Steps for Shortcuts and Home Assistant: docs/other-apps.md.
 - **Private chat.** Under New chat there is a Private chat button for a one-off talk. The
   agent cannot save anything from it to memory, it is left out of search and of activity
   summaries, and it is deleted when you press End chat or after an hour without use. Limits:

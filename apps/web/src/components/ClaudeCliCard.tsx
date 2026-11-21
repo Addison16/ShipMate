@@ -4,6 +4,7 @@ import { useThemeText } from "../appearance.js";
 import { isAdmin, useUser } from "../auth.js";
 import { claudeCliApi, describeStatus } from "../lib/claude-cli.js";
 import { useResource } from "../lib/useResource.js";
+import { CliSignIn } from "./CliSignIn.js";
 import { CopyField } from "./CopyField.js";
 import { Badge, Button, Card, cx, ErrorText, focusRing } from "./ui.js";
 
@@ -85,16 +86,10 @@ function ClaudeCliStatusCard({
           <p className="text-sm text-slate-600 dark:text-slate-300">
             {s.signedIn
               ? t("Ready. Pick Claude subscription as a crew member's model on their Crew page.")
-              : "Use your own Claude plan for your crew. Sign in once on the Docker host:"}
+              : "Use your own Claude plan for your crew. Sign in once:"}
           </p>
-          {!s.signedIn && (
-            <div className="mt-3">
-              <CopyField
-                label="Sign in"
-                value="docker exec -it shipmate claude"
-                hint="Use your container's name if it is not shipmate. Type /login if it does not ask."
-              />
-            </div>
+          {s.installed && !s.signedIn && (
+            <CliSignIn provider="claude" signedIn={false} onDone={() => void res.reload()} />
           )}
           <details className="mt-3">
             <summary
@@ -106,15 +101,18 @@ function ClaudeCliStatusCard({
               More details
             </summary>
             <div className="mt-2">
+              {s.installed && s.signedIn && (
+                <div className="mb-3">
+                  <CliSignIn provider="claude" signedIn onDone={() => void res.reload()} />
+                </div>
+              )}
               <DocText text={s.docs} />
               <div className="grid gap-3 sm:grid-cols-2">
-                {s.signedIn && (
-                  <CopyField
-                    label="Sign in again (on the Docker host)"
-                    value="docker exec -it shipmate claude"
-                    hint="Use your container's name if it is not shipmate. Type /login if it does not ask."
-                  />
-                )}
+                <CopyField
+                  label="Or sign in on the Docker host"
+                  value="docker exec -it shipmate claude"
+                  hint="Use your container's name if it is not shipmate. Type /login if it does not ask."
+                />
                 <CopyField
                   label="Login kept in"
                   value={s.configDir}

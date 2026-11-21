@@ -10,6 +10,15 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   yourself or shared with everyone. In any chat, type `/` and a list opens above the message
   box; pick one and it lands in the box, ready to edit and send. Typing more after the `/`
   narrows the list, and `/new` is in the same list.
+- **Sign in from the app**: the Claude subscription, Codex and Gemini CLI cards on Providers
+  now have a Sign in button (owners and admins). Shipmate runs each app's own official sign-in
+  on the server and shows its link, plus Codex's code to type or a box to paste the code Claude
+  or Google gives you, so `docker exec` is no longer needed. The login stays in each app's own
+  folder; Shipmate never reads or keeps it.
+- **Web terminal** (Settings → Terminal, owner only): a shell on the Shipmate server in the
+  browser, with extra keys for phones. It is off until the owner turns it on, every opening is
+  in the Audit log, it closes after 30 minutes with no typing, and `SHIPMATE_TERMINAL=off`
+  keeps it off for good.
 - **Fix**: restoring a backup could fail now and then with "relation … does not exist" while
   it reset the table counters, because that step sometimes looked at Postgres's own tables.
   It now looks only at Shipmate's tables.

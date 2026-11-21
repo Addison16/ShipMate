@@ -1709,3 +1709,40 @@ export type ServerEvent =
   | { type: "themes_changed" }
   /** The person's appearance changed elsewhere (a crew member switched their theme). */
   | { type: "preferences_changed"; preferences: UserPreferences };
+
+/** The CLIs that can be signed in from the Providers page. */
+export type CliLoginProvider = "claude" | "codex" | "gemini";
+
+/**
+ * A sign-in started from the Providers page: the official CLI's own login command runs on the
+ * server, and the page shows its sign-in link (and Codex's code). Shipmate never sees the login.
+ */
+export interface CliLoginDto {
+  provider: CliLoginProvider;
+  state: "running" | "done" | "failed" | "cancelled";
+  /** Links to the provider's own sign-in page that the CLI printed. */
+  links: string[];
+  /** Codex: the one-time code to type on its page. */
+  code: string | null;
+  /** The CLI is waiting for the code the sign-in page shows (Claude, Gemini). */
+  asksForCode: boolean;
+  /** What the CLI printed, as plain text (last part). */
+  output: string;
+  error: string | null;
+  startedAt: string;
+}
+
+/**
+ * GET /api/cli-login/:provider (admin) → { login: CliLoginDto | null }
+ * POST /api/cli-login/:provider → start; POST .../answer { code }; DELETE → stop.
+ */
+export interface CliLoginResponse {
+  login: CliLoginDto | null;
+}
+
+/** GET /api/terminal (owner) → { terminal: TerminalStatusDto }; PUT { enabled } to switch. */
+export interface TerminalStatusDto {
+  enabled: boolean;
+  /** False when the server's settings (SHIPMATE_TERMINAL=off) keep it off. */
+  allowed: boolean;
+}

@@ -55,7 +55,8 @@ export type IconName =
   | "pin"
   | "download"
   | "document"
-  | "sparkle";
+  | "sparkle"
+  | "terminal";
 
 const paths: Record<IconName, ReactNode> = {
   // Speech bubble: talk to the crew.
@@ -214,6 +215,12 @@ const paths: Record<IconName, ReactNode> = {
     <>
       <rect x="3.5" y="4" width="17" height="4.5" rx="1" />
       <path d="M5 8.5V20h14V8.5M10 12.5h4" />
+    </>
+  ),
+  terminal: (
+    <>
+      <rect x="3" y="4.5" width="18" height="15" rx="2" />
+      <path d="M7 9.5l3 2.5-3 2.5M12.5 15H17" />
     </>
   ),
   back: <path d="M15 5l-7 7 7 7" />,

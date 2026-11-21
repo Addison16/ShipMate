@@ -119,10 +119,15 @@ export class CliLogins {
 
     const onData = (text: string) => {
       run.raw = (run.raw + text).slice(-50_000);
-      for (const link of signInLinks(text)) if (!dto.links.includes(link)) dto.links.push(link);
+      // Output arrives in pieces that can split a link or a prompt, so read what has arrived so
+      // far, and links only from finished lines (a link is always followed by a line break).
+      const end = Math.max(run.raw.lastIndexOf("\n"), run.raw.lastIndexOf("\r"));
+      for (const link of signInLinks(run.raw.slice(0, end + 1))) {
+        if (!dto.links.includes(link)) dto.links.push(link);
+      }
       if (provider === "codex") dto.code ??= deviceCode(run.raw);
       const ask = ASKS_FOR_CODE[provider];
-      if (ask?.test(plainText(text))) dto.asksForCode = true;
+      if (ask?.test(plainText(run.raw.slice(-4_000)))) dto.asksForCode = true;
     };
     const onExit = (code: number | null) => {
       if (dto.state !== "running") return;

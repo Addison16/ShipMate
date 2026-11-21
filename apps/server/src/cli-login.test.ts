@@ -156,6 +156,22 @@ describe("signing in the CLIs from the Providers page", () => {
     logins.close();
   });
 
+  it("reads a link and prompt that arrive in pieces", async () => {
+    const split = fake(
+      "claude-split",
+      `const parts = ["visit:\\nhttps://claude.ai/oauth/auth", "orize?code=true&state=abc\\nPaste co", "de here if prompted > "];
+let i = 0;
+const next = () => { if (i < parts.length) { process.stdout.write(parts[i++]); setTimeout(next, 80); } };
+next();
+setInterval(() => {}, 1000);`,
+    );
+    const logins = new CliLogins({ bins: { claude: split } });
+    logins.start("claude");
+    const l = await until(logins, "claude", (x) => x.asksForCode);
+    expect(l.links).toEqual(["https://claude.ai/oauth/authorize?code=true&state=abc"]);
+    logins.close();
+  });
+
   it("says so when the CLI is not installed", async () => {
     const logins = new CliLogins({ bins: { claude: join(dir, "nope") } });
     logins.start("claude");

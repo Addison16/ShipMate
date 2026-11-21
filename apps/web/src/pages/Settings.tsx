@@ -14,6 +14,7 @@ import { PhotoSettings } from "../components/PhotoSettings.js";
 import { ProfileSettings } from "../components/ProfileSettings.js";
 import { PushSettings } from "../components/PushSettings.js";
 import { SandboxSettings } from "../components/SandboxSettings.js";
+import { TerminalSettings } from "../components/TerminalSettings.js";
 import {
   Badge,
   Button,
@@ -111,6 +112,12 @@ export function SettingsPage({ section }: { section: string }) {
           <BackupSettings />
         </SettingsSectionPage>
       );
+    case "terminal":
+      return (
+        <SettingsSectionPage title="Terminal" ownerOnly wide>
+          <TerminalSettings />
+        </SettingsSectionPage>
+      );
     default:
       return <SettingsOverview />;
   }
@@ -119,16 +126,18 @@ export function SettingsPage({ section }: { section: string }) {
 function SettingsSectionPage({
   title,
   ownerOnly,
+  wide,
   children,
 }: {
   title: string;
   ownerOnly?: boolean;
+  wide?: boolean;
   children: ReactNode;
 }) {
   const user = useUser();
   const t = useThemeText();
   return (
-    <Page>
+    <Page wide={!!wide}>
       <PageHeader title={t(title)} />
       {ownerOnly && user.role !== "owner" ? (
         <Muted>Only the owner can change these.</Muted>

@@ -304,6 +304,16 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     keywords: ["backup", "restore", "export", "nightly", "download"],
   },
   {
+    id: "terminal",
+    path: "/settings/terminal",
+    group: "This Shipmate",
+    label: "Terminal",
+    hint: "Run commands on the server",
+    icon: "terminal",
+    access: "owner",
+    keywords: ["shell", "console", "command", "docker exec", "bash", "ssh", "login"],
+  },
+  {
     id: "audit",
     path: "/audit",
     group: "This Shipmate",

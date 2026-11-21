@@ -5,6 +5,7 @@ import { useThemeText } from "../appearance.js";
 import { isAdmin, useUser } from "../auth.js";
 import { geminiCliApi } from "../lib/gemini-cli.js";
 import { useResource } from "../lib/useResource.js";
+import { CliSignIn } from "./CliSignIn.js";
 import { CopyField } from "./CopyField.js";
 import { Badge, Button, Card, cx, ErrorText, focusRing, TextField } from "./ui.js";
 
@@ -120,12 +121,9 @@ function GeminiCliStatusCard({
             </form>
           )}
           {s.installed && !s.signedIn && (
-            <div className="mt-3">
-              <CopyField
-                label="Or sign in with a work account"
-                value={s.signInCommand}
-                hint={hint}
-              />
+            <div className="mt-4">
+              <p className="text-sm font-medium">Or sign in with a work account</p>
+              <CliSignIn provider="gemini" signedIn={false} onDone={() => void res.reload()} />
             </div>
           )}
           <details className="mt-3">
@@ -138,20 +136,24 @@ function GeminiCliStatusCard({
               More details
             </summary>
             <div className="mt-2 space-y-3">
+              {s.installed && s.signedIn && (
+                <CliSignIn
+                  provider="gemini"
+                  signedIn={s.authMethod === "login"}
+                  onDone={() => void res.reload()}
+                />
+              )}
               <p className="text-sm text-slate-600 dark:text-slate-300">
                 Shipmate runs the official <code className="font-mono text-xs">gemini</code> app and
                 never sees your Google login. An API key is used ahead of a login.
               </p>
               <div className="grid gap-3 sm:grid-cols-2">
-                {s.installed && s.authMethod !== "login" && s.signedIn && (
+                {s.installed && (
                   <CopyField
-                    label="Sign in with a work account"
+                    label="Or sign in on the Docker host"
                     value={s.signInCommand}
                     hint={hint}
                   />
-                )}
-                {s.authMethod === "login" && (
-                  <CopyField label="Sign in again" value={s.signInCommand} hint={hint} />
                 )}
                 <CopyField
                   label="Login kept in"

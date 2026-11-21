@@ -102,6 +102,7 @@ can also pick a sandbox host in **Settings → Shipyard sandbox**, which overrid
 |---|---|---|
 | `SHIPMATE_BACKUP_DIR` | `/data/backups` | Where backups are written. Map another host folder to it to keep backups off the appdata disk. |
 | `SHIPMATE_UPDATE_CHECK` | `on` | `off` never asks GitHub for new releases. |
+| `SHIPMATE_TERMINAL` | `on` | `off` keeps the owner's web terminal (Settings → Terminal) off, whatever the setting says. It starts off either way until the owner turns it on. |
 | `SHIPMATE_MCP` | `on` | `off` skips starting MCP servers for crew sessions (air-gapped installs). |
 | `SHIPMATE_UPDATER_IMAGE` | `containrrr/watchtower:latest` | The helper image for one-click updates. See [health-and-updates.md](health-and-updates.md). |
 | `SHIPMATE_CONTAINER` | the container's hostname | Shipmate's container name, if its hostname is not the container id. |

@@ -5,6 +5,7 @@ import { isAdmin, useUser } from "../auth.js";
 import { describeStatus } from "../lib/claude-cli.js";
 import { codexCliApi } from "../lib/codex-cli.js";
 import { useResource } from "../lib/useResource.js";
+import { CliSignIn } from "./CliSignIn.js";
 import { CopyField } from "./CopyField.js";
 import { Badge, Button, Card, cx, ErrorText, focusRing } from "./ui.js";
 
@@ -54,12 +55,10 @@ function CodexCliStatusCard({
           <p className="text-sm text-slate-600 dark:text-slate-300">
             {s.signedIn
               ? t("Ready. Pick Codex as a crew member's engine on their Crew page.")
-              : "Run crew through OpenAI's Codex on your ChatGPT plan. Sign in once on the Docker host:"}
+              : "Run crew through OpenAI's Codex on your ChatGPT plan. Sign in once:"}
           </p>
-          {!s.signedIn && (
-            <div className="mt-3">
-              <CopyField label="Sign in" value={s.signInCommand} hint={hint} />
-            </div>
+          {s.installed && !s.signedIn && (
+            <CliSignIn provider="codex" signedIn={false} onDone={() => void res.reload()} />
           )}
           <details className="mt-3">
             <summary
@@ -71,14 +70,19 @@ function CodexCliStatusCard({
               More details
             </summary>
             <div className="mt-2 space-y-3">
+              {s.installed && s.signedIn && (
+                <CliSignIn provider="codex" signedIn onDone={() => void res.reload()} />
+              )}
               <p className="text-sm text-slate-600 dark:text-slate-300">
                 Shipmate runs the official <code className="font-mono text-xs">codex</code> app and
                 never sees your login. This sign-in is separate from the ChatGPT plan card above.
               </p>
               <div className="grid gap-3 sm:grid-cols-2">
-                {s.signedIn && (
-                  <CopyField label="Sign in again" value={s.signInCommand} hint={hint} />
-                )}
+                <CopyField
+                  label="Or sign in on the Docker host"
+                  value={s.signInCommand}
+                  hint={hint}
+                />
                 <CopyField
                   label="Login kept in"
                   value={s.configDir}

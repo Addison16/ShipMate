@@ -6,6 +6,10 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Saved prompts**: keep the messages you send often under Settings → Saved prompts, for
+  yourself or shared with everyone. In any chat, type `/` and a list opens above the message
+  box; pick one and it lands in the box, ready to edit and send. Typing more after the `/`
+  narrows the list, and `/new` is in the same list.
 - **Sign in from the app**: the Claude subscription, Codex and Gemini CLI cards on Providers
   now have a Sign in button (owners and admins). Shipmate runs each app's own official sign-in
   on the server and shows its link, plus Codex's code to type or a box to paste the code Claude

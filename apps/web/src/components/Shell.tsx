@@ -20,6 +20,7 @@ import { DocumentsPage } from "../pages/Documents.js";
 import { HealthPage } from "../pages/Health.js";
 import { ListsPage } from "../pages/Lists.js";
 import { McpPage } from "../pages/Mcp.js";
+import { PromptsPage } from "../pages/Prompts.js";
 import { ProvidersPage } from "../pages/Providers.js";
 import { SettingsPage } from "../pages/Settings.js";
 import { ShipyardPage } from "../pages/Shipyard.js";
@@ -272,6 +273,9 @@ export function Shell() {
       break;
     case "skills":
       page = <SkillsPage skillId={route[1] ?? null} />;
+      break;
+    case "prompts":
+      page = <PromptsPage />;
       break;
     case "documents":
       page = <DocumentsPage />;

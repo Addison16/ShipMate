@@ -28,6 +28,7 @@ import {
 } from "../components/CrewChat.js";
 import { NavIcon } from "../components/icons.js";
 import { PetDock } from "../components/Pet.js";
+import { SlashMenu, slashItems } from "../components/SlashMenu.js";
 import { TimelineView } from "../components/Timeline.js";
 import { TopBarTitle } from "../components/TopBar.js";
 import {
@@ -44,6 +45,7 @@ import { chatFileName, chatMarkdown, saveTextFile } from "../lib/chat-export.js"
 import { formatTime } from "../lib/format.js";
 import { enterAddsLine } from "../lib/keyboard.js";
 import { dockPets } from "../lib/pets.js";
+import { matchPrompts, promptsApi, slashQuery } from "../lib/prompts.js";
 import { splitHighlights } from "../lib/search.js";
 import { surfaceLabel } from "../lib/shipyard.js";
 import { initialTimeline, timelineReducer } from "../lib/timeline.js";
@@ -796,7 +798,53 @@ function Thread({
   // Try again and Edit are offered when a message could be sent right now.
   const canResend = !readOnly && !state.busy && socketState === "open";
 
+  // The "/" menu: /new and the saved prompts, while the message is only "/…".
+  const savedPrompts = useResource(() => promptsApi.list().then((r) => r.prompts));
+  const [slashAt, setSlashAt] = useState(0);
+  const [slashClosed, setSlashClosed] = useState(false);
+  const query = readOnly ? null : slashQuery(text);
+  const slash =
+    query === null || slashClosed
+      ? []
+      : slashItems(query, matchPrompts(savedPrompts.data ?? [], query), {
+          startFresh: () => {
+            setText("");
+            void startFresh();
+          },
+          use: (body) => {
+            setText(body);
+            inputRef.current?.focus();
+          },
+        });
+  const slashActive = Math.min(slashAt, Math.max(0, slash.length - 1));
+  useEffect(() => {
+    if (query === null) setSlashClosed(false);
+    setSlashAt(0);
+  }, [query]);
+
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (slash.length && !e.nativeEvent.isComposing) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const step = e.key === "ArrowDown" ? 1 : -1;
+        setSlashAt((slashActive + step + slash.length) % slash.length);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setSlashClosed(true);
+        return;
+      }
+      // Enter or Tab picks the highlighted row; a typed "/new" still sends as before.
+      if ((e.key === "Enter" && !e.shiftKey && !enterAddsLine()) || e.key === "Tab") {
+        const item = slash[slashActive];
+        if (item && !(item.key === "new" && text.trim() === "/new")) {
+          e.preventDefault();
+          item.pick();
+          return;
+        }
+      }
+    }
     // On a touch keyboard there is no Shift+Enter, so Enter makes a new line and Send sends.
     if (enterAddsLine()) return;
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -1154,6 +1202,7 @@ function Thread({
               </div>
             )}
             <PendingFiles items={files.items} onRemove={files.remove} />
+            {query !== null && !slashClosed && <SlashMenu items={slash} active={slashActive} />}
             <div className="flex items-end gap-2">
               <AttachButtons onFiles={files.add} disabled={files.full} />
               {voice && voice.stt !== "off" && (
@@ -1231,7 +1280,7 @@ function Thread({
                 ? "Hands-free: tap the mic, speak, tap again to send. Replies are read aloud."
                 : state.busy
                   ? "Enter keeps your message to send when this reply is done."
-                  : "Enter to send, Shift+Enter for a new line, /new to start fresh."}
+                  : "Enter to send, Shift+Enter for a new line, / for saved prompts."}
             </p>
           </div>
         </form>

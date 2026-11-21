@@ -48,6 +48,8 @@ export async function userRoutes(app: FastifyInstance, s: Services) {
         role: UserRole.optional(),
         monthlyCapCents: z.number().int().min(0).nullable().optional(),
         password: z.string().min(8).max(200).optional(),
+        /** Only `false`: the owner turns sign-in codes off for someone who lost their phone. */
+        twoStep: z.literal(false).optional(),
       })
       .parse(req.body);
     const self = req.params.id === req.user.id;
@@ -63,6 +65,19 @@ export async function userRoutes(app: FastifyInstance, s: Services) {
         throw new HttpError(400, "the owner cannot be demoted");
       }
     }
+    if (body.twoStep === false) {
+      // Turning your own off takes a code (POST /api/auth/two-step/disable).
+      if (self) throw new HttpError(400, "turn your own sign-in codes off under Settings");
+      requireRole(req.user, "owner");
+      await s.twoStep.clear(target.id);
+      await s.audit.record({
+        userId: req.user.id,
+        crewMemberId: null,
+        action: "auth.two_step_reset",
+        summary: `Turned sign-in codes off for ${target.email}`,
+        decision: null,
+      });
+    }
     const values: Partial<typeof users.$inferInsert> = {};
     if (body.displayName !== undefined) values.displayName = body.displayName;
     if (body.role !== undefined) values.role = body.role;
@@ -70,7 +85,7 @@ export async function userRoutes(app: FastifyInstance, s: Services) {
     if (body.password !== undefined) values.passwordHash = await hashPassword(body.password);
     const [user] = Object.keys(values).length
       ? await s.db.update(users).set(values).where(eq(users.id, target.id)).returning()
-      : [target];
+      : await s.db.select().from(users).where(eq(users.id, target.id));
     if (!user) throw new Error("update failed");
     // A new password signs every other device out; the one that changed it stays signed in.
     if (body.password !== undefined) {

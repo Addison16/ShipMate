@@ -37,6 +37,14 @@ export const users = pgTable("users", {
   slackUserId: text("slack_user_id").unique(),
   /** Web app appearance (theme mode, color theme); parsed with UserPreferences. */
   preferences: jsonb("preferences").notNull().default({}),
+  /** Sign-in codes: the authenticator secret (encrypted with the vault); null = never set up. */
+  totpSecret: text("totp_secret"),
+  /** When sign-in codes were turned on; null = off (a secret alone is a setup not finished). */
+  totpEnabledAt: timestamp("totp_enabled_at", { withTimezone: true }),
+  /** The 30-second step of the last code accepted, so a code cannot be used twice. */
+  totpLastStep: integer("totp_last_step"),
+  /** SHA-256 of each unused backup code. */
+  totpBackupCodes: jsonb("totp_backup_codes").$type<string[]>(),
   createdAt: createdAt(),
 });
 

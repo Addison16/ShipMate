@@ -6,6 +6,12 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Sign-in codes (two-step sign-in).** Settings → Profile and account → Sign-in codes: add
+  Shipmate to an authenticator app (tap on a phone, or scan the picture from a computer), and
+  sign-in then asks for the app's code after your password. You get eight backup codes for a
+  lost phone, the owner can turn codes off for someone on the Users page, and wrong codes
+  count toward the same pause as wrong passwords. Lost everything? Start once with
+  `SHIPMATE_SIGN_IN_CODES=off` (docs/configuration.md). Single sign-on is not affected.
 - **Keys for other apps.** Settings → Other apps makes a personal key so Siri Shortcuts, Home
   Assistant or a script can send a message to one of your agents and read the reply. A key can
   only message agents and read the chats it started: not your other chats, files or settings.

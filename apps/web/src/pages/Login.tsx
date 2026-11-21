@@ -18,6 +18,9 @@ export function LoginPage() {
   const { refresh } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // Set once the password was right and the account asks for a sign-in code.
+  const [needsCode, setNeedsCode] = useState(false);
+  const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(() =>
     oidcErrorMessage(loginErrorCode(window.location.hash)),
   );
@@ -49,7 +52,15 @@ export function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      await api.login({ email: email.trim(), password });
+      const res = await api.login({
+        email: email.trim(),
+        password,
+        ...(needsCode ? { code: code.trim() } : {}),
+      });
+      if ("needsCode" in res) {
+        setNeedsCode(true);
+        return;
+      }
       // Reload who is signed in, with the owner's setup guide state if it is still running.
       const me = await refresh();
       // The password was right but the browser did not keep the sign-in cookie (blocked
@@ -99,6 +110,18 @@ export function LoginPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
+        {needsCode && (
+          <TextField
+            label="Code from your authenticator app"
+            hint="Lost your phone? Type one of your backup codes."
+            autoComplete="one-time-code"
+            autoFocus
+            required
+            maxLength={12}
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+          />
+        )}
         <ErrorText>{error}</ErrorText>
         <Button
           type="submit"

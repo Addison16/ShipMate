@@ -29,6 +29,8 @@ export function toUserDto(u: UserRow): UserDto {
     slackUserId: u.slackUserId,
     preferences: parseUserPreferences(u.preferences),
     welcomePending: welcomePending(u.preferences),
+    twoStep: u.totpEnabledAt !== null,
+    hasPassword: u.passwordHash !== null,
     createdAt: u.createdAt.toISOString(),
   };
 }

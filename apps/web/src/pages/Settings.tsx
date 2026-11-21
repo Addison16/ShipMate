@@ -15,6 +15,7 @@ import { ProfileSettings } from "../components/ProfileSettings.js";
 import { PushSettings } from "../components/PushSettings.js";
 import { SandboxSettings } from "../components/SandboxSettings.js";
 import { TerminalSettings } from "../components/TerminalSettings.js";
+import { TwoStepSettings } from "../components/TwoStepSettings.js";
 import {
   Badge,
   Button,
@@ -63,6 +64,7 @@ export function SettingsPage({ section }: { section: string }) {
         <SettingsSectionPage title="Profile and account">
           <ProfileSettings />
           <MyAccount />
+          <TwoStepSettings />
           <DeviceSettings />
         </SettingsSectionPage>
       );

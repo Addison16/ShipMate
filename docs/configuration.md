@@ -56,6 +56,7 @@ refuses to start the built-in database while another container is using it.
 | `PORT` | `3000` | Port the web app and API listen on inside the container. Change the host side of the port mapping instead, unless you use host networking. |
 | `HOST` | `0.0.0.0` | Address to listen on. |
 | `SHIPMATE_TRUST_PROXY` | `loopback,linklocal,uniquelocal` | Which reverse proxies to believe about the browser's address and https (`X-Forwarded-For`, `-Proto`, `-Host`). The default trusts proxies on the same machine and on private networks (10.x, 172.16-31.x, 192.168.x, Docker networks). A comma list of IPs or CIDR ranges narrows it (e.g. `172.18.0.0/16`); `off` trusts none; `all` trusts any, only when nothing but the proxy can reach Shipmate's port. See [reverse-proxy.md](reverse-proxy.md#trusting-the-proxy). |
+| `SHIPMATE_SIGN_IN_CODES` | `on` | Set to `off` only to get back in when you lost both your phone and your backup codes: while it is `off`, nobody is asked for a sign-in code. Sign in, turn sign-in codes off under Settings → Profile and account (any text works in the code box), then remove the variable and restart. |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug` or `trace`. Logs go to the container's output (`docker logs shipmate`). |
 | `SHIPMATE_DATA_DIR` | `/data` | Where Shipmate keeps its files (see the layout below). Leave it as is in Docker and map a host folder to `/data`. |
 

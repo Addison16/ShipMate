@@ -1,6 +1,7 @@
 import {
   ColorTheme,
   freshOnboarding,
+  type LoginResponse,
   type MeResponse,
   parseUserPreferences,
   ThemeMode,
@@ -65,8 +66,10 @@ export async function authRoutes(app: FastifyInstance, s: Services) {
     return { user: toUserDto(user) };
   });
 
-  app.post("/api/auth/login", async (req, reply) => {
-    const body = z.object({ email: Email, password: z.string() }).parse(req.body);
+  app.post("/api/auth/login", async (req, reply): Promise<LoginResponse> => {
+    const body = z
+      .object({ email: Email, password: z.string(), code: z.string().trim().max(40).optional() })
+      .parse(req.body);
     // One at a time per address, so tries sent together are each counted before the next.
     const user = await limiter.inTurn(req.ip, async () => {
       // Checked before the password, so waiting cannot be skipped by guessing right.
@@ -92,9 +95,19 @@ export async function authRoutes(app: FastifyInstance, s: Services) {
         }
         throw new HttpError(401, "Wrong email or password.");
       }
+      if (s.twoStep.required(found)) {
+        // The password was right; the page now asks for the code and sends all three.
+        if (!body.code) return null;
+        // A wrong code counts like a wrong password, so codes cannot be guessed either.
+        if (!(await s.twoStep.check(found, body.code))) {
+          limiter.failed(body.email, req.ip);
+          throw new HttpError(401, "That code is not right.");
+        }
+      }
       limiter.succeeded(body.email, req.ip);
       return found;
     });
+    if (!user) return { needsCode: true };
     await s.sessions.start(reply, user.id);
     return { user: toUserDto(user) };
   });
@@ -131,6 +144,54 @@ export async function authRoutes(app: FastifyInstance, s: Services) {
       .returning();
     if (!user) throw new HttpError(404, "user not found");
     return { user: toUserDto(user) };
+  });
+
+  // ---------- sign-in codes ----------
+
+  app.post("/api/auth/two-step/setup", async (req) => s.twoStep.setup(req.user));
+
+  app.post("/api/auth/two-step/enable", async (req) => {
+    const body = z
+      .object({ code: z.string().trim().min(1).max(40), password: z.string().max(200) })
+      .parse(req.body);
+    const backupCodes = await s.twoStep.enable(req.user, body.code, body.password);
+    // Codes now guard sign-in, so devices signed in before they did are signed out.
+    await s.sessions.endOthers(req.user.id, s.sessions.currentId(req));
+    await s.audit.record({
+      userId: req.user.id,
+      crewMemberId: null,
+      action: "auth.two_step_on",
+      summary: "Turned sign-in codes on",
+      decision: null,
+    });
+    return { backupCodes };
+  });
+
+  app.post("/api/auth/two-step/disable", async (req) => {
+    const { code } = z.object({ code: z.string().trim().min(1).max(40) }).parse(req.body);
+    if (!req.user.totpEnabledAt) return { ok: true };
+    // While the rescue switch is set, the person signed in without a code and has none to give.
+    if (!s.twoStep.required(req.user)) {
+      await s.twoStep.clear(req.user.id);
+      return { ok: true };
+    }
+    const wait = limiter.waitSeconds(req.user.email, req.ip);
+    if (wait > 0) {
+      throw new HttpError(429, `Too many wrong tries. Wait ${waitWords(wait)} and try again.`);
+    }
+    if (!(await s.twoStep.check(req.user, code))) {
+      limiter.failed(req.user.email, req.ip);
+      throw new HttpError(400, "That code is not right.");
+    }
+    await s.twoStep.clear(req.user.id);
+    await s.audit.record({
+      userId: req.user.id,
+      crewMemberId: null,
+      action: "auth.two_step_off",
+      summary: "Turned sign-in codes off",
+      decision: null,
+    });
+    return { ok: true };
   });
 
   app.get("/api/auth/sessions", async (req) => ({

@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Frames may only show the app's own address. This keeps a page an agent wrote, opened
+         in the side panel, from leaving for another address (see src/lib/side-panel.ts). -->
+    <meta http-equiv="Content-Security-Policy" content="frame-src 'self'" />
     <title>Shipmate</title>
     <meta name="description" content="A self-hosted crew of AI agents, captained from one Bridge." />
     <meta name="theme-color" content="#0f766e" />

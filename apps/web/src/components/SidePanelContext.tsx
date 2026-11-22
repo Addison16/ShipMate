@@ -18,6 +18,8 @@ export const useSidePanel = () => useContext(PanelContext);
  */
 export function SidePanelProvider({ scope, children }: { scope: string; children: ReactNode }) {
   const [state, setState] = useState<{ scope: string; item: PanelItem } | null>(null);
+  // Another chat: forget what was open, so coming back does not reopen it.
+  if (state && state.scope !== scope) setState(null);
   const item = state && state.scope === scope ? state.item : null;
   const control = useMemo<PanelControl>(
     () => ({

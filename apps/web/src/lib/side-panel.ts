@@ -94,13 +94,15 @@ export function panelFileName(item: PanelItem): string {
 }
 
 /**
- * Rules for a page an agent wrote, shown in a locked frame: its own scripts and styles run, and
- * it may show pictures from the web, but it cannot load scripts from elsewhere or send anything
- * out with fetch, forms or sockets.
+ * Rules for a page an agent wrote, shown in a locked frame: its own scripts and styles run, but
+ * nothing is loaded from or sent to anywhere else. Pictures, sound and fonts must be inside the
+ * page itself (data: or blob:), because a script could otherwise send what is on the page away
+ * in a picture's address. Leaving the page for another address is stopped by the app's own
+ * `frame-src` rule (index.html), which a frame cannot lift.
  */
-const PAGE_RULES =
+export const PAGE_RULES =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; " +
-  "img-src data: blob: https:; media-src data: blob: https:; font-src data: https:; " +
+  "img-src data: blob:; media-src data: blob:; font-src data:; " +
   "form-action 'none'; base-uri 'none'";
 
 /** The document the frame shows for a page or picture, with the rules above put first. */

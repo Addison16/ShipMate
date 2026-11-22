@@ -50,3 +50,19 @@ describe("side panel items", () => {
     expect(picture.indexOf(rules)).toBeLessThan(picture.indexOf("<svg>"));
   });
 });
+
+describe("the locked frame's rules", () => {
+  it("lets nothing be loaded from, or sent to, another address", async () => {
+    const { PAGE_RULES } = await import("./side-panel.js");
+    expect(PAGE_RULES).toContain("default-src 'none'");
+    // A picture address is a way out for a script, so pictures must be inside the page.
+    expect(PAGE_RULES).not.toMatch(/https?:|\*/);
+    expect(PAGE_RULES).toContain("img-src data: blob:;");
+    expect(PAGE_RULES).toContain("form-action 'none'");
+  });
+  it("is backed by the app's own rule that frames stay on the app's address", async () => {
+    const { readFileSync } = await import("node:fs");
+    const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
+    expect(html).toContain(`http-equiv="Content-Security-Policy" content="frame-src 'self'"`);
+  });
+});

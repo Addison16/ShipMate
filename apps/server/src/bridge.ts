@@ -79,6 +79,7 @@ import { petHost } from "./pets/host.js";
 import type { PetService } from "./pets/service.js";
 import type { ApprovalService } from "./services/approvals.js";
 import type { AuditService } from "./services/audit.js";
+import { ChatImportService, IMPORT_SOURCES } from "./services/chat-import.js";
 import type { CrewService } from "./services/crew.js";
 import type { McpService } from "./services/mcp.js";
 import type { ProviderService } from "./services/providers.js";
@@ -228,7 +229,10 @@ export class Bridge {
   /** Bumped on every crew change, so idle sessions pick up the new crew list (see send). */
   #crewVersion = 0;
 
+  readonly #imports: ChatImportService;
+
   constructor(private readonly deps: BridgeDeps) {
+    this.#imports = new ChatImportService(deps.db);
     this.#cli = new ClaudeCliTurns(deps.db);
     this.#codex = new CodexCliTurns(deps.db);
     this.#cursor = new CursorCliTurns(deps.db);
@@ -1828,6 +1832,11 @@ export class Bridge {
     const acting: ActingUser = { id: user.id, displayName: user.displayName, role: user.role };
     const memory = new MemoryStore(folder.dir);
     const isCaptain = folder.manifest.captain && conv.kind === "bridge" && !mode;
+    // A chat brought over from another app: the agent was never in it, so it gets the end of it.
+    const importRecap =
+      conv.importedFrom && !mode
+        ? await this.#imports.recap(conv.id, conv.importedFrom, user.displayName)
+        : null;
     const captainName = this.deps.crew.captain().manifest.name;
     // A cached session's tools outlive the turn that created them, so they look up the host of
     // the turn in progress.
@@ -1952,6 +1961,7 @@ export class Bridge {
             ]
           : []),
         ...(workspace ? [workspace.prompt] : []),
+        ...(importRecap ? [importRecap] : []),
       ],
       ...(mode ? { inMemory: true } : {}),
       ...(!mode && conv.sessionFiles[folder.slug]
@@ -2599,9 +2609,17 @@ function toConversationDto(
     pinned: c.pinnedAt !== null,
     archived: c.archivedAt !== null,
     preview,
+    importedFrom: c.importedFrom,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   };
+}
+
+/** A reply brought over from another app is shown under that app's name. */
+function importedAuthor(m: typeof messages.$inferSelect): MessageDto["author"] | null {
+  const from = (m.meta as { importedFrom?: unknown } | null)?.importedFrom;
+  if (m.role !== "assistant" || typeof from !== "string") return null;
+  return { kind: "crew", slug: `imported-${from}`, name: IMPORT_SOURCES[from] ?? "Assistant" };
 }
 
 function toMessageDto(
@@ -2613,7 +2631,7 @@ function toMessageDto(
       ? { kind: "user", id: m.userId, name: names.userName }
       : names.crewSlug
         ? { kind: "crew", slug: names.crewSlug, name: names.crewName ?? names.crewSlug }
-        : { kind: "system" };
+        : (importedAuthor(m) ?? { kind: "system" });
   return {
     id: m.id,
     conversationId: m.conversationId,

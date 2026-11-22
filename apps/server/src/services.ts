@@ -29,6 +29,7 @@ import type { PushFetch } from "./push/webpush.js";
 import { ApprovalService } from "./services/approvals.js";
 import { AuditService } from "./services/audit.js";
 import { BackupService } from "./services/backups.js";
+import { ChatImportService } from "./services/chat-import.js";
 import { CrewService } from "./services/crew.js";
 import { CrewBundleService } from "./services/crew-bundles.js";
 import { DocumentService } from "./services/documents.js";
@@ -83,6 +84,7 @@ export interface Services {
   lists: ListService;
   documents: DocumentService;
   prompts: PromptService;
+  chatImport: ChatImportService;
   web: WebService;
   profiles: ProfileService;
   crewBundles: CrewBundleService;
@@ -392,6 +394,7 @@ export async function createServices(
     lists,
     documents,
     prompts: new PromptService(db),
+    chatImport: new ChatImportService(db),
     web,
     profiles,
     crewBundles: new CrewBundleService({ crew, settings, providers, mcp, skills }),

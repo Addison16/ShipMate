@@ -169,6 +169,11 @@ describe.skipIf(!db)("Slack bridge", () => {
       kind: "bridge",
     });
 
+    // The reply is posted a moment before its turn ends, and a message sent in between is
+    // turned away as "still answering".
+    const chatId = rows[0]?.id as string;
+    await until(() => !t.app.services.bridge.isBusy(chatId));
+
     // Long replies are split; only the first piece mentions the person.
     t.faux.setResponses([fauxAssistantMessage(`${"a".repeat(3000)}\n\n${"b".repeat(3000)}`)]);
     port.message(CAPTAIN_CH, PERSON, "write a lot");

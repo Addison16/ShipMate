@@ -227,8 +227,12 @@ export const api = {
   // conversations
   listConversations: () =>
     request<{ conversations: ConversationDto[] }>("GET", "/api/conversations"),
-  createConversation: (body: { kind?: "bridge" | "direct"; crewSlug?: string; reuse?: boolean }) =>
-    request<{ conversation: ConversationDto }>("POST", "/api/conversations", body),
+  createConversation: (body: {
+    kind?: "bridge" | "direct";
+    crewSlug?: string;
+    reuse?: boolean;
+    private?: boolean;
+  }) => request<{ conversation: ConversationDto }>("POST", "/api/conversations", body),
   resetConversation: (id: string) =>
     request<{ message: MessageDto }>("POST", `/api/conversations/${enc(id)}/reset`),
   renameConversation: (id: string, title: string) =>

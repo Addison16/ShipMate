@@ -78,6 +78,26 @@ function useProjectNames(needed: boolean): Map<string, string> {
   return new Map((projects.data ?? []).map((p) => [p.id, p.name]));
 }
 
+function LockGlyph() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  );
+}
+
 const IMPORT_NAMES: Record<string, string> = { chatgpt: "ChatGPT", claude: "Claude" };
 
 function ConversationTags({
@@ -98,6 +118,7 @@ function ConversationTags({
     <>
       {surface && <Badge tone={c.surface === "discord" ? "accent" : "neutral"}>{surface}</Badge>}
       {c.importedFrom && <Badge>From {IMPORT_NAMES[c.importedFrom] ?? "another app"}</Badge>}
+      {c.private && <Badge tone="accent">Private</Badge>}
       {c.projectId &&
         (linkProject ? (
           <a
@@ -163,11 +184,14 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
     conversations.data?.some((c) => c.projectId !== null) ?? false,
   );
 
-  async function createBridge() {
+  async function createBridge(isPrivate = false) {
     setCreating(true);
     setCreateError(null);
     try {
-      const { conversation } = await api.createConversation({ kind: "bridge" });
+      const { conversation } = await api.createConversation({
+        kind: "bridge",
+        ...(isPrivate ? { private: true } : {}),
+      });
       opened(conversation);
       navigate(`/bridge/${conversation.id}`);
     } catch (err) {
@@ -242,6 +266,19 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
                   </Button>
                 )}
               </div>
+              <button
+                type="button"
+                disabled={creating}
+                title="Deleted when you end it or after an hour without use. Agents cannot save anything from it."
+                onClick={() => void createBridge(true)}
+                className={cx(
+                  "flex min-h-9 w-full items-center justify-center gap-1.5 rounded-md text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
+                  focusRing,
+                )}
+              >
+                <LockGlyph />
+                Private chat
+              </button>
               <ErrorText>{createError}</ErrorText>
               <CrewStrip
                 crew={crewList}
@@ -886,7 +923,10 @@ function Thread({
   }
 
   async function remove() {
-    if (!window.confirm("Delete this conversation? This cannot be undone.")) return;
+    const ask = conversation?.private
+      ? "End this private chat? It is deleted right away."
+      : "Delete this conversation? This cannot be undone.";
+    if (!window.confirm(ask)) return;
     try {
       await api.deleteConversation(conversationId);
       onDeleted();
@@ -1069,6 +1109,17 @@ function Thread({
           </>
         )}
       </div>
+      {conversation?.private && (
+        <div className="flex items-center gap-2 border-b border-accent-200 bg-accent-50 px-3 py-2 text-sm text-accent-900 dark:border-accent-900 dark:bg-accent-950/50 dark:text-accent-100">
+          <LockGlyph />
+          <p className="min-w-0 flex-1">
+            Private chat. It is deleted when you end it, or after an hour without use.
+          </p>
+          <Button size="sm" onClick={() => void remove()}>
+            End chat
+          </Button>
+        </div>
+      )}
       <TopBarTitle>
         <h1 className="truncate text-[15px] font-semibold leading-tight">{title}</h1>
         {subtitle && (

@@ -325,6 +325,11 @@ export interface ConversationDto {
   preview: string | null;
   /** Brought over from another app ("chatgpt" | "claude"); null = started here. */
   importedFrom: string | null;
+  /**
+   * A private chat: it is deleted when ended or after an hour without use, search does not
+   * find it, and the agents cannot save anything from it to memory.
+   */
+  private: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -374,7 +379,7 @@ export interface MessageDto {
 
 /** GET /api/conversations → { conversations: ConversationDto[] } pinned first, then newest first */
 /**
- * POST /api/conversations { kind?, crewSlug?, reuse? } → { conversation }
+ * POST /api/conversations { kind?, crewSlug?, reuse?, private? } → { conversation }
  * With `reuse`, a direct chat reopens the person's latest one with that crew member.
  */
 /**

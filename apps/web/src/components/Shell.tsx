@@ -31,6 +31,7 @@ import { UsagePage } from "../pages/Usage.js";
 import { UsersPage } from "../pages/Users.js";
 import { WatchesPage } from "../pages/Watches.js";
 import { href, navigate, useRoute } from "../router.js";
+import { TasksProvider } from "../tasks.js";
 import { socket, useSocketState } from "../ws.js";
 import { ApprovalTray } from "./ApprovalTray.js";
 import { NavIcon } from "./icons.js";
@@ -321,105 +322,107 @@ export function Shell() {
 
   return (
     <ApprovalsProvider>
-      <TopBarSlot.Provider value={topBarSlot}>
-        <div className="flex h-dvh flex-col bg-slate-50 text-slate-900 md:flex-row dark:bg-slate-950 dark:text-slate-100">
-          {/* Top bar on narrow screens */}
-          <header className="group/topbar flex items-center gap-1 border-b border-slate-200 bg-white px-4 pt-[calc(0.625rem+env(safe-area-inset-top))] pb-2.5 md:hidden dark:border-slate-800 dark:bg-slate-900">
-            {/* Menu on the left, the side it slides in from. */}
-            <button
-              type="button"
-              aria-label="Open navigation"
-              aria-expanded={drawer}
-              onClick={() => setDrawer(true)}
-              className={cx(
-                "-ml-2 rounded-md p-2 hover:bg-slate-100 dark:hover:bg-slate-800",
-                focusRing,
-              )}
-            >
-              <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
-                <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.8" />
-              </svg>
-            </button>
-            {/* The open chat's name sits here (see TopBarTitle); otherwise it stays empty. */}
-            <div ref={setTopBarSlot} className="min-w-0 flex-1" />
-            <div className="flex shrink-0 items-center gap-1">
+      <TasksProvider>
+        <TopBarSlot.Provider value={topBarSlot}>
+          <div className="flex h-dvh flex-col bg-slate-50 text-slate-900 md:flex-row dark:bg-slate-950 dark:text-slate-100">
+            {/* Top bar on narrow screens */}
+            <header className="group/topbar flex items-center gap-1 border-b border-slate-200 bg-white px-4 pt-[calc(0.625rem+env(safe-area-inset-top))] pb-2.5 md:hidden dark:border-slate-800 dark:bg-slate-900">
+              {/* Menu on the left, the side it slides in from. */}
               <button
                 type="button"
-                aria-label="Search"
-                onClick={openJump}
+                aria-label="Open navigation"
+                aria-expanded={drawer}
+                onClick={() => setDrawer(true)}
                 className={cx(
-                  "rounded-md p-2 hover:bg-slate-100 dark:hover:bg-slate-800",
+                  "-ml-2 rounded-md p-2 hover:bg-slate-100 dark:hover:bg-slate-800",
                   focusRing,
                 )}
               >
-                <NavIcon name="search" size={20} />
+                <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.8" />
+                </svg>
               </button>
-              <ApprovalTray variant="topbar" />
-              <div className="ml-1">
-                <Brand compact />
+              {/* The open chat's name sits here (see TopBarTitle); otherwise it stays empty. */}
+              <div ref={setTopBarSlot} className="min-w-0 flex-1" />
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  aria-label="Search"
+                  onClick={openJump}
+                  className={cx(
+                    "rounded-md p-2 hover:bg-slate-100 dark:hover:bg-slate-800",
+                    focusRing,
+                  )}
+                >
+                  <NavIcon name="search" size={20} />
+                </button>
+                <ApprovalTray variant="topbar" />
+                <div className="ml-1">
+                  <Brand compact />
+                </div>
               </div>
-            </div>
-          </header>
+            </header>
 
-          {/* Drawer on narrow screens */}
-          {drawer && (
-            <div className="fixed inset-0 z-40 md:hidden">
-              <button
-                type="button"
-                aria-label="Close navigation"
-                className="slide-over-backdrop absolute inset-0 bg-slate-950/40"
-                onClick={() => setDrawer(false)}
-              />
-              <nav
-                aria-label="Main"
-                className="slide-over-panel absolute inset-y-0 left-0 flex w-64 max-w-[85vw] flex-col bg-white pt-[env(safe-area-inset-top)] pb-[var(--safe-bottom)] shadow-xl dark:bg-slate-900"
-              >
-                <div className="flex items-center justify-between px-4 py-3">
+            {/* Drawer on narrow screens */}
+            {drawer && (
+              <div className="fixed inset-0 z-40 md:hidden">
+                <button
+                  type="button"
+                  aria-label="Close navigation"
+                  className="slide-over-backdrop absolute inset-0 bg-slate-950/40"
+                  onClick={() => setDrawer(false)}
+                />
+                <nav
+                  aria-label="Main"
+                  className="slide-over-panel absolute inset-y-0 left-0 flex w-64 max-w-[85vw] flex-col bg-white pt-[env(safe-area-inset-top)] pb-[var(--safe-bottom)] shadow-xl dark:bg-slate-900"
+                >
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <Brand />
+                  </div>
+                  <div className="relative flex-1 overflow-y-auto px-2">
+                    <NavLinks current={activeNav} onNavigate={() => setDrawer(false)} />
+                  </div>
+                  <UserBox />
+                </nav>
+              </div>
+            )}
+
+            {/* Sidebar on wide screens */}
+            <nav
+              aria-label="Main"
+              className="hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white md:flex dark:border-slate-800 dark:bg-slate-900"
+            >
+              <div className="space-y-3 px-3 py-4">
+                <div className="px-1">
                   <Brand />
                 </div>
-                <div className="relative flex-1 overflow-y-auto px-2">
-                  <NavLinks current={activeNav} onNavigate={() => setDrawer(false)} />
-                </div>
-                <UserBox />
-              </nav>
-            </div>
-          )}
-
-          {/* Sidebar on wide screens */}
-          <nav
-            aria-label="Main"
-            className="hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white md:flex dark:border-slate-800 dark:bg-slate-900"
-          >
-            <div className="space-y-3 px-3 py-4">
-              <div className="px-1">
-                <Brand />
+                <QuickJumpButton onOpen={openJump} />
               </div>
-              <QuickJumpButton onOpen={openJump} />
-            </div>
-            <div className="relative flex-1 overflow-y-auto px-2">
-              <NavLinks current={activeNav} />
-            </div>
-            <div className="px-2 pb-2">
-              <ApprovalTray variant="sidebar" />
-            </div>
-            <UserBox />
-          </nav>
+              <div className="relative flex-1 overflow-y-auto px-2">
+                <NavLinks current={activeNav} />
+              </div>
+              <div className="px-2 pb-2">
+                <ApprovalTray variant="sidebar" />
+              </div>
+              <UserBox />
+            </nav>
 
-          <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto">
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-gradient-to-b from-accent-100/50 via-accent-50/20 to-transparent dark:from-accent-900/20 dark:via-accent-950/10"
-            />
-            <div key={pageKey} className="relative h-full animate-page-in">
-              {page}
-            </div>
-          </main>
-          {/* Thumb-reach tabs on phones; an open chat keeps the whole height for the composer. */}
-          {!(section === "bridge" && route[1]) && <TabBar current={activeNav} />}
-          {jump && <QuickJump onClose={() => setJump(false)} />}
-          <Toasts />
-        </div>
-      </TopBarSlot.Provider>
+            <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto">
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-gradient-to-b from-accent-100/50 via-accent-50/20 to-transparent dark:from-accent-900/20 dark:via-accent-950/10"
+              />
+              <div key={pageKey} className="relative h-full animate-page-in">
+                {page}
+              </div>
+            </main>
+            {/* Thumb-reach tabs on phones; an open chat keeps the whole height for the composer. */}
+            {!(section === "bridge" && route[1]) && <TabBar current={activeNav} />}
+            {jump && <QuickJump onClose={() => setJump(false)} />}
+            <Toasts />
+          </div>
+        </TopBarSlot.Provider>
+      </TasksProvider>
     </ApprovalsProvider>
   );
 }

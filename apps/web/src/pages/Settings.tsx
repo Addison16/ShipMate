@@ -26,6 +26,7 @@ import {
   Muted,
   Page,
   PageHeader,
+  SelectField,
   TextField,
 } from "../components/ui.js";
 import { VoiceSettings } from "../components/VoiceSettings.js";
@@ -248,6 +249,7 @@ function InstanceSettings() {
   const [moving, setMoving] = useState(false);
   const [captainName, setCaptainName] = useState("");
   const [defaultModel, setDefaultModel] = useState("");
+  const [tasksAtOnce, setTasksAtOnce] = useState(3);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -257,6 +259,7 @@ function InstanceSettings() {
       // The stock name shows as the style's word and saves back as the stock name.
       setCaptainName(crewName(settings.data.captainName));
       setDefaultModel(settings.data.defaultModel);
+      setTasksAtOnce(settings.data.tasksAtOnce);
     }
   }, [settings.data, crewName]);
 
@@ -270,6 +273,7 @@ function InstanceSettings() {
       const next = await api.updateSettings({
         captainName: picked === words.captain ? STOCK_CAPTAIN_NAME : picked,
         defaultModel,
+        tasksAtOnce,
       });
       settings.setData(next);
       setSaved(true);
@@ -352,6 +356,19 @@ function InstanceSettings() {
               </Button>
             </div>
           )}
+          <SelectField
+            label="Tasks at once"
+            hint="How many handed-over jobs run at the same time. Pick fewer if your model or computer is slow."
+            disabled={!owner}
+            value={String(tasksAtOnce)}
+            onChange={(e) => setTasksAtOnce(Number(e.target.value))}
+          >
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </SelectField>
           <div className="flex items-center gap-2 text-sm">
             <span className="font-medium">Core MCP servers:</span>
             {settings.data.mcpEnabled ? <Badge tone="ok">enabled</Badge> : <Badge>disabled</Badge>}

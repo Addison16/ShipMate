@@ -134,8 +134,10 @@ crew member with extra tools, provided by a Shipmate extension:
 - `recruit_crew_member(spec)` scaffolds the folder from a template and the user's description,
   writes `CREW.md`, registers it, and opens it for the user to review before first use.
 - `edit_crew_member`, `retire_crew_member`, `list_crew`, `list_models` (what crew can run on, cheapest first).
-- `delegate(crew, task, context)` runs a task in another crew member's session and returns the
-  result; the bridge shows this as a hand-off, like Grok Bot's group chat.
+- `delegate(crew, task)` hands a job to another crew member as a background task with a chat
+  of its own; the Captain stays free and is told the result when it is done (see
+  [background-tasks.md](background-tasks.md)). `list_tasks`, `check_task` and `stop_task`
+  go with it.
 - `create_skill`, `create_routine`, `install_mcp_server` (each gated by approval policy).
 
 Starter crew templates shipped in `templates/crew/`: Captain, Quartermaster (household,

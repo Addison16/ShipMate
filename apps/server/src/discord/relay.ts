@@ -10,6 +10,7 @@ import {
   parseAction,
   type RelayApprovals,
   type TypedAnswer,
+  taskNote,
 } from "../chat/relay.js";
 import {
   type BotButton,
@@ -85,7 +86,23 @@ export class DiscordRelay {
     switch (event.type) {
       case "message": {
         const author = event.message.author;
-        if (author.kind !== "crew") return;
+        if (author.kind !== "crew") {
+          const note = taskNote(event.message);
+          if (note?.kind === "handoff") {
+            const line = `_${note.from.name} asked ${note.to.name}: ${oneLine(note.task, 300)}_`;
+            this.#withTarget(event.conversationId, (t) =>
+              this.#post(t, note.from.name, line, false),
+            );
+          } else if (note) {
+            this.#withTarget(event.conversationId, async (t) => {
+              await this.port.sendBotMessage(t.channelId, {
+                content: `⚠️ ${oneLine(note.text, 1800)}`,
+                mentionUserIds: [],
+              });
+            });
+          }
+          return;
+        }
         const text = event.message.content.trim() ? event.message.content : "";
         const read = this.lookup.readFile;
         const pictures = read ? replyPictures(event.message) : [];
@@ -129,8 +146,9 @@ export class DiscordRelay {
       }
       case "approval_request": {
         const a = event.approval;
-        if (!a.conversationId) return;
-        const conversationId = a.conversationId;
+        // A background task asks in the chat it came from, which is the one that lives here.
+        const conversationId = a.parentConversationId ?? a.conversationId;
+        if (!conversationId) return;
         this.#cardConversation.set(a.id, conversationId);
         this.#withTarget(conversationId, async (t) => {
           const userName = await this.lookup.userName(userId);

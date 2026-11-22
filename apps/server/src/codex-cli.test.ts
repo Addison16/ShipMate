@@ -19,7 +19,7 @@ import { codexModelFromRef, codexModels, newCodexImages } from "./codex-cli-turn
 import { CodexUnsandboxedError, runCodex, setCodexSandboxAvailable } from "./codex-run.js";
 import { planModelIds } from "./services/chatgpt.js";
 import { callCost } from "./services/usage.js";
-import { TEST_DATABASE_URL, testApp } from "./testing.js";
+import { TEST_DATABASE_URL, tasksSettled, testApp } from "./testing.js";
 
 const db = TEST_DATABASE_URL;
 
@@ -551,22 +551,32 @@ describe.skipIf(!db)("codex-cli backend through the Bridge", () => {
       const before = calls().length;
       const events = await turn(conv.id, "route deckhand swab the deck");
       expect(events.find((e) => e.type === "error")).toBeUndefined();
-      expect(events.find((e) => e.type === "handoff")).toMatchObject({
+      // The job goes to the background as a task, with a card in the chat.
+      const card = events.find((e) => e.type === "message" && e.message.meta?.taskStarted);
+      expect(card?.type === "message" && card.message.meta?.taskStarted).toMatchObject({
         from: { slug: "captain" },
-        to: { slug: "deckhand" },
-        task: "swab the deck",
+        crew: { slug: "deckhand" },
+        prompt: "swab the deck",
       });
+      await tasksSettled(t.app, conv.id);
       const msgs = (await api("GET", `/api/conversations/${conv.id}/messages`)).json().messages;
       expect(
-        msgs.map((m: { author: { slug?: string }; content: string }) => [
-          m.author.slug ?? "user",
+        msgs.map((m: { author: { kind: string; slug?: string }; content: string }) => [
+          m.author.slug ?? m.author.kind,
           m.content,
         ]),
       ).toEqual([
         ["user", "route deckhand swab the deck"],
         ["captain", "Routing to deckhand."],
+        ["system", "Captain gave Deckhand a task: Swab the deck"],
+        // The tool answers at once; the work itself runs on in the task's own chat.
+        [
+          "captain",
+          expect.stringMatching(/^Wrapped up: Task 1 \("Swab the deck"\) is now with Deckhand/),
+        ],
         ["deckhand", "Deck swabbed."],
-        ["captain", expect.stringMatching(/^Wrapped up: Deck swabbed\./)],
+        // Told the result, the Captain speaks once more.
+        ["captain", expect.any(String)],
       ]);
       const call = calls()[before];
       expect(call?.configs["mcp_servers.shipmate.url"]).toMatch(/\/api\/cli-mcp$/);

@@ -1,6 +1,8 @@
 # Shipmate docs
 
 - [BUILD_PLAN.md](BUILD_PLAN.md): architecture, decisions and phases.
+- [background-tasks.md](background-tasks.md): how the main agent hands jobs over, keeps
+  chatting, and reports back.
 - [configuration.md](configuration.md): every environment variable, and what lives in `/data`.
 - [custom-themes.md](custom-themes.md): build your own look, words and crew voice with your AI
 - [reverse-proxy.md](reverse-proxy.md): Nginx Proxy Manager, SWAG, Traefik, Caddy, nginx and

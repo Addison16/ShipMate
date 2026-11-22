@@ -47,6 +47,7 @@ import { ProviderService } from "./services/providers.js";
 import { SettingsService } from "./services/settings.js";
 import { SkillService } from "./services/skills.js";
 import { StarterService } from "./services/starters.js";
+import { TaskService } from "./services/tasks.js";
 import { ThemeService } from "./services/themes.js";
 import { TwoStepService } from "./services/two-step.js";
 import { UsageService } from "./services/usage.js";
@@ -77,6 +78,7 @@ export interface Services {
   audit: AuditService;
   skills: SkillService;
   watches: WatchService;
+  tasks: TaskService;
   bridge: Bridge;
   discord: DiscordService;
   telegram: TelegramService;
@@ -196,6 +198,8 @@ export async function createServices(
   });
   const watches = new WatchService(db, db.$client, crew, bridge, audit, emit, config.SHIPMATE_URL);
   bridge.attachWatches(watches);
+  const tasks = new TaskService(db, crew, bridge, settings, emit);
+  bridge.attachTasks(tasks);
   const pets = new PetService(
     db,
     vault,
@@ -399,6 +403,7 @@ export async function createServices(
     audit,
     skills,
     watches,
+    tasks,
     bridge,
     discord,
     telegram,

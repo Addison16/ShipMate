@@ -464,6 +464,53 @@ export interface ConversationSearchResultDto {
 /** DELETE /api/conversations/:id → { ok: true } */
 /** GET /api/conversations/:id/messages → { messages: MessageDto[] } oldest first */
 
+// ---------- background tasks ----------
+
+/**
+ * queued: waiting for a free slot. running: the crew member is working. waiting: it asked the
+ * person something or needs an approval. done / failed / stopped: it ended.
+ */
+export type TaskStatus = "queued" | "running" | "waiting" | "done" | "failed" | "stopped";
+
+/**
+ * Work the Captain handed to a crew member with `delegate`. It runs in a chat of its own
+ * (`conversationId`, surface "task") while the person carries on in the chat it came from
+ * (`parentConversationId`), where its result is posted when it ends.
+ */
+export interface TaskDto {
+  id: string;
+  /** Counts up within the chat it came from. */
+  number: number;
+  title: string;
+  /** What was asked. */
+  prompt: string;
+  crew: { slug: string; name: string };
+  status: TaskStatus;
+  parentConversationId: string;
+  conversationId: string;
+  /** The start of the crew member's latest reply. */
+  resultPreview: string | null;
+  error: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+/** What a task's messages carry in `meta`, so the chat it came from can draw them. */
+export interface TaskRef {
+  id: string;
+  number: number;
+  title: string;
+  crew: { slug: string; name: string };
+  conversationId: string;
+}
+
+/**
+ * GET /api/tasks?conversationId=<the chat they came from> → { tasks: TaskDto[] } newest first;
+ * without `conversationId`, the caller's open tasks and their latest finished ones.
+ * POST /api/tasks/:id/stop → { task }.
+ */
+
 // ---------- usage ----------
 
 export interface UsageTotals {
@@ -593,6 +640,8 @@ export interface SettingsDto {
    * automatically (a vision-capable model from the same provider if there is one).
    */
   visionModel: string;
+  /** How many background tasks run at the same time (1 to 8); more wait their turn. */
+  tasksAtOnce: number;
 }
 /**
  * GET /api/settings → SettingsDto.
@@ -646,6 +695,11 @@ export interface ApprovalDto {
   id: string;
   /** Null for routine runs. */
   conversationId: string | null;
+  /**
+   * Set when it comes from a background task: the chat the task was handed over in. The card
+   * shows there too, so the person can answer without opening the task.
+   */
+  parentConversationId?: string | null;
   routineId: string | null;
   crew: { slug: string; name: string };
   toolName: string;
@@ -1846,6 +1900,8 @@ export type ServerEvent =
     }
   /** Skill list changed (created, approved, deleted); refetch /api/skills. */
   | { type: "skills_changed" }
+  /** A background task started, changed or ended. */
+  | { type: "task"; task: TaskDto }
   /** A watch run started or finished; failures should surface as a notice. */
   | { type: "watch_run"; watchName: string; run: WatchRunDto }
   /** A list or its items changed (here, on another device, or by a crew member); refetch it. */

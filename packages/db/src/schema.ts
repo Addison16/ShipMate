@@ -251,6 +251,49 @@ export const conversationsRelations = relations(conversations, ({ one, many }) =
   messages: many(messages),
 }));
 
+/**
+ * Background tasks: work the Captain handed to a crew member, who does it in a chat of its own
+ * while the person carries on in the chat it came from. The result goes back to that chat.
+ */
+export const tasks = pgTable(
+  "tasks",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Counts up within the chat it came from ("task 3"), so a model can name it. */
+    number: integer("number").notNull(),
+    /** The chat the Captain handed it over in; its result is reported there. */
+    parentConversationId: uuid("parent_conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    /** The task's own chat, where the crew member works (surface "task"). */
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    crewSlug: text("crew_slug").notNull(),
+    title: text("title").notNull(),
+    /** What was asked, as the Captain wrote it. */
+    prompt: text("prompt").notNull(),
+    /** queued | running | waiting (for the person) | done | failed | stopped */
+    status: text("status").notNull().default("queued"),
+    /** The crew member's latest reply. */
+    result: text("result"),
+    error: text("error"),
+    /** How many times it was sent back with notes after a result. */
+    rounds: integer("rounds").notNull().default(0),
+    createdAt: createdAt(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("tasks_parent_number_idx").on(t.parentConversationId, t.number),
+    uniqueIndex("tasks_conversation_idx").on(t.conversationId),
+    index("tasks_user_idx").on(t.userId, t.createdAt),
+  ],
+);
+
 /** Watches (routines): a crew member runs a prompt on a schedule, webhook or after another. */
 export const watches = pgTable("watches", {
   id: id(),

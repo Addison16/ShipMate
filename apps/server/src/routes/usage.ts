@@ -3,6 +3,7 @@ import { CAPTAIN_SLUG } from "@shipmate/crew";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { requireRole } from "../auth.js";
+import { MAX_TASKS_AT_ONCE } from "../services/tasks.js";
 import { currentMonth } from "../services/usage.js";
 import type { Services } from "../services.js";
 
@@ -62,6 +63,7 @@ export async function settingsDto(s: Services): Promise<SettingsDto> {
     defaultModel: settings.defaultModel,
     mcpEnabled: s.mcp.isEnabled,
     visionModel: settings.visionModel,
+    tasksAtOnce: await s.tasks.atOnce(),
   };
 }
 
@@ -83,9 +85,12 @@ export async function settingsRoutes(app: FastifyInstance, s: Services) {
           .string()
           .regex(/^([a-z0-9-]+\/.+)?$/)
           .optional(),
+        tasksAtOnce: z.number().int().min(1).max(MAX_TASKS_AT_ONCE).optional(),
       })
       .parse(req.body);
-    await s.settings.set(body);
+    const { tasksAtOnce, ...rest } = body;
+    await s.settings.set(rest);
+    if (tasksAtOnce !== undefined) await s.tasks.setAtOnce(tasksAtOnce);
     if (body.captainName) await s.crew.renameCaptain(body.captainName);
     return dto();
   });

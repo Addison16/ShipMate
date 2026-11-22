@@ -4,7 +4,7 @@ import { childEnv } from "@shipmate/crew";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { cliAllowedTools } from "./claude-cli-turn.js";
 import { browserArgs } from "./services/mcp.js";
-import { TEST_DATABASE_URL, testApp } from "./testing.js";
+import { answerBy, TEST_DATABASE_URL, tasksSettled, testApp } from "./testing.js";
 
 describe("crew environment and servers", () => {
   it("keeps NODE_ENV and Shipmate's secrets out of crew commands", () => {
@@ -51,14 +51,17 @@ describe.skipIf(!db)("fixes from the Captain's own scan", () => {
     }
     throw new Error("timed out");
   };
-  const send = async (responses: Parameters<typeof t.faux.setResponses>[0]) => {
-    t.faux.setResponses(responses);
+  const send = async (responses: Parameters<typeof t.faux.setResponses>[0] | null) => {
+    // null: the test set the model's answers itself (see answerBy).
+    if (responses) t.faux.setResponses(responses);
     const conv = (await api("POST", "/api/conversations", {})).json().conversation;
     const ws = await t.app.injectWS("/api/ws", { headers: { cookie } });
     const events: ServerEvent[] = [];
     ws.on("message", (raw: Buffer) => events.push(JSON.parse(raw.toString()) as ServerEvent));
     ws.send(JSON.stringify({ type: "send", conversationId: conv.id, text: "go" }));
     await until(() => events.some((e) => e.type === "status" && !e.busy));
+    // Anything handed over runs on in the background, then the Captain speaks once more.
+    await tasksSettled(t.app, conv.id);
     ws.terminate();
     return { events, conv };
   };
@@ -149,22 +152,30 @@ describe.skipIf(!db)("fixes from the Captain's own scan", () => {
 
   it("hands the Captain what a crew member had when its turn failed", async () => {
     let handed = "";
-    await send([
-      fauxAssistantMessage([fauxToolCall("delegate", { crew: "bosun", task: "build it" })]),
-      fauxAssistantMessage([fauxText("Made package.json.")], {
-        stopReason: "error",
-        errorMessage: "the provider gave up",
-      }),
-      (context) => {
-        const last = context.messages.at(-1);
-        if (last?.role === "toolResult") {
-          handed = last.content.map((c) => (c.type === "text" ? c.text : "")).join("");
-        }
+    answerBy(t.faux, ({ who, last }) => {
+      if (who === "Bosun") {
+        return fauxAssistantMessage([fauxText("Made package.json.")], {
+          stopReason: "error",
+          errorMessage: "the provider gave up",
+        });
+      }
+      // The note Shipmate sends the Captain when the task has ended.
+      if (last.includes("Shipmate note")) {
+        handed = last;
         return fauxAssistantMessage("Bosun got partway.");
-      },
-    ]);
-    expect(handed).toContain("Bosun stopped before finishing: the provider gave up");
+      }
+      if (last.includes('"toolResult"')) return fauxAssistantMessage("Bosun is on it.");
+      return fauxAssistantMessage([fauxToolCall("delegate", { crew: "bosun", task: "build it" })]);
+    });
+    const { conv } = await send(null);
+    expect(handed).toContain("could not be finished: the provider gave up");
+    expect(handed).toContain("What they had so far:");
     expect(handed).toContain("Made package.json.");
+    // The person sees it too, without waiting for the Captain's words.
+    const messages = (await api("GET", `/api/conversations/${conv.id}/messages`)).json()
+      .messages as Array<{ content: string; meta: Record<string, unknown> | null }>;
+    const ended = messages.find((m) => m.meta?.taskEnded);
+    expect(ended?.content).toContain('Bosun could not finish "Build it": the provider gave up');
   });
 
   it("says so when a crew member's model isn't set up instead of quietly swapping", async () => {

@@ -585,3 +585,132 @@ function capture(
     });
   });
 }
+
+// ---------- plan limits ----------
+
+/** One window of a ChatGPT plan's Codex limit (`primary` or `secondary` in the app server). */
+export interface CodexLimitWindow {
+  /** 0 to 100. */
+  usedPercent: number;
+  /** How long the window is, in minutes (300 = five hours); null when not given. */
+  windowMinutes: number | null;
+  /** When it resets, as epoch milliseconds; null when not given. */
+  resetsAt: number | null;
+}
+
+export interface CodexRateLimits {
+  name: string | null;
+  primary: CodexLimitWindow | null;
+  secondary: CodexLimitWindow | null;
+}
+
+/**
+ * Asks the official Codex CLI how much of the ChatGPT plan's limit is used, through its app
+ * server's `account/rateLimits/read` (https://learn.chatgpt.com/docs/app-server). It reads the
+ * account's own figures and sends no prompt, so it uses none of the limit. Shipmate calls it only
+ * when someone opens the limits view or taps Check, never on a timer.
+ */
+export function codexRateLimits(
+  options: { bin?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; version?: string } = {},
+): Promise<CodexRateLimits> {
+  const bin = options.bin ?? codexCliBin(options.env);
+  const env = options.env ?? childEnv();
+  return new Promise((resolve, reject) => {
+    let child: ChildProcess;
+    try {
+      child = spawn(bin, ["app-server"], { env, stdio: ["pipe", "pipe", "pipe"] });
+    } catch (err) {
+      reject(isMissing(err) ? new CodexCliMissingError(bin) : err);
+      return;
+    }
+    let done = false;
+    let buffer = "";
+    let stderr = "";
+    const finish = (err: Error | null, value?: CodexRateLimits) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      child.stdin?.end();
+      child.kill("SIGTERM");
+      if (err) reject(err);
+      else resolve(value as CodexRateLimits);
+    };
+    const timer = setTimeout(
+      () => finish(new Error("Codex did not answer in time.")),
+      options.timeoutMs ?? 20_000,
+    );
+    timer.unref?.();
+    const send = (msg: Json) => child.stdin?.write(`${JSON.stringify(msg)}\n`);
+    child.on("error", (err) =>
+      finish(isMissing(err) ? new CodexCliMissingError(bin) : (err as Error)),
+    );
+    child.on("close", () =>
+      finish(new Error(stderr.trim().split("\n").pop() || "Codex stopped before answering.")),
+    );
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (c: string) => {
+      stderr = (stderr + c).slice(-4000);
+    });
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
+      buffer += chunk;
+      let nl = buffer.indexOf("\n");
+      while (nl >= 0) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        nl = buffer.indexOf("\n");
+        let msg: Json;
+        try {
+          msg = JSON.parse(line) as Json;
+        } catch {
+          continue;
+        }
+        if (msg.id === 0) {
+          if (msg.error) {
+            finish(new Error(errorText(msg.error)));
+            return;
+          }
+          send({ method: "initialized" });
+          send({ method: "account/rateLimits/read", id: 1 });
+        } else if (msg.id === 1) {
+          if (msg.error) finish(new Error(errorText(msg.error)));
+          else finish(null, parseRateLimits(((msg.result ?? {}) as Json).rateLimits));
+        }
+      }
+    });
+    send({
+      method: "initialize",
+      id: 0,
+      params: {
+        clientInfo: { name: "shipmate", title: "Shipmate", version: options.version ?? "0" },
+      },
+    });
+  });
+}
+
+function errorText(error: unknown): string {
+  const m = (error as Json | null)?.message;
+  return typeof m === "string" && m ? m : "Codex could not read the plan's limits.";
+}
+
+/** The `rateLimits` object of `account/rateLimits/read`. */
+export function parseRateLimits(raw: unknown): CodexRateLimits {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Json;
+  const window = (w: unknown): CodexLimitWindow | null => {
+    if (!w || typeof w !== "object") return null;
+    const o = w as Json;
+    if (typeof o.usedPercent !== "number") return null;
+    const resets = typeof o.resetsAt === "number" && o.resetsAt > 0 ? o.resetsAt : null;
+    return {
+      usedPercent: Math.max(0, Math.min(100, o.usedPercent)),
+      windowMinutes: typeof o.windowDurationMins === "number" ? o.windowDurationMins : null,
+      // The app server gives Unix seconds.
+      resetsAt: resets === null ? null : resets < 1e12 ? resets * 1000 : resets,
+    };
+  };
+  return {
+    name: typeof r.limitName === "string" ? r.limitName : null,
+    primary: window(r.primary),
+    secondary: window(r.secondary),
+  };
+}

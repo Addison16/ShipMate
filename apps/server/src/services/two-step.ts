@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { TwoStepSetup } from "@shipmate/core";
 import { type Db, users } from "@shipmate/db";
 import type { SecretVault } from "@shipmate/providers";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { HttpError, type UserRow, verifyPassword } from "../auth.js";
 import { matchTotp, newTotpSecret, otpauthUri } from "../totp.js";
 
@@ -43,10 +43,14 @@ export class TwoStepService {
       throw new HttpError(400, "You sign in without a password here, so codes do not apply.");
     }
     const secret = newTotpSecret();
-    await this.db
+    // Only while codes are still off, so a setup that started earlier cannot swap the key
+    // after it was confirmed.
+    const set = await this.db
       .update(users)
       .set({ totpSecret: this.vault.encrypt(secret), totpLastStep: null, totpBackupCodes: null })
-      .where(eq(users.id, user.id));
+      .where(and(eq(users.id, user.id), isNull(users.totpEnabledAt)))
+      .returning({ id: users.id });
+    if (!set.length) throw new HttpError(409, "Sign-in codes are already on.");
     return { secret, uri: otpauthUri(secret, user.email) };
   }
 
@@ -62,14 +66,24 @@ export class TwoStepService {
       throw new HttpError(400, "That code is not right. Check the app and try the newest code.");
     }
     const backup = Array.from({ length: BACKUP_CODES }, newBackupCode);
-    await this.db
+    // Only if the key is still the one this code was checked against (setup may have been
+    // restarted in another tab meanwhile).
+    const on = await this.db
       .update(users)
       .set({
         totpEnabledAt: new Date(this.now()),
         totpLastStep: step,
         totpBackupCodes: backup.map((c) => hashOf(tidy(c))),
       })
-      .where(eq(users.id, user.id));
+      .where(
+        and(
+          eq(users.id, user.id),
+          isNull(users.totpEnabledAt),
+          eq(users.totpSecret, user.totpSecret),
+        ),
+      )
+      .returning({ id: users.id });
+    if (!on.length) throw new HttpError(409, "The setup changed. Start it again.");
     return backup;
   }
 
@@ -85,18 +99,26 @@ export class TwoStepService {
       this.now(),
       user.totpLastStep,
     );
+    // Both kinds are used up in one database step, so the same code sent twice at the same
+    // moment is accepted once.
     if (step !== null) {
-      await this.db.update(users).set({ totpLastStep: step }).where(eq(users.id, user.id));
-      return true;
+      const used = await this.db
+        .update(users)
+        .set({ totpLastStep: step })
+        .where(
+          and(eq(users.id, user.id), or(isNull(users.totpLastStep), lt(users.totpLastStep, step))),
+        )
+        .returning({ id: users.id });
+      return used.length > 0;
     }
-    const left = user.totpBackupCodes ?? [];
     const hash = hashOf(tidy(code));
-    if (!left.includes(hash)) return false;
-    await this.db
+    if (!(user.totpBackupCodes ?? []).includes(hash)) return false;
+    const spent = await this.db
       .update(users)
-      .set({ totpBackupCodes: left.filter((h) => h !== hash) })
-      .where(eq(users.id, user.id));
-    return true;
+      .set({ totpBackupCodes: sql`${users.totpBackupCodes} - ${hash}::text` })
+      .where(and(eq(users.id, user.id), sql`${users.totpBackupCodes} ? ${hash}::text`))
+      .returning({ id: users.id });
+    return spent.length > 0;
   }
 
   /** Turn codes off without asking for one (after `check`, or by the owner for someone else). */

@@ -129,6 +129,37 @@ describe.skipIf(!db)("Sign-in codes", () => {
     expect((await login({ code: backup[0] })).statusCode).toBe(401);
   });
 
+  it("takes a code once even when it is sent twice at the same moment", async () => {
+    const twoStep = t.app.services.twoStep;
+    const row = async () => {
+      const [u] = await t.app.db.select().from(users).where(eq(users.id, kidId));
+      if (!u) throw new Error("no user");
+      return u;
+    };
+    // Both checks start from the same saved state, as two sign-ins at once would.
+    await t.app.db.update(users).set({ totpLastStep: null }).where(eq(users.id, kidId));
+    let seen = await row();
+    const next = await code();
+    const app = await Promise.all([twoStep.check(seen, next), twoStep.check(seen, next)]);
+    expect(app.filter(Boolean)).toHaveLength(1);
+
+    seen = await row();
+    const same = await Promise.all([
+      twoStep.check(seen, backup[5] ?? ""),
+      twoStep.check(seen, backup[5] ?? ""),
+    ]);
+    expect(same.filter(Boolean)).toHaveLength(1);
+
+    // Two different backup codes at once: both are spent, neither comes back.
+    seen = await row();
+    const two = await Promise.all([
+      twoStep.check(seen, backup[6] ?? ""),
+      twoStep.check(seen, backup[7] ?? ""),
+    ]);
+    expect(two).toEqual([true, true]);
+    expect((await row()).totpBackupCodes).toHaveLength(4);
+  });
+
   it("turns off with a code, or by the owner for someone else", async () => {
     expect((await api("POST", "/api/auth/two-step/disable", { code: "nope" })).statusCode).toBe(
       400,

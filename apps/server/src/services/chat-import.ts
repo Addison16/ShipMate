@@ -98,6 +98,18 @@ export class ChatImportService {
    * has no memory of a chat it was never part of). Null when nothing was imported.
    */
   async recap(conversationId: string, source: string, personName: string): Promise<string | null> {
+    // After "Start fresh" the agents were told they forget what is above; that covers this too.
+    const [reset] = await this.db
+      .select({ id: messages.id })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.conversationId, conversationId),
+          sql`${messages.meta}->>'sessionReset' = 'true'`,
+        ),
+      )
+      .limit(1);
+    if (reset) return null;
     const rows = await this.db
       .select({ role: messages.role, content: messages.content })
       .from(messages)

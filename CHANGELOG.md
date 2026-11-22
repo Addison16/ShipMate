@@ -6,6 +6,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Open things beside the chat.** A page, picture (SVG), document or long piece of code in a
+  reply gets an Open button. It opens next to the chat on a wide screen and full screen on a
+  phone, with Preview and Code views, Copy and Save. A page an agent wrote runs in a locked
+  frame: its own scripts work, but it cannot reach Shipmate, your sign-in, or send anything
+  out to the internet.
 - **Import chats from ChatGPT and Claude.** Settings → Import chats: pick the export .zip (or
   the conversations.json inside it) and your old chats appear in your own chat list, marked
   "From ChatGPT" or "From Claude", with their original dates. The file is read on your device

@@ -134,6 +134,9 @@ describe.skipIf(!db)("Importing chats", () => {
     expect(
       await t.app.services.chatImport.recap(crypto.randomUUID(), "chatgpt", "Addison"),
     ).toBeNull();
+    // After Start fresh the agents forget what is above, the imported part included.
+    expect((await api("POST", `/api/conversations/${eggs.id}/reset`)).statusCode).toBe(200);
+    expect(await t.app.services.chatImport.recap(eggs.id, "chatgpt", "Addison")).toBeNull();
   });
 
   it("refuses bad input and people who are not signed in", async () => {

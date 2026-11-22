@@ -1,7 +1,10 @@
 import { type ReactNode, useMemo } from "react";
 import { highlight, type TokenKind } from "../lib/highlight.js";
 import { type Block, type Inline, parseMarkdown, type TableAlign } from "../lib/markdown.js";
+import { panelItem } from "../lib/side-panel.js";
 import { CopyButton } from "./CopyButton.js";
+import { useSidePanel } from "./SidePanelContext.js";
+import { cx, focusRing } from "./ui.js";
 
 function renderInline(nodes: Inline[]): ReactNode[] {
   return nodes.map((n, i) => {
@@ -63,14 +66,43 @@ const TOKEN: Record<TokenKind, string> = {
   keyword: "text-sky-300",
 };
 
-function CodeBlock({ lang, text }: { lang: string; text: string }) {
+export function CodeBlock({
+  lang,
+  text,
+  openable = false,
+}: {
+  lang: string;
+  text: string;
+  /** In a chat reply: offer to open a page, document or long code beside the chat. */
+  openable?: boolean;
+}) {
   const tokens = useMemo(() => highlight(text, lang), [text, lang]);
+  const panel = useSidePanel();
+  const item = useMemo(
+    () => (openable && panel ? panelItem(lang, text) : null),
+    [openable, panel, lang, text],
+  );
   let offset = 0;
   return (
     <div className="overflow-hidden rounded-md bg-slate-900 text-slate-100 dark:bg-black/50">
       <div className="flex items-center justify-between gap-2 pr-1 pl-3 text-xs text-slate-400">
         <span className="font-mono">{lang || "code"}</span>
-        <CopyButton text={text} label="Copy code" className="text-slate-300 hover:bg-white/10" />
+        <span className="flex items-center gap-1">
+          {item && panel && (
+            <button
+              type="button"
+              onClick={() => panel.open(item)}
+              aria-label={`Open ${item.title} beside the chat`}
+              className={cx(
+                "inline-flex min-h-7 items-center whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-medium text-white hover:bg-white/10",
+                focusRing,
+              )}
+            >
+              {item.kind === "code" ? "Open" : "Open preview"}
+            </button>
+          )}
+          <CopyButton text={text} label="Copy code" className="text-slate-300 hover:bg-white/10" />
+        </span>
       </div>
       <pre className="overflow-x-auto px-3 pb-3 font-mono text-[0.85em] leading-relaxed">
         <code>
@@ -96,7 +128,7 @@ function renderBlock(b: Block, key: number): ReactNode {
     case "p":
       return <p key={key}>{renderInline(b.children)}</p>;
     case "code":
-      return <CodeBlock key={key} lang={b.lang} text={b.text} />;
+      return <CodeBlock key={key} lang={b.lang} text={b.text} openable />;
     case "hr":
       return <hr key={key} className="border-slate-200 dark:border-slate-700" />;
     case "table":

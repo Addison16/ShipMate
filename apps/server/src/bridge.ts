@@ -1491,6 +1491,12 @@ export class Bridge {
             ...(mcp.skipped.length
               ? [`MCP servers not started (missing setup): ${mcp.skipped.join(", ")}.`]
               : []),
+            // A chat brought over from another app: these engines were never in it either.
+            ...(conv.importedFrom
+              ? [await this.#imports.recap(conv.id, conv.importedFrom, user.displayName)].filter(
+                  (r): r is string => r !== null,
+                )
+              : []),
             ...((codex || cursor || gemini) && folder.manifest.mcp.length
               ? [
                   `Its MCP servers (${folder.manifest.mcp.join(", ")}) are not available on ${engine}; switch to the Shipmate or Claude Code engine to use them.`,

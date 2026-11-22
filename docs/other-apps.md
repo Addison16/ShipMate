@@ -49,6 +49,8 @@ When the agent needs longer than the wait, `status` is `"working"` and `reply` i
 agent keeps going; ask `GET /api/v1/chats/<chatId>` for the reply later. A second message to a
 chat that is still answering gets a 409.
 
+When the agent stopped before finishing, `status` is `"failed"` and `reply` ends with the reason.
+
 ```sh
 curl https://shipmate.example.com/api/v1/ask \
   -H "Authorization: Bearer YOUR_KEY" \

@@ -98,8 +98,11 @@ export interface ApiKeyDto {
 }
 
 export interface AskResult {
-  /** "done" with the reply, or "working" when the agent needs longer than the wait. */
-  status: "done" | "working";
+  /**
+   * "done" with the reply, "working" when the agent needs longer than the wait, or "failed"
+   * when the agent stopped before finishing (the reply then ends with the reason).
+   */
+  status: "done" | "working" | "failed";
   chatId: string;
   /** The agent's reply as plain text; null while it is still working. */
   reply: string | null;

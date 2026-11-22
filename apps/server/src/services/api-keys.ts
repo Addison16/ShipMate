@@ -123,32 +123,18 @@ export class ApiKeyService {
     if (crew.status !== "active") throw new HttpError(409, `${crew.name} is not taking messages.`);
 
     const externalId = `${keyId}:${crew.slug}`;
-    let chatId: string | undefined;
-    if (!input.newChat) {
-      const [found] = await this.deps.db
-        .select({ id: conversations.id })
-        .from(conversations)
-        .where(
-          and(
-            eq(conversations.surface, API_SURFACE),
-            eq(conversations.externalId, externalId),
-            eq(conversations.userId, user.id),
-          ),
-        )
-        .orderBy(desc(conversations.createdAt))
-        .limit(1);
-      chatId = found?.id;
-    }
-    chatId ??= (
-      await this.deps.bridge.createConversation(user, {
-        kind: crew.slug === captain ? "bridge" : "direct",
-        crewSlug: crew.slug,
-        surface: API_SURFACE,
-        externalId,
-      })
-    ).id;
-
-    const id = chatId;
+    // One at a time per key and agent, so two requests at once cannot each start a chat.
+    const before = this.#opening.get(externalId) ?? Promise.resolve();
+    const opened = before.then(() => this.#open(user, crew, externalId, input.newChat === true));
+    const settled = opened.then(
+      () => {},
+      () => {},
+    );
+    this.#opening.set(externalId, settled);
+    void settled.then(() => {
+      if (this.#opening.get(externalId) === settled) this.#opening.delete(externalId);
+    });
+    const id = await opened;
     // A failed turn leaves its own note in the chat, which is what the caller is then shown.
     let failure: unknown = null;
     const turn = this.deps.bridge.send(user, id, input.message).then(
@@ -173,6 +159,43 @@ export class ApiKeyService {
     return this.#latest(user, id);
   }
 
+  /** Lookups and creations in progress, per key and agent. */
+  #opening = new Map<string, Promise<void>>();
+
+  /** The chat this key keeps with an agent, made when there is none or a new one is asked for. */
+  async #open(
+    user: UserRow,
+    crew: { slug: string },
+    externalId: string,
+    newChat: boolean,
+  ): Promise<string> {
+    let chatId: string | undefined;
+    if (!newChat) {
+      const [found] = await this.deps.db
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(
+          and(
+            eq(conversations.surface, API_SURFACE),
+            eq(conversations.externalId, externalId),
+            eq(conversations.userId, user.id),
+          ),
+        )
+        .orderBy(desc(conversations.createdAt))
+        .limit(1);
+      chatId = found?.id;
+    }
+    chatId ??= (
+      await this.deps.bridge.createConversation(user, {
+        kind: crew.slug === CAPTAIN_SLUG ? "bridge" : "direct",
+        crewSlug: crew.slug,
+        surface: API_SURFACE,
+        externalId,
+      })
+    ).id;
+    return chatId;
+  }
+
   /** The latest reply in a chat this key started. */
   async chat(user: UserRow, keyId: string, chatId: string): Promise<AskResult> {
     const [found] = await this.deps.db
@@ -192,13 +215,19 @@ export class ApiKeyService {
     return this.#latest(user, chatId);
   }
 
-  /** What was said after the person's last message: the agents' replies, else a failure note. */
+  /** What was said after the person's last message: the agents' replies and any failure note. */
   async #latest(user: UserRow, chatId: string): Promise<AskResult> {
     const all = await this.deps.bridge.messages(user, chatId);
     const from = all.map((m) => m.role).lastIndexOf("user");
     const after = all.slice(from + 1).filter((m) => m.content.trim());
     const replies = after.filter((m) => m.role === "assistant");
-    const said = (replies.length ? replies : after).map((m) => m.content.trim());
-    return { status: "done", chatId, reply: said.join("\n\n") || null };
+    // A reply that was cut short is followed by a note saying why; the caller needs both.
+    const stopped = after.filter((m) => m.role !== "assistant" && m.meta?.turnError === true);
+    const said = (replies.length ? [...replies, ...stopped] : after).map((m) => m.content.trim());
+    return {
+      status: stopped.length ? "failed" : "done",
+      chatId,
+      reply: said.join("\n\n") || null,
+    };
   }
 }

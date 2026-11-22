@@ -144,6 +144,41 @@ describe.skipIf(!db)("Keys for other apps", () => {
     ).toMatchObject({ status: "done", reply: "Done at last." });
   });
 
+  it("keeps two messages sent at once in one chat", async () => {
+    const { key, token } = await makeKey("Twice");
+    t.faux.setResponses([
+      async () => {
+        await new Promise((r) => setTimeout(r, 300));
+        return fauxAssistantMessage("One.");
+      },
+      fauxAssistantMessage("Two."),
+    ]);
+    const ask = () => api("POST", "/api/v1/ask", { message: "Hello" }, withKey(token));
+    const both = await Promise.all([ask(), ask()]);
+    const chats = await t.app.db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.externalId, `${key.id}:captain`));
+    expect(chats).toHaveLength(1);
+    // The one that came second is told the agent is still answering.
+    expect(both.map((r) => r.statusCode).sort()).toEqual([200, 409]);
+    await idle(chats[0]?.id as string);
+  });
+
+  it("says so when the agent stopped before finishing", async () => {
+    const { token } = await makeKey("Unlucky");
+    t.faux.setResponses([
+      {
+        ...fauxAssistantMessage(""),
+        stopReason: "error",
+        errorMessage: "400 invalid request: the model refused the tools",
+      },
+    ]);
+    const res = await api("POST", "/api/v1/ask", { message: "Try this" }, withKey(token));
+    expect(res.json()).toMatchObject({ status: "failed" });
+    expect(res.json().reply).toContain("stopped before finishing");
+  });
+
   it("lets a key do nothing else", async () => {
     const { token } = await makeKey("Script");
     const other = await makeKey("Kid's", kid);

@@ -11,6 +11,7 @@ import {
   withWords,
 } from "../lib/nav.js";
 import { THEME_MODES } from "../lib/theme.js";
+import { ApiKeysPage } from "../pages/ApiKeys.js";
 import { AuditPage } from "../pages/Audit.js";
 import { BridgePage } from "../pages/Bridge.js";
 import { ChatBridgesPage } from "../pages/ChatBridges.js";
@@ -281,6 +282,9 @@ export function Shell() {
       break;
     case "import":
       page = <ImportChatsPage />;
+      break;
+    case "keys":
+      page = <ApiKeysPage />;
       break;
     case "documents":
       page = <DocumentsPage />;

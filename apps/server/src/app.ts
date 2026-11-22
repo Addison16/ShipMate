@@ -12,6 +12,7 @@ import { ZodError, z } from "zod";
 import { HttpError, type UserRow } from "./auth.js";
 import { CLI_MCP_PATH, cliMcpRoutes } from "./cli-mcp.js";
 import type { Config } from "./config.js";
+import { API_V1_PREFIX, apiKeyRoutes } from "./routes/api-keys.js";
 import { approvalRoutes, DecisionSchema } from "./routes/approvals.js";
 import { authRoutes } from "./routes/auth.js";
 import { backupRoutes } from "./routes/backups.js";
@@ -26,6 +27,7 @@ import { documentRoutes } from "./routes/documents.js";
 import { fileRoutes } from "./routes/files.js";
 import { geminiCliRoutes } from "./routes/gemini-cli.js";
 import { healthRoutes } from "./routes/health.js";
+import { limitRoutes } from "./routes/limits.js";
 import { listRoutes } from "./routes/lists.js";
 import { localAiRoutes } from "./routes/local-ai.js";
 import { mcpRoutes } from "./routes/mcp.js";
@@ -65,7 +67,7 @@ const PUBLIC = new Set([
   GOOGLE_CALLBACK_PATH,
 ]);
 /** Prefixes reachable without signing in; each route checks its own credential (a token). */
-const PUBLIC_PREFIXES = ["/api/hooks/", "/api/push/act/", CLI_MCP_PATH];
+const PUBLIC_PREFIXES = ["/api/hooks/", "/api/push/act/", API_V1_PREFIX, CLI_MCP_PATH];
 
 /** How often the Bridge's WebSocket is pinged, under common proxy idle timeouts (60 s). */
 const WS_PING_MS = 25_000;
@@ -223,6 +225,7 @@ export async function buildApp(
   await providerRoutes(app, services);
   await crewRoutes(app, services);
   await conversationRoutes(app, services);
+  await limitRoutes(app, services);
   await usageRoutes(app, services);
   await settingsRoutes(app, services);
   await onboardingRoutes(app, services);
@@ -250,6 +253,7 @@ export async function buildApp(
   await documentRoutes(app, services);
   await webRoutes(app, services);
   await promptRoutes(app, services);
+  await apiKeyRoutes(app, services);
   await voiceRoutes(app, services);
   await petRoutes(app, services);
   await localAiRoutes(app, services);

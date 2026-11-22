@@ -64,7 +64,26 @@ export interface ClaudeCliResult {
    * signed in with a Claude subscription, else the API key's source. Null when not reported.
    */
   apiKeySource: string | null;
+  /**
+   * How full the conversation's context was after this run: the last main-agent model call's
+   * prompt plus reply, against the window the CLI reports (`modelUsage[model].contextWindow`).
+   */
+  context: { tokens: number; window: number } | null;
+  /** The plan's usage limit as the CLI last reported it during the run (`rate_limit_event`). */
+  rateLimit: ClaudeRateLimit | null;
   aborted: boolean;
+}
+
+/**
+ * The `rate_limit_info` of a `rate_limit_event` the CLI sends on a Claude plan (see the Agent
+ * SDK's SDKRateLimitEvent). Read from the CLI's own output; Shipmate never asks for it.
+ */
+export interface ClaudeRateLimit {
+  status: "allowed" | "allowed_warning" | "rejected";
+  /** When the limit resets, as epoch milliseconds; null when not given. */
+  resetsAt: number | null;
+  /** How much of the limit is used, 0 to 1; null when not given. */
+  utilization: number | null;
 }
 
 export interface ClaudeCliRunOptions {
@@ -186,6 +205,8 @@ function runOnce(options: ClaudeCliRunOptions): Promise<ClaudeCliResult> {
     error: null,
     costUsd: 0,
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    context: null,
+    rateLimit: null,
     model: null,
     apiKeySource: null,
     aborted: false,
@@ -235,7 +256,9 @@ function runOnce(options: ClaudeCliRunOptions): Promise<ClaudeCliResult> {
       if (!msg) return;
       if (msg.type === "result") {
         gotResult = true;
-        applyResult(result, msg);
+        applyResult(result, msg, parser.lastPrompt);
+      } else if (msg.type === "rate_limit_event") {
+        result.rateLimit = rateLimitOf(msg.rate_limit_info) ?? result.rateLimit;
       } else {
         parser.feed(msg);
       }
@@ -333,7 +356,26 @@ function parseLine(line: string): Json | null {
 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
-function applyResult(result: ClaudeCliResult, msg: Json) {
+/** A `rate_limit_info` object, or null when it is not one. */
+export function rateLimitOf(info: unknown): ClaudeRateLimit | null {
+  if (!info || typeof info !== "object") return null;
+  const i = info as Json;
+  if (i.status !== "allowed" && i.status !== "allowed_warning" && i.status !== "rejected") {
+    return null;
+  }
+  const at = typeof i.resetsAt === "number" && i.resetsAt > 0 ? i.resetsAt : null;
+  const used =
+    typeof i.utilization === "number" && Number.isFinite(i.utilization) ? i.utilization : null;
+  return {
+    status: i.status,
+    // The SDK reference gives no unit; a value this small is seconds.
+    resetsAt: at === null ? null : at < 1e12 ? at * 1000 : at,
+    // Some builds give a percentage rather than a fraction.
+    utilization: used === null ? null : used > 1 ? Math.min(1, used / 100) : Math.max(0, used),
+  };
+}
+
+function applyResult(result: ClaudeCliResult, msg: Json, lastPrompt: number | null) {
   if (typeof msg.session_id === "string") result.sessionId = msg.session_id;
   if (typeof msg.result === "string") result.text = msg.result.trim();
   result.costUsd = num(msg.total_cost_usd) || num(msg.cost_usd);
@@ -347,6 +389,19 @@ function applyResult(result: ClaudeCliResult, msg: Json) {
   const models =
     msg.modelUsage && typeof msg.modelUsage === "object" ? Object.keys(msg.modelUsage) : [];
   if (models[0]) result.model ??= models[0];
+  // The main model is the one that took the most input; helpers may run on a smaller one.
+  let window = 0;
+  let most = -1;
+  for (const m of models) {
+    const mu = ((msg.modelUsage as Json)[m] ?? {}) as Json;
+    const took =
+      num(mu.inputTokens) + num(mu.cacheReadInputTokens) + num(mu.cacheCreationInputTokens);
+    if (took > most && num(mu.contextWindow) > 0) {
+      most = took;
+      window = num(mu.contextWindow);
+    }
+  }
+  if (window > 0 && lastPrompt !== null) result.context = { tokens: lastPrompt, window };
   result.isError =
     msg.is_error === true || (typeof msg.subtype === "string" && msg.subtype !== "success");
   if (result.isError) {
@@ -367,6 +422,8 @@ class StreamParser {
   sessionId: string | null = null;
   model: string | null = null;
   apiKeySource: string | null = null;
+  /** Tokens in the last main-agent model call (its prompt plus reply), from its usage. */
+  lastPrompt: number | null = null;
   text = "";
   #streamed = false;
   #toolNames = new Map<string, string>();
@@ -398,6 +455,15 @@ class StreamParser {
       }
       case "assistant": {
         if (msg.parent_tool_use_id) break;
+        const u = ((msg.message as Json | null)?.usage ?? null) as Json | null;
+        if (u) {
+          const tokens =
+            num(u.input_tokens) +
+            num(u.cache_read_input_tokens) +
+            num(u.cache_creation_input_tokens) +
+            num(u.output_tokens);
+          if (tokens > 0) this.lastPrompt = tokens;
+        }
         const content = blocks(msg.message);
         for (const b of content) {
           if (b.type === "text" && typeof b.text === "string") {

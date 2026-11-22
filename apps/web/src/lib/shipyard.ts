@@ -163,6 +163,7 @@ export function surfaceLabel(surface: string): string | null {
   if (surface === "watch") return "Watch";
   if (surface === "telegram") return "Telegram";
   if (surface === "slack") return "Slack";
+  if (surface === "api") return "Other app";
   return null;
 }
 

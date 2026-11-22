@@ -24,6 +24,7 @@ import { ApprovalCard } from "../components/ApprovalCard.js";
 import { AttachButtons, PendingFiles, useComposerFiles } from "../components/Attachments.js";
 import { Avatar } from "../components/Avatar.js";
 import { ChatError } from "../components/ChatError.js";
+import { ContextMeter, useChatContext } from "../components/ContextMeter.js";
 import {
   ChatLanding,
   CrewPicker,
@@ -683,6 +684,7 @@ function Thread({
   const direct = conversation?.kind === "direct" || task !== null;
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const files = useComposerFiles(conversationId);
+  const chatContext = useChatContext(conversationId);
 
   useServerEvents((event) => dispatch({ type: "event", event }));
 
@@ -836,6 +838,7 @@ function Thread({
     setResetting(true);
     try {
       const { message } = await api.resetConversation(conversationId);
+      chatContext.clear();
       // Shown now even if the live event never arrives (socket down); duplicates are dropped.
       dispatch({ type: "event", event: { type: "message", conversationId, message } });
       setSendError(null);
@@ -1040,6 +1043,12 @@ function Thread({
                 </a>
               )}
             </div>
+            <ContextMeter
+              context={chatContext.context}
+              {...(conversation?.surface === "web" && !state.busy
+                ? { onStartFresh: () => void startFresh() }
+                : {})}
+            />
             {voice && voice.stt !== "off" && !readOnly && (
               <Button
                 size="sm"
@@ -1246,7 +1255,9 @@ function Thread({
 
       {readOnly ? (
         <p className="border-t border-slate-200 bg-white px-3 pt-3 pb-[calc(0.75rem+var(--safe-bottom))] text-center text-sm text-slate-500 sm:px-6 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-          {`This conversation happened in ${surfaceLabel(conversation?.surface ?? "") ?? "another app"}. Reply there to continue it.`}
+          {conversation?.surface === "api"
+            ? "Another app started this chat with one of your keys. It carries on from there."
+            : `This conversation happened in ${surfaceLabel(conversation?.surface ?? "") ?? "another app"}. Reply there to continue it.`}
         </p>
       ) : (
         <form

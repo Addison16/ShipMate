@@ -10,6 +10,7 @@ import type {
 import { createBashToolDefinition } from "@earendil-works/pi-coding-agent";
 import {
   type AttachmentDto,
+  type ChatContextDto,
   ClaudeCliSettings,
   CODEX_PROVIDER,
   type ConversationDto,
@@ -84,6 +85,7 @@ import type { AuditService } from "./services/audit.js";
 import { ChatImportService, IMPORT_SOURCES } from "./services/chat-import.js";
 import type { CrewService } from "./services/crew.js";
 import type { McpService } from "./services/mcp.js";
+import type { MeterService } from "./services/meters.js";
 import type { ProviderService } from "./services/providers.js";
 import type { SettingsService } from "./services/settings.js";
 import type { SkillService } from "./services/skills.js";
@@ -139,6 +141,8 @@ export interface BridgeDeps {
   agentDir: string;
   /** The Gemini API key an owner saved for the Gemini CLI engine (see GeminiKeyService). */
   geminiKey?: () => Promise<string | null>;
+  /** Context and plan-limit meters (see MeterService). */
+  meters?: MeterService;
 }
 
 /**
@@ -461,8 +465,8 @@ export class Bridge {
       .where(
         and(
           eq(conversations.userId, userId),
-          // Web chats, plus each watch's latest run, so its result reads like any reply.
-          sql`(${conversations.surface} = 'web' or ${conversations.id} in (
+          // Web chats, chats other apps started with a key, plus each watch's latest run, so its result reads like any reply.
+          sql`(${conversations.surface} in ('web', 'api') or ${conversations.id} in (
             select distinct on (r.watch_id) r.conversation_id
             from ${watchRuns} r
             where r.conversation_id is not null
@@ -720,6 +724,7 @@ export class Bridge {
     }
     const records = this.#sessionRecords(conv);
     this.#dispose(id);
+    this.deps.meters?.reset(id);
     conv.sessionFiles = {};
     await this.deps.db
       .update(conversations)
@@ -1855,6 +1860,17 @@ export class Bridge {
             context,
             oneOff: options.consultFor !== undefined,
           };
+          // These engines keep their own context and do not say how full it is.
+          if (!options.consultFor) {
+            this.#meter(user, conv, {
+              crew: { slug, name: crew.name },
+              engine: codex ? "codex" : cursor ? "cursor" : "gemini",
+              model: folder.manifest.model,
+              tokens: null,
+              window: null,
+              at: new Date().toISOString(),
+            });
+          }
           if (gemini) {
             const { addImage: _none, ...rest } = input;
             return await this.#gemini.turn(rest);
@@ -1862,6 +1878,18 @@ export class Bridge {
           return await (codex ? this.#codex.turn(input) : this.#cursor.turn(input));
         }
         return await this.#cli.turn({
+          onMeter: (m) => {
+            if (m.rateLimit && m.subscription) this.deps.meters?.noteClaude(m.rateLimit);
+            if (options.consultFor) return;
+            this.#meter(user, conv, {
+              crew: { slug, name: crew.name },
+              engine: "claude-code",
+              model: m.model,
+              tokens: m.context?.tokens ?? null,
+              window: m.context?.window ?? null,
+              at: new Date().toISOString(),
+            });
+          },
           user,
           conv,
           folder,
@@ -1971,6 +1999,20 @@ export class Bridge {
       throw withPartial(err, stream.text || final);
     } finally {
       unsubscribe();
+      if (!options.consultFor) {
+        const used = contextUsage(session.session);
+        const m = session.session.model ?? own;
+        if (used) {
+          this.#meter(user, conv, {
+            crew: { slug, name: crew.name },
+            engine: "pi",
+            model: `${m.provider}/${m.id}`,
+            tokens: used.tokens,
+            window: used.contextWindow || null,
+            at: new Date().toISOString(),
+          });
+        }
+      }
       if (restore) await session.session.setModel(restore).catch(() => {});
       await this.#closeStream(conv, crewRow.id, stream);
       // Spend must be stored before the turn ends, or the next message could slip past a cap.
@@ -2036,6 +2078,13 @@ export class Bridge {
         `${manifest.name} has reached its monthly ceiling (${usd(cap)}). An admin can raise monthlyCapUsd on the Crew page.`,
       );
     }
+  }
+
+  /** Keep and send how full the chat's context is after a reply. */
+  #meter(user: UserRow, conv: ConversationRow, context: ChatContextDto) {
+    if (!this.deps.meters) return;
+    this.deps.meters.setContext(conv.id, context);
+    this.emit(user.id, { type: "context", conversationId: conv.id, context });
   }
 
   /** Store one model call's usage, retrying once; the turn waits for it (see #turn). */
@@ -2994,3 +3043,14 @@ function toMessageDto(
 }
 
 const usd = (dollars: number) => `$${dollars.toFixed(2)}`;
+
+/** pi's own estimate of the session's context use; undefined when it cannot say. */
+function contextUsage(session: {
+  getContextUsage?: () => { tokens: number | null; contextWindow: number } | undefined;
+}): { tokens: number | null; contextWindow: number } | undefined {
+  try {
+    return session.getContextUsage?.();
+  } catch {
+    return undefined;
+  }
+}

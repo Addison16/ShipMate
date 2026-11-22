@@ -1,4 +1,9 @@
-import type { ConversationDto, ConversationSearchResultDto, CrewDto } from "@shipmate/core";
+import type {
+  ConversationDto,
+  ConversationSearchResultDto,
+  CrewDto,
+  TaskDto,
+} from "@shipmate/core";
 import { singular } from "@shipmate/core";
 import {
   type FormEvent,
@@ -31,6 +36,7 @@ import { PetDock } from "../components/Pet.js";
 import { SidePanel } from "../components/SidePanel.js";
 import { SidePanelProvider } from "../components/SidePanelContext.js";
 import { SlashMenu, slashItems } from "../components/SlashMenu.js";
+import { TaskBanner, TasksSheet, TasksStrip, TaskTag } from "../components/Tasks.js";
 import { TimelineView } from "../components/Timeline.js";
 import { TopBarTitle } from "../components/TopBar.js";
 import {
@@ -50,9 +56,11 @@ import { dockPets } from "../lib/pets.js";
 import { matchPrompts, promptsApi, slashQuery } from "../lib/prompts.js";
 import { splitHighlights } from "../lib/search.js";
 import { surfaceLabel } from "../lib/shipyard.js";
+import { taskInChat, tasksOf } from "../lib/tasks.js";
 import { initialTimeline, timelineReducer } from "../lib/timeline.js";
 import { useResource } from "../lib/useResource.js";
 import { href, navigate } from "../router.js";
+import { useTasks } from "../tasks.js";
 import { socket, useServerEvents, useSocketState } from "../ws.js";
 
 function conversationTitle(
@@ -183,6 +191,9 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
   const projectNames = useProjectNames(
     conversations.data?.some((c) => c.projectId !== null) ?? false,
   );
+  // A background task has a chat of its own, which is not in the list: reached from its card.
+  const tasks = useTasks();
+  const task = conversationId && !current ? taskInChat(tasks, conversationId) : null;
 
   async function createBridge(isPrivate = false) {
     setCreating(true);
@@ -376,12 +387,17 @@ export function BridgePage({ conversationId }: { conversationId: string | null }
                 key={conversationId}
                 conversationId={conversationId}
                 conversation={current}
-                title={current ? conversationTitle(current, crewList, crewName, t) : ""}
+                title={
+                  current ? conversationTitle(current, crewList, crewName, t) : (task?.title ?? "")
+                }
                 crew={crewList}
+                task={task}
                 member={
-                  current?.kind === "direct"
-                    ? (crewList.find((m) => m.slug === current.crewSlug) ?? null)
-                    : (crewList.find((m) => m.captain) ?? null)
+                  task
+                    ? (crewList.find((m) => m.slug === task.crew.slug) ?? null)
+                    : current?.kind === "direct"
+                      ? (crewList.find((m) => m.slug === current.crewSlug) ?? null)
+                      : (crewList.find((m) => m.captain) ?? null)
                 }
                 tags={
                   current ? (
@@ -550,6 +566,7 @@ function ConversationRow({
           <span className="mt-0.5 flex min-h-9 min-w-0 flex-wrap items-center gap-1.5 pr-32 text-xs sm:min-h-7 sm:pr-24 text-slate-500 dark:text-slate-400">
             {c.kind === "bridge" ? `${words.bridge} · ${who}` : `Direct · ${who}`}
             <ConversationTags c={c} projectNames={projectNames} />
+            <TaskTag conversationId={c.id} />
           </span>
         </span>
       </a>
@@ -605,6 +622,7 @@ function Thread({
   conversation,
   title,
   crew,
+  task,
   member,
   tags,
   onRenamed,
@@ -613,6 +631,8 @@ function Thread({
 }: {
   conversationId: string;
   conversation: ConversationDto | null;
+  /** Set when this is a background task's own chat. */
+  task: TaskDto | null;
   title: string;
   /** Everyone aboard, for the pets of crew members who speak in this conversation. */
   crew: CrewDto[];
@@ -648,12 +668,19 @@ function Thread({
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const approvals = useApprovals();
-  // Pending approvals restored from the server (not seen arriving live) go at the end.
+  // Pending approvals restored from the server (not seen arriving live) go at the end. Those of
+  // a background task also show here, in the chat the task came from.
   const restoredApprovals = approvals.pending.filter(
     (a) =>
-      a.conversationId === conversationId &&
+      (a.conversationId === conversationId || a.parentConversationId === conversationId) &&
       !state.items.some((it) => it.kind === "approval" && it.approval.id === a.id),
   );
+  const tasks = useTasks();
+  const loadTasks = tasks.loadChat;
+  const hasTasks = !task && tasksOf(tasks, conversationId).length > 0;
+  const [showTasks, setShowTasks] = useState(false);
+  // One crew member answers here: a direct chat, or a task's own chat.
+  const direct = conversation?.kind === "direct" || task !== null;
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const files = useComposerFiles(conversationId);
 
@@ -676,6 +703,7 @@ function Thread({
     loadedLive.current = socket.state === "open";
     dispatch({ type: "open", conversationId });
     setLoadError(null);
+    void loadTasks(conversationId);
     try {
       const page = await api.listMessages(conversationId, { limit: PAGE_SIZE });
       dispatch({ type: "loaded", conversationId, messages: page.messages });
@@ -686,7 +714,7 @@ function Thread({
     } catch (err) {
       setLoadError(errorMessage(err));
     }
-  }, [conversationId]);
+  }, [conversationId, loadTasks]);
 
   useEffect(() => {
     void load();
@@ -937,7 +965,7 @@ function Thread({
 
   const rows = Math.min(8, Math.max(1, text.split("\n").length));
   const subtitle = member
-    ? conversation?.kind === "direct"
+    ? direct
       ? `${crewName(member.name)} · ${t(member.role)}`
       : `${crewName(member.name)} · brings in the right ${words.crewMember}`
     : null;
@@ -946,7 +974,7 @@ function Thread({
     <>
       <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900">
         <a
-          href={href("/bridge")}
+          href={href(task ? `/bridge/${task.parentConversationId}` : "/bridge")}
           className={cx(
             "rounded px-2 py-1 text-sm text-slate-600 hover:bg-slate-100 md:hidden dark:text-slate-300 dark:hover:bg-slate-800",
             focusRing,
@@ -1044,6 +1072,15 @@ function Thread({
                 <span className="2xl:hidden">
                   <MoreMenu
                     items={[
+                      ...(hasTasks
+                        ? [
+                            {
+                              label: "Tasks",
+                              icon: "lists" as const,
+                              onSelect: () => setShowTasks(true),
+                            },
+                          ]
+                        : []),
                       {
                         label: conversation.pinned ? "Unpin" : "Pin",
                         icon: "pin",
@@ -1074,6 +1111,12 @@ function Thread({
                   />
                 </span>
                 <span className="hidden items-center gap-2 2xl:flex">
+                  {hasTasks && (
+                    <Button size="sm" variant="ghost" onClick={() => setShowTasks(true)}>
+                      <NavIcon name="lists" size={16} />
+                      Tasks
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="ghost"
@@ -1120,6 +1163,14 @@ function Thread({
           </Button>
         </div>
       )}
+      {task && <TaskBanner task={task} />}
+      {!task && (
+        <TasksSheet
+          conversationId={conversationId}
+          open={showTasks}
+          onClose={() => setShowTasks(false)}
+        />
+      )}
       <TopBarTitle>
         <h1 className="truncate text-[15px] font-semibold leading-tight">{title}</h1>
         {subtitle && (
@@ -1146,19 +1197,19 @@ function Thread({
             <EmptyState
               className="mt-6 border-none bg-transparent dark:bg-transparent"
               icon={
-                member && conversation?.kind === "direct" ? (
+                member && direct ? (
                   <Avatar name={crewName(member.name)} size="lg" />
                 ) : (
                   <NavIcon name="bridge" size={22} />
                 )
               }
               title={
-                member && conversation?.kind === "direct"
+                member && direct
                   ? `This is your chat with ${crewName(member.name)}`
                   : "No messages yet"
               }
             >
-              {member && conversation?.kind === "direct"
+              {member && direct
                 ? `${t(member.role)}. Ask a question, think something through, or hand over a job.`
                 : `Say hello. Ask for anything, and the right ${words.crewMember} picks it up.`}
             </EmptyState>
@@ -1233,6 +1284,9 @@ function Thread({
               </div>
             )}
             <ErrorText>{sendError}</ErrorText>
+            {!task && (
+              <TasksStrip conversationId={conversationId} onOpen={() => setShowTasks(true)} />
+            )}
             {queued !== null && (
               <div className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800/60">
                 <div className="min-w-0 flex-1">
@@ -1301,7 +1355,7 @@ function Thread({
                 placeholder={
                   state.busy
                     ? `${member ? crewName(member.name) : `The ${words.crew.toLowerCase()}`} is working… type your next message`
-                    : conversation?.kind === "direct" && member
+                    : direct && member
                       ? `Message ${crewName(member.name)}`
                       : `Message the ${words.crew.toLowerCase()}`
                 }
@@ -1375,7 +1429,7 @@ function withWhom(
 
 type MenuItem = {
   label: string;
-  icon: "pin" | "pencil" | "trash" | "download" | "backup";
+  icon: "pin" | "pencil" | "trash" | "download" | "backup" | "lists";
   danger?: boolean;
   onSelect: () => void;
 };

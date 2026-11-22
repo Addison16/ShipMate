@@ -4,6 +4,7 @@ import { useCrewName, useThemeText } from "../appearance.js";
 import { messageAttachments } from "../lib/files.js";
 import { formatTime } from "../lib/format.js";
 import { petPreview } from "../lib/pets.js";
+import { taskMessage } from "../lib/tasks.js";
 import { type Handoff, messageHandoff, type TimelineItem, type ToolChip } from "../lib/timeline.js";
 import { ApprovalCard } from "./ApprovalCard.js";
 import { MessageFiles } from "./Attachments.js";
@@ -12,6 +13,7 @@ import { ChatError } from "./ChatError.js";
 import { CopyButton } from "./CopyButton.js";
 import { Markdown } from "./Markdown.js";
 import { PetPreviewCard } from "./Pet.js";
+import { TaskBrief, TaskCard, TaskEnded, TaskResult, TaskSentBack } from "./Tasks.js";
 import { ThemeChatCard } from "./ThemeCard.js";
 import { cx, focusRing } from "./ui.js";
 import { ListenButton } from "./Voice.js";
@@ -236,6 +238,12 @@ function MessageView({
   if (question) return <AnsweredQuestion {...question} />;
   const theme = message.meta?.theme as { id?: unknown } | undefined;
   if (typeof theme?.id === "string") return <ThemeChatCard id={theme.id} />;
+  // A job handed over in the background: its card, and the news about it.
+  const about = taskMessage(message);
+  if (about?.kind === "started") return <TaskCard info={about} />;
+  if (about?.kind === "sentBack") return <TaskSentBack info={about} />;
+  if (about?.kind === "ended") return <TaskEnded info={about} />;
+  if (about?.kind === "brief") return <TaskBrief info={about} />;
   if (message.meta?.turnError === true) {
     // Why a reply never came (it failed, or Shipmate restarted), kept for whoever comes back.
     const detail = message.meta.detail;
@@ -284,7 +292,11 @@ function MessageView({
         }
         files={files}
       >
-        {message.content || !files.length ? <Markdown text={message.content} /> : null}
+        {about?.kind === "result" ? (
+          <TaskResult task={about.task} text={message.content} />
+        ) : message.content || !files.length ? (
+          <Markdown text={message.content} />
+        ) : null}
       </Bubble>
     </>
   );
@@ -367,8 +379,17 @@ export function TimelineView({
   const last = items[items.length - 1];
   // Try again sits on the newest thing in the chat, when that is a reply (or a note that the
   // reply failed) to your last message.
+  const ownAt = own
+    ? items.findIndex((it) => it.kind === "message" && it.message.id === own.id)
+    : -1;
+  // Once jobs were handed over for it, sending the message again would start them all twice.
+  const handedOver = items
+    .slice(ownAt + 1)
+    .some((it) => it.kind === "message" && taskMessage(it.message) !== null);
   const retryKey =
-    own && onRetry && last?.kind === "message" && last.message.id !== own.id ? last.key : null;
+    own && onRetry && !handedOver && last?.kind === "message" && last.message.id !== own.id
+      ? last.key
+      : null;
   return (
     <div className="space-y-4">
       {items.map((it) => {

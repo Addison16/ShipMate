@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fauxProvider } from "@earendil-works/pi-ai";
+import { type AssistantMessage, fauxProvider } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { conversations, runMigrations } from "@shipmate/db";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql as q } from "drizzle-orm";
 import postgres from "postgres";
 import { buildApp } from "./app.js";
 import { loadConfig } from "./config.js";
@@ -98,6 +98,82 @@ export async function testApp(
   });
   await app.ready();
   return { app, faux, config };
+}
+
+/** What one scripted model call sees. */
+export interface FauxCall {
+  /** The crew member answering, by the name in its instructions. */
+  who: string;
+  /** The newest message: the person's words, a Shipmate note, or a tool's result. */
+  last: string;
+  /** Everything in the request, for looser checks. */
+  all: string;
+}
+
+/**
+ * Background tasks run beside the Captain, so scripted replies in a fixed order no longer hold:
+ * answer by who is asking and what they were last told instead.
+ */
+export function answerBy(
+  faux: Awaited<ReturnType<typeof testApp>>["faux"],
+  brain: (call: FauxCall) => AssistantMessage | Promise<AssistantMessage>,
+  calls = 40,
+) {
+  faux.setResponses(
+    Array.from({ length: calls }, () => (context: { messages: unknown[] }) => {
+      const all = JSON.stringify(context);
+      const who = /You are (\w+), a crew member of a self-hosted/.exec(all)?.[1] ?? "?";
+      return brain({ who, last: JSON.stringify(context.messages.at(-1) ?? ""), all });
+    }),
+  );
+}
+
+/**
+ * Waits until the background tasks handed over in a chat are over: none is open, each result is
+ * in the chat, and its Captain has had its say about the last one.
+ */
+export async function tasksSettled(
+  app: Awaited<ReturnType<typeof testApp>>["app"],
+  conversationId: string,
+  ms = 10_000,
+) {
+  const quiet = async () => {
+    const [row] = (await app.db.execute(q`
+      select
+        (select count(*)::int from tasks
+          where parent_conversation_id = ${conversationId}
+            and status in ('queued', 'running', 'waiting')) as open,
+        (select count(*)::int from tasks t
+          where t.parent_conversation_id = ${conversationId}
+            and t.status in ('done', 'failed')
+            and not exists (
+              select 1 from messages m
+              where m.conversation_id = ${conversationId}
+                and coalesce(m.meta->'task'->>'id', m.meta->'taskEnded'->>'id') = t.id::text
+            )) as unreported,
+        (select turn_started_at from conversations where id = ${conversationId}) as turn,
+        (select meta from messages where conversation_id = ${conversationId}
+          order by created_at desc limit 1) as last
+    `)) as unknown as Array<{
+      open: number;
+      unreported: number;
+      turn: unknown;
+      last: Record<string, unknown> | null;
+    }>;
+    if (!row || row.open > 0 || row.unreported > 0 || row.turn) return false;
+    // A result that is the newest message still waits for the Captain's word on it.
+    return !row.last?.task && !row.last?.taskEnded;
+  };
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (await quiet()) {
+      // The Captain's turn about the next result starts a moment after the last one ends.
+      await new Promise((r) => setTimeout(r, 150));
+      if (await quiet()) return;
+    }
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error("background tasks did not settle");
 }
 
 /** A 1×1 PNG. */

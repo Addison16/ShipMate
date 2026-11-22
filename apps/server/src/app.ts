@@ -39,6 +39,7 @@ import { pushRoutes } from "./routes/push.js";
 import { shipyardRoutes } from "./routes/shipyard.js";
 import { skillRoutes } from "./routes/skills.js";
 import { slackRoutes } from "./routes/slack.js";
+import { taskRoutes } from "./routes/tasks.js";
 import { telegramRoutes } from "./routes/telegram.js";
 import { terminalRoutes } from "./routes/terminal.js";
 import { themeRoutes } from "./routes/themes.js";
@@ -131,6 +132,8 @@ export async function buildApp(
   app.addHook("onReady", async () => {
     // Replies cut off by a restart get a note in their chat, so nobody waits for them.
     await services.bridge.recover().catch((err: Error) => app.log.error(err, "recover failed"));
+    // Background tasks cut off the same way are marked, with a note in the chat they came from.
+    await services.tasks.recover().catch((err: Error) => app.log.error(err, "recover failed"));
     if (options.watches !== false) {
       await services.watches.start();
       // Issue-to-PR jobs poll GitHub where no webhook is set up (tests drive them by hand).
@@ -226,6 +229,7 @@ export async function buildApp(
   await skillRoutes(app, services);
   await approvalRoutes(app, services);
   await watchRoutes(app, services);
+  await taskRoutes(app, services);
   await listRoutes(app, services);
   await mcpRoutes(app, services);
   await profileRoutes(app, services);

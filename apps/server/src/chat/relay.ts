@@ -1,4 +1,4 @@
-import type { ApprovalDecision, ApprovalDto, ServerEvent } from "@shipmate/core";
+import type { ApprovalDecision, ApprovalDto, MessageDto, ServerEvent } from "@shipmate/core";
 import { loadPictures, type Picture, type ReadFile, replyPictures } from "./pictures.js";
 
 /** Where a Shipmate conversation lives in a chat app. */
@@ -73,6 +73,34 @@ export interface RelayApprovals {
   decide(userId: string, approvalId: string, decision: ApprovalDecision, answer?: string): void;
 }
 
+/**
+ * What a background task's notes in a chat mean for a chat app: a hand-off line when the Captain
+ * gives (or sends back) a task, and an error when one could not be finished. The task's result
+ * itself arrives as an ordinary crew reply.
+ */
+export function taskNote(
+  message: MessageDto,
+):
+  | { kind: "handoff"; from: CrewRef; to: CrewRef; task: string }
+  | { kind: "error"; text: string }
+  | null {
+  const meta = message.meta;
+  const given = (meta?.taskStarted ?? meta?.taskSentBack) as
+    | { from?: CrewRef; crew?: CrewRef; prompt?: string; notes?: string; title?: string }
+    | undefined;
+  if (given?.from?.name && given.crew?.name) {
+    return {
+      kind: "handoff",
+      from: given.from,
+      to: given.crew,
+      task: given.notes ?? given.prompt ?? given.title ?? "",
+    };
+  }
+  const ended = meta?.taskEnded as { status?: string } | undefined;
+  if (ended?.status === "failed") return { kind: "error", text: message.content };
+  return null;
+}
+
 const ACTION_PREFIX = "ap:";
 const DETAIL_LIMIT = 900;
 
@@ -121,7 +149,19 @@ export class ChatRelay {
     switch (event.type) {
       case "message": {
         const author = event.message.author;
-        if (author.kind !== "crew") return;
+        if (author.kind !== "crew") {
+          const note = taskNote(event.message);
+          if (note?.kind === "handoff") {
+            this.#withTarget(event.conversationId, (t) =>
+              this.sink.postHandoff(t, note.from, note.to, oneLine(note.task, 300)),
+            );
+          } else if (note) {
+            this.#withTarget(event.conversationId, (t) =>
+              this.sink.postError(t, oneLine(note.text, 1800)),
+            );
+          }
+          return;
+        }
         const text = event.message.content.trim() ? event.message.content : "";
         const read = this.lookup.readFile;
         const post = this.sink.postPictures?.bind(this.sink);
@@ -162,8 +202,9 @@ export class ChatRelay {
       }
       case "approval_request": {
         const a = event.approval;
-        if (!a.conversationId) return;
-        const conversationId = a.conversationId;
+        // A background task asks in the chat it came from, which is the one that lives here.
+        const conversationId = a.parentConversationId ?? a.conversationId;
+        if (!conversationId) return;
         this.#cardConversation.set(a.id, conversationId);
         this.#withTarget(conversationId, async (t) => {
           const userName = await this.lookup.userName(userId);

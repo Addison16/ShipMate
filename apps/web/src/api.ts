@@ -54,6 +54,7 @@ import type {
   SlackStatusDto,
   StarterCrewDto,
   StartFlowRequest,
+  TaskDto,
   TelegramStatusDto,
   UpdateCrewRequest,
   UpdateHouseholdRequest,
@@ -300,8 +301,9 @@ export const api = {
 
   // settings
   getSettings: () => request<SettingsDto>("GET", "/api/settings"),
-  updateSettings: (body: Partial<Pick<SettingsDto, "captainName" | "defaultModel">>) =>
-    request<SettingsDto>("PUT", "/api/settings", body),
+  updateSettings: (
+    body: Partial<Pick<SettingsDto, "captainName" | "defaultModel" | "tasksAtOnce">>,
+  ) => request<SettingsDto>("PUT", "/api/settings", body),
 
   // skills
   listSkills: () => request<{ skills: SkillDto[] }>("GET", "/api/skills"),
@@ -313,6 +315,15 @@ export const api = {
   approveSkill: (id: string) =>
     request<{ skill: SkillDetailDto }>("POST", `/api/skills/${enc(id)}/approve`),
   deleteSkill: (id: string) => request<Ok>("DELETE", `/api/skills/${enc(id)}`),
+
+  // background tasks
+  /** One chat's tasks, or without it the open ones and the latest that ended. */
+  listTasks: (conversationId?: string) =>
+    request<{ tasks: TaskDto[] }>(
+      "GET",
+      `/api/tasks${conversationId ? `?conversationId=${enc(conversationId)}` : ""}`,
+    ),
+  stopTask: (id: string) => request<{ task: TaskDto }>("POST", `/api/tasks/${enc(id)}/stop`),
 
   // approvals and audit
   listApprovals: () => request<{ approvals: ApprovalDto[] }>("GET", "/api/approvals"),

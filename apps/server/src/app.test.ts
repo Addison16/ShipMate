@@ -1,7 +1,7 @@
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import type { ServerEvent } from "@shipmate/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { TEST_DATABASE_URL, testApp } from "./testing.js";
+import { answerBy, TEST_DATABASE_URL, tasksSettled, testApp } from "./testing.js";
 
 const db = TEST_DATABASE_URL;
 
@@ -285,19 +285,24 @@ describe.skipIf(!db)("Shipmate server", () => {
     expect((await api("POST", "/api/crew/galley/approve")).json().crew.status).toBe("active");
     events.length = 0;
     let captainContext = "";
-    t.faux.setResponses([
-      (context) => {
-        captainContext = JSON.stringify(context.messages);
+    // Galley works in the background, so the replies go by who is asking, not in a fixed order.
+    answerBy(t.faux, ({ who, last, all }) => {
+      if (who === "Galley") return fauxAssistantMessage("Tuesday: lentil curry.");
+      if (last.includes("Shipmate note")) {
+        return fauxAssistantMessage("Galley suggests lentil curry.");
+      }
+      if (last.includes("What's for Tuesday?")) {
+        captainContext = all;
         return fauxAssistantMessage([
           fauxText("Asking Galley."),
           fauxToolCall("delegate", { crew: "galley", task: "Plan Tuesday dinner, vegetarian" }),
         ]);
-      },
-      fauxAssistantMessage("Tuesday: lentil curry."),
-      fauxAssistantMessage("Galley suggests lentil curry."),
-    ]);
+      }
+      return fauxAssistantMessage("Galley is on it.");
+    });
     ws.send(JSON.stringify({ type: "send", conversationId: conv.id, text: "What's for Tuesday?" }));
     await waitIdle();
+    await tasksSettled(t.app, conv.id);
     ws.terminate();
 
     // The Captain sees who is aboard, on which model at what price, and to delegate by default.
@@ -308,8 +313,15 @@ describe.skipIf(!db)("Shipmate server", () => {
     expect(captainContext).toContain("## Setting up crew");
     expect(captainContext).toContain("Then supervise");
 
-    const handoff = events.find((e) => e.type === "handoff");
-    expect(handoff).toMatchObject({ from: { slug: "captain" }, to: { slug: "galley" } });
+    // The job runs as a background task: a card in the chat, then the task's states.
+    const card = events.find((e) => e.type === "message" && e.message.meta?.taskStarted);
+    expect(card?.type === "message" && card.message.meta?.taskStarted).toMatchObject({
+      number: 1,
+      crew: { slug: "galley" },
+      from: { slug: "captain" },
+      prompt: "Plan Tuesday dinner, vegetarian",
+    });
+    expect(events.flatMap((e) => (e.type === "task" ? [e.task.status] : [])).at(-1)).toBe("done");
     const deltas = events
       .filter((e) => e.type === "delta")
       .map((e) => (e.type === "delta" ? e.text : ""))
@@ -319,13 +331,16 @@ describe.skipIf(!db)("Shipmate server", () => {
     const messages = (await api("GET", `/api/conversations/${conv.id}/messages`)).json().messages;
     expect(
       messages.map(
-        (m: { author: { name: string }; content: string }) => `${m.author.name}: ${m.content}`,
+        (m: { author: { kind: string; name: string }; content: string }) =>
+          `${m.author.kind === "system" ? "Shipmate" : m.author.name}: ${m.content}`,
       ),
     ).toEqual([
       "Addison: I need meal plans; I'm vegetarian",
       "Skipper: Galley is aboard, pending your review.",
       "Addison: What's for Tuesday?",
       "Skipper: Asking Galley.",
+      "Shipmate: Skipper gave Galley a task: Plan Tuesday dinner, vegetarian",
+      "Skipper: Galley is on it.",
       "Galley: Tuesday: lentil curry.",
       "Skipper: Galley suggests lentil curry.",
     ]);
@@ -334,14 +349,15 @@ describe.skipIf(!db)("Shipmate server", () => {
     expect(memory.mine.map((m: { name: string }) => m.name)).toEqual(["diet"]);
 
     const usage = (await api("GET", "/api/usage?scope=all")).json();
-    expect(usage.totals.calls).toBe(5);
+    // Two for recruiting, then: hand over, "on it", Galley's work, and the Captain's report.
+    expect(usage.totals.calls).toBe(6);
     expect(usage.byUser[0].displayName).toBe("Addison");
     expect(usage.byCrew.map((c: { slug: string }) => c.slug).sort()).toEqual(["captain", "galley"]);
     const conversations = (await api("GET", "/api/conversations")).json().conversations;
     expect(conversations[0].title).toBe("I need meal plans; I'm vegetarian");
   });
 
-  it("lets a delegated crew member ask the Captain mid-task", async () => {
+  it("lets a crew member on a task ask the Captain mid-task", async () => {
     const conv = (await api("POST", "/api/conversations", {})).json().conversation;
     const ws = await t.app.injectWS("/api/ws", { headers: { cookie: ownerCookie } });
     const events: ServerEvent[] = [];
@@ -356,32 +372,51 @@ describe.skipIf(!db)("Shipmate server", () => {
       }, 20);
     });
 
-    t.faux.setResponses([
-      fauxAssistantMessage([fauxToolCall("delegate", { crew: "galley", task: "Plan Friday" })]),
-      fauxAssistantMessage([
-        fauxToolCall("ask_captain", { question: "Friday is a party. Spicy or mild?" }),
-      ]),
-      // The Captain answers in its consult session while its main one waits on the delegate.
-      fauxAssistantMessage("Mild; there are kids coming."),
-      fauxAssistantMessage("Friday: mild bean chili."),
-      fauxAssistantMessage("Galley planned a mild chili."),
-    ]);
+    answerBy(t.faux, ({ who, last, all }) => {
+      if (who === "Galley") {
+        return last.includes("Mild")
+          ? fauxAssistantMessage("Friday: mild bean chili.")
+          : fauxAssistantMessage([
+              fauxToolCall("ask_captain", { question: "Friday is a party. Spicy or mild?" }),
+            ]);
+      }
+      // The Captain answers in a one-off session of the task's own chat.
+      if (all.includes("## Answering the crew")) {
+        return fauxAssistantMessage("Mild; there are kids coming.");
+      }
+      if (last.includes("Shipmate note")) {
+        return fauxAssistantMessage("Galley planned a mild chili.");
+      }
+      // A tool's result, which names the task: the hand-over worked.
+      if (last.includes('"toolResult"')) return fauxAssistantMessage("Galley is planning it.");
+      return fauxAssistantMessage([
+        fauxToolCall("delegate", { crew: "galley", task: "Plan Friday" }),
+      ]);
+    });
     ws.send(JSON.stringify({ type: "send", conversationId: conv.id, text: "Plan Friday" }));
     await idle;
+    await tasksSettled(t.app, conv.id);
     ws.terminate();
 
+    const said = (list: Array<{ author: { kind: string; name: string }; content: string }>) =>
+      list.map((m) => `${m.author.kind === "system" ? "Shipmate" : m.author.name}: ${m.content}`);
+    const [task] = (await api("GET", `/api/tasks?conversationId=${conv.id}`)).json().tasks;
     const handoffs = events.flatMap((e) =>
-      e.type === "handoff" ? [`${e.from.slug}>${e.to.slug}`] : [],
+      e.type === "handoff" ? [`${e.from.slug}>${e.to.slug} in ${e.conversationId}`] : [],
     );
-    expect(handoffs).toEqual(["captain>galley", "galley>captain"]);
-    const messages = (await api("GET", `/api/conversations/${conv.id}/messages`)).json().messages;
-    expect(
-      messages.map(
-        (m: { author: { name: string }; content: string }) => `${m.author.name}: ${m.content}`,
-      ),
-    ).toEqual([
-      "Addison: Plan Friday",
+    expect(handoffs).toEqual([`galley>captain in ${task.conversationId}`]);
+    // The question and its answer stay in the task's chat; the main chat gets the result.
+    const inTask = (await api("GET", `/api/conversations/${task.conversationId}/messages`)).json()
+      .messages;
+    expect(said(inTask).slice(1)).toEqual([
       "Skipper: Mild; there are kids coming.",
+      "Galley: Friday: mild bean chili.",
+    ]);
+    const messages = (await api("GET", `/api/conversations/${conv.id}/messages`)).json().messages;
+    expect(said(messages)).toEqual([
+      "Addison: Plan Friday",
+      "Shipmate: Skipper gave Galley a task: Plan Friday",
+      "Skipper: Galley is planning it.",
       "Galley: Friday: mild bean chili.",
       "Skipper: Galley planned a mild chili.",
     ]);

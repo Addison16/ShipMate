@@ -63,7 +63,7 @@ import {
   watches,
   watchRuns,
 } from "@shipmate/db";
-import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 import { accessSummary } from "./access-summary.js";
 import { HttpError, type UserRow } from "./auth.js";
 import { chatTitle } from "./chat/title.js";
@@ -87,6 +87,7 @@ import type { McpService } from "./services/mcp.js";
 import type { ProviderService } from "./services/providers.js";
 import type { SettingsService } from "./services/settings.js";
 import type { SkillService } from "./services/skills.js";
+import type { TaskService } from "./services/tasks.js";
 import { ThemeProblems, type ThemeService } from "./services/themes.js";
 import type { UsageService } from "./services/usage.js";
 import type { WatchService } from "./services/watches.js";
@@ -182,6 +183,15 @@ interface TurnContext {
   theme: ThemeHost;
 }
 
+/** Surfaces where a result can still reach the person after the turn that asked for it ends. */
+const BACKGROUND_SURFACES = new Set(["web", "discord", "telegram", "slack"]);
+
+/**
+ * Tasks the Captain may start on its own, from task results, before the person writes again:
+ * a model that answers every result with more hand-offs stops here.
+ */
+export const MAX_UNPROMPTED_TASKS = 8;
+
 /** Helper agents one crew member may start while answering one message. */
 export const MAX_HELPERS_PER_TURN = 8;
 
@@ -196,6 +206,11 @@ export interface RunTurnOptions {
   watchId?: string;
   /** Called when the run starts or stops waiting for a person's approval. */
   onWaiting?: (waiting: boolean) => void;
+  /**
+   * Set for a background task's turn: its chat shows as busy and keeps a note if it fails, like
+   * a person's own message, and its questions and approvals also show in the chat it came from.
+   */
+  task?: { parentConversationId: string };
 }
 
 /** Options of a single turn inside a run. */
@@ -208,6 +223,8 @@ interface TurnOptions extends RunTurnOptions {
   /** Photos the person sent with this message; only the crew member they wrote to sees them. */
   images?: ImageContent[];
   imageNames?: string[];
+  /** The Captain is answering news from Shipmate (a finished task), not a person's message. */
+  nudge?: boolean;
 }
 
 /** Live state of one conversation: a pi session per crew member taking part. */
@@ -222,6 +239,10 @@ interface Run {
   idleTimer?: NodeJS.Timeout;
   /** #promptKey() when these sessions were made; their system prompts list the crew. */
   promptKey?: string | undefined;
+  /** Tasks the Captain started from task results since the person last wrote. */
+  unprompted?: number;
+  /** When the person last wrote here. */
+  wroteAt?: Date;
 }
 
 /**
@@ -240,6 +261,9 @@ export class Bridge {
   #workspaces: WorkspaceProvider | undefined;
   #everyday: EverydayTools | undefined;
   #pets: PetService | undefined;
+  #tasks: TaskService | undefined;
+  /** Per chat, news for its Captain that waits until the chat is free (see nudge). */
+  #nudges = new Map<string, string[]>();
   /** Turns of `backend: claude-code-cli` crew members (the official `claude` binary). */
   #cli: ClaudeCliTurns;
   /** Turns of `backend: codex-cli` crew members (the official `codex` binary). */
@@ -286,6 +310,11 @@ export class Bridge {
   /** Pet pictures, for the Captain's pet tools. */
   attachPets(pets: PetService) {
     this.#pets = pets;
+  }
+
+  /** Background tasks run their turns through the Bridge, so they are attached after it. */
+  attachTasks(tasks: TaskService) {
+    this.#tasks = tasks;
   }
 
   #people() {
@@ -722,6 +751,16 @@ export class Bridge {
 
   /** Delete a chat with everything kept for it: messages, its files and the agents' records. */
   async #remove(conv: ConversationRow): Promise<void> {
+    // The tasks handed over here stop, and their chats go with this one.
+    const taskChats = (await this.#tasks?.release(conv.id).catch(() => [])) ?? [];
+    for (const id of taskChats) {
+      const [child] = await this.deps.db
+        .select()
+        .from(conversations)
+        .where(eq(conversations.id, id));
+      if (child) await this.#remove(child);
+    }
+    this.#nudges.delete(conv.id);
     // Stop a reply that is still being written, so nothing is added once the records are gone.
     const run = this.#runs.get(conv.id);
     if (run?.busy) {
@@ -762,6 +801,8 @@ export class Bridge {
       .where(
         and(
           eq(conversations.privateChat, true),
+          // A private chat's tasks go when it does, not one by one while it is still in use.
+          ne(conversations.surface, "task"),
           lt(conversations.updatedAt, new Date(now.getTime() - PRIVATE_IDLE_MS)),
         ),
       );
@@ -877,16 +918,10 @@ export class Bridge {
     }
 
     run.aborted = false;
+    run.unprompted = 0;
+    run.wroteAt = new Date();
     clearTimeout(run.idleTimer);
-    const promptKey = await this.#promptKey().catch(() => run.promptKey);
-    if (run.promptKey !== promptKey) {
-      // The crew, the crew default or the models (or their context sizes) changed since these
-      // sessions started: reopen
-      // them from their files so the Captain's crew list (in its system prompt) is current.
-      for (const s of run.sessions.values()) s.dispose();
-      run.sessions.clear();
-      run.promptKey = promptKey;
-    }
+    await this.#freshen(run);
     this.emit(user.id, { type: "status", conversationId, busy: true });
     try {
       // Before the message is saved, so a restart can never leave it without a reply or a note.
@@ -925,9 +960,15 @@ export class Bridge {
       if (!slug) throw new HttpError(410, "this crew member is no longer aboard");
       await this.#assertActive(slug, user);
       const prepared = await this.deps.files.prepare(files);
-      const prompt =
+      const said =
         [content, prepared.text].filter(Boolean).join("\n\n") ||
         `(${user.displayName} sent ${prepared.imageNames.length === 1 ? "a photo" : "photos"} without a message.)`;
+      // The Captain is told which of its tasks are still open, so it can answer about them.
+      const open =
+        slug === CAPTAIN_SLUG && conv.kind === "bridge"
+          ? await this.#tasks?.statusNote(conv.id, user.displayName).catch(() => "")
+          : "";
+      const prompt = open ? `${said}\n\n${open}` : said;
       await this.#turn(user, conv, run, slug, prompt, {
         ...(prepared.images.length
           ? { images: prepared.images, imageNames: prepared.imageNames }
@@ -941,6 +982,124 @@ export class Bridge {
       this.emit(user.id, { type: "status", conversationId, busy: false });
       run.idleTimer = setTimeout(() => this.#dispose(conversationId), IDLE_MS);
       run.idleTimer.unref?.();
+      // Task results that came in meanwhile go to the Captain now.
+      void this.#drainNudges(conversationId);
+    }
+  }
+
+  /**
+   * Reopen a run's sessions when the crew, the crew default or the models (or their context
+   * sizes) changed since they started, so the Captain's crew list (in its system prompt) is
+   * current.
+   */
+  async #freshen(run: Run) {
+    const promptKey = await this.#promptKey().catch(() => run.promptKey);
+    if (run.promptKey === promptKey) return;
+    for (const s of run.sessions.values()) s.dispose();
+    run.sessions.clear();
+    run.promptKey = promptKey;
+  }
+
+  /**
+   * Add a message to a chat from outside a turn (a task's card, its brief or its result) and
+   * show it on the person's open pages. Returns null when the chat is gone.
+   */
+  async post(
+    conversationId: string,
+    m: {
+      role: "assistant" | "system";
+      content: string;
+      /** The crew member who wrote it (role "assistant"). */
+      crewSlug?: string;
+      meta?: Record<string, unknown> | null;
+    },
+  ): Promise<MessageDto | null> {
+    const [conv] = await this.deps.db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, conversationId));
+    if (!conv) return null;
+    const crewRow = m.crewSlug ? await this.deps.crew.row(m.crewSlug) : undefined;
+    const message = await this.#store(conv, {
+      role: m.role,
+      content: m.content,
+      authorName: crewRow ? (this.#crewName(crewRow.slug) ?? crewRow.name) : "Shipmate",
+      ...(crewRow ? { crewMemberId: crewRow.id, crewSlug: crewRow.slug } : {}),
+      meta: m.meta ?? null,
+    });
+    this.emit(conv.userId, { type: "message", conversationId, message });
+    return message;
+  }
+
+  /**
+   * Resolves once the reply being written in a chat is done, or after `ms`. A task's result
+   * waits for this, so it lands below the Captain's "they are on it" and not above it.
+   */
+  async whenFree(conversationId: string, ms: number): Promise<void> {
+    const end = Date.now() + ms;
+    while (this.#runs.get(conversationId)?.busy && Date.now() < end) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+
+  /**
+   * News for a chat's Captain that nobody asked for (a task ended): the Captain answers it in
+   * that chat as soon as the chat is free, as if it were a message. Notes that pile up while
+   * the chat is busy are answered together.
+   */
+  nudge(conversationId: string, note: string): void {
+    this.#nudges.set(conversationId, [...(this.#nudges.get(conversationId) ?? []), note]);
+    void this.#drainNudges(conversationId);
+  }
+
+  async #drainNudges(conversationId: string): Promise<void> {
+    if (!this.#nudges.get(conversationId)?.length) return;
+    const run = this.#run(conversationId);
+    // The turn in progress picks them up when it ends (see send).
+    if (run.busy) return;
+    run.busy = true;
+    const notes = this.#nudges.get(conversationId) ?? [];
+    this.#nudges.delete(conversationId);
+    let conv: ConversationRow | undefined;
+    let user: UserRow | undefined;
+    try {
+      [conv] = await this.deps.db
+        .select()
+        .from(conversations)
+        .where(eq(conversations.id, conversationId));
+      if (conv) [user] = await this.deps.db.select().from(users).where(eq(users.id, conv.userId));
+      // Only the Captain's chats are told; a spending cap ends the reporting quietly, since
+      // the result itself is already in the chat.
+      if (conv?.kind === "bridge" && user) {
+        await this.#checkCap(user, CAPTAIN_SLUG);
+        await this.#assertActive(CAPTAIN_SLUG, user);
+      } else {
+        conv = undefined;
+      }
+    } catch {
+      conv = undefined;
+    }
+    if (!conv || !user) {
+      run.busy = false;
+      if (!conv) this.#dispose(conversationId);
+      return;
+    }
+    run.aborted = false;
+    clearTimeout(run.idleTimer);
+    this.emit(user.id, { type: "status", conversationId, busy: true });
+    try {
+      await this.#freshen(run);
+      await this.#markTurn(conversationId, true);
+      await this.#turn(user, conv, run, CAPTAIN_SLUG, notes.join("\n\n"), { nudge: true });
+    } catch (err) {
+      if (!run.aborted) await this.#failed(user, conv, CAPTAIN_SLUG, err);
+    } finally {
+      await this.#markTurn(conversationId, false);
+      run.busy = false;
+      this.emit(user.id, { type: "status", conversationId, busy: false });
+      run.idleTimer = setTimeout(() => this.#dispose(conversationId), IDLE_MS);
+      run.idleTimer.unref?.();
+      void this.#drainNudges(conversationId);
     }
   }
 
@@ -1037,22 +1196,35 @@ export class Bridge {
     slug: string,
     prompt: string,
     options: RunTurnOptions,
-  ): Promise<{ text: string; sessionFile: string | undefined }> {
+  ): Promise<{ text: string; sessionFile: string | undefined; aborted: boolean }> {
     // Claim the run before any await, like send(): two turns in one conversation would share
     // (and the first to finish would dispose) the other's sessions.
     const run = this.#run(conversationId);
     if (run.busy) throw new HttpError(409, "the crew is still answering the last message");
     run.busy = true;
+    // The person may have written (and pressed Stop) here before; this turn starts clean.
+    run.aborted = false;
+    clearTimeout(run.idleTimer);
+    let conv: ConversationRow | undefined;
     try {
-      const conv = await this.conversation(user, conversationId);
+      conv = await this.conversation(user, conversationId);
+      // A task's chat can be open on the person's screen: it shows as busy, like any chat.
+      if (options.task) this.emit(user.id, { type: "status", conversationId, busy: true });
       await this.#checkCap(user, slug, options.watchId);
       await this.#assertActive(slug, user);
       await this.#markTurn(conversationId, true);
       const text = await this.#turn(user, conv, run, slug, prompt, options);
-      return { text, sessionFile: run.sessions.get(slug)?.sessionFile };
+      return { text, sessionFile: run.sessions.get(slug)?.sessionFile, aborted: run.aborted };
+    } catch (err) {
+      // A task's chat keeps why it stopped, for whoever opens it later.
+      if (options.task && conv && !run.aborted) await this.#failed(user, conv, slug, err);
+      throw err;
     } finally {
       await this.#markTurn(conversationId, false);
       run.busy = false;
+      if (options.task && conv) {
+        this.emit(user.id, { type: "status", conversationId, busy: false });
+      }
       this.#dispose(conversationId);
     }
   }
@@ -1200,40 +1372,99 @@ export class Bridge {
           ? `Installed ${server.name}. It needs ${missing.join(", ")} entered by an owner on the MCP servers page before it starts.`
           : `Installed ${server.name} for ${crews.join(", ") || "nobody yet"}. It starts in new conversations.`;
       },
-      delegate: async (target, task) => {
-        if (target === slug) throw new Error("you cannot delegate to yourself");
-        const to = this.deps.crew.folder(target);
-        await this.#assertActive(target, user);
-        await this.#checkCrewCap(target);
+      delegate: async (spec, signal) => {
+        const tasks = this.#tasks;
+        if (!tasks) throw new Error("tasks are not available on this instance");
+        // Where nobody could be told later (another app waiting for one answer), the tool call
+        // waits for the crew member instead of leaving the work in the background.
+        const background = BACKGROUND_SURFACES.has(conv.surface) && !options.watchId;
+        if (options.nudge && spec.continueTask === undefined) {
+          run.unprompted = (run.unprompted ?? 0) + 1;
+          if (run.unprompted > MAX_UNPROMPTED_TASKS) {
+            throw new Error(
+              `You have started ${MAX_UNPROMPTED_TASKS} tasks since ${user.displayName} last wrote. Do not start more: tell ${user.displayName} where things stand and ask how to go on.`,
+            );
+          }
+        }
+        let target = spec.crew;
+        if (spec.continueTask === undefined) {
+          if (target === slug) throw new Error("you cannot delegate to yourself");
+          if (!(await this.#roster(user)).some((c) => c.slug === target)) {
+            throw new Error(`no crew member "${target}"; check list_crew for the slugs`);
+          }
+          await this.#assertActive(target, user);
+          await this.#checkCrewCap(target);
+        }
+        // The task's card sits after what the Captain said so far, like a question card.
         await this.#closeStream(conv, crewRow.id, stream);
-        this.emit(user.id, {
-          type: "handoff",
-          conversationId: conv.id,
-          from: crew,
-          to: { slug: target, name: to.manifest.name },
-          task,
-        });
         try {
-          // Only the Captain's main session can delegate, so options carry no consult here. The
-          // person's photos stay with the Captain; it describes what the delegate needs.
-          return await this.#turn(user, conv, run, target, task, withoutImages(options));
-        } catch (err) {
+          const started =
+            spec.continueTask === undefined
+              ? await tasks.start(
+                  user,
+                  conv,
+                  { crewSlug: target, prompt: spec.task, title: spec.title },
+                  {
+                    from: crew,
+                    quiet: !background,
+                    unprompted: options.nudge === true,
+                    since: run.wroteAt,
+                  },
+                )
+              : {
+                  ...(await tasks.continue(user, conv, spec.continueTask, spec.task, {
+                    from: crew,
+                    quiet: !background,
+                  })),
+                  already: false,
+                };
+          const task = started.task;
+          target = task.crew.slug;
+          if (background) {
+            const what = `Task ${task.number} ("${task.title}")`;
+            const next = `Do not wait for it and do not hand it over again. If there is more to hand over, do that now; otherwise tell ${user.displayName} in one short line what is under way and end your reply. Its result comes to you when it is done.`;
+            return {
+              kind: "started",
+              text: started.already
+                ? `${what} is already with ${task.crew.name} for exactly this, so nothing new was started. ${next}`
+                : spec.continueTask !== undefined
+                  ? `${what} went back to ${task.crew.name} with your notes${started.queued ? "; they take them up when their current work ends" : ""}. ${next}`
+                  : `${what} is now with ${task.crew.name}${started.queued ? " and starts when another task finishes" : ""}. It runs in the background, and ${user.displayName} sees it on a card in this chat. ${next}`,
+            };
+          }
+          const ended = await tasks.settled(task.id, signal);
+          if (ended.status === "done") return { kind: "reply", text: ended.result ?? "" };
+          if (run.aborted || ended.status === "stopped") throw new Error("the task was stopped");
           // A long task that dies partway (a dropped connection, a provider timeout) still did
           // work; hand the Captain what there is rather than nothing.
-          const partial = (err as { partial?: unknown }).partial;
-          if (run.aborted || typeof partial !== "string" || !partial) throw err;
-          return [
-            `${to.manifest.name} stopped before finishing: ${(err as Error).message}`,
-            "",
-            "What they had so far:",
-            "",
-            partial,
-            "",
-            "Check what is already done, then delegate the rest again with notes on where to pick up.",
-          ].join("\n");
+          if (!ended.result?.trim()) throw new Error(ended.error ?? "the task failed");
+          return {
+            kind: "reply",
+            text: [
+              `${task.crew.name} stopped before finishing: ${ended.error ?? "unknown error"}`,
+              "",
+              "What they had so far:",
+              "",
+              ended.result,
+              "",
+              `Check what is already done, then delegate the rest with continue_task ${task.number} and notes on where to pick up.`,
+            ].join("\n"),
+          };
         } finally {
           stream = this.#openStream(user.id, conv.id, crew);
         }
+      },
+      listTasks: async () => {
+        if (!this.#tasks) throw new Error("tasks are not available on this instance");
+        return this.#tasks.describe(conv.id);
+      },
+      checkTask: async (number) => {
+        if (!this.#tasks) throw new Error("tasks are not available on this instance");
+        return this.#tasks.check(conv.id, number);
+      },
+      stopTask: async (number) => {
+        if (!this.#tasks) throw new Error("tasks are not available on this instance");
+        return this.#tasks.stopNumbered(conv.id, number);
       },
     };
 
@@ -1279,6 +1510,7 @@ export class Bridge {
           return await this.deps.approvals.request({
             userId: user.id,
             conversationId: conv.id,
+            ...(options.task ? { parentConversationId: options.task.parentConversationId } : {}),
             watchId: options.watchId ?? null,
             crew,
             toolName: call.toolName,
@@ -1325,6 +1557,7 @@ export class Bridge {
           const answer = await this.deps.approvals.ask({
             userId: user.id,
             conversationId: conv.id,
+            ...(options.task ? { parentConversationId: options.task.parentConversationId } : {}),
             watchId: null,
             crew,
             question: q,
@@ -1956,7 +2189,10 @@ export class Bridge {
       edit: (slug, s) => current().captain.edit(slug, s),
       retire: (slug) => current().captain.retire(slug),
       approve: (slug) => current().captain.approve(slug),
-      delegate: (slug, task, signal) => current().captain.delegate(slug, task, signal),
+      delegate: (spec, signal) => current().captain.delegate(spec, signal),
+      listTasks: () => current().captain.listTasks(),
+      checkTask: (number) => current().captain.checkTask(number),
+      stopTask: (number) => current().captain.stopTask(number),
       createWatch: (spec) => current().captain.createWatch(spec),
       installMcp: (id, crews) => current().captain.installMcp(id, crews),
       listMcpCatalog: () => current().captain.listMcpCatalog(),
@@ -2245,7 +2481,9 @@ export class Bridge {
               "",
               `You coordinate this crew; the crew does the work. Your tokens are the most expensive aboard, and whatever you read or run stays in your context for every later message, so keep your own work small. When ${user.displayName}'s message needs tools, research, files, a plan, a draft, code or more than a short answer, and a crew member's role fits, hand it over with \`delegate\`: crew slug plus the task with all the context they need, since they cannot see this conversation. When two fit, pick the one on the cheaper model. Answer yourself only when it is quick (no tools, a few lines) or nobody fits.`,
               "",
-              "Then supervise: check their reply against what was asked. If it misses, delegate to them again with specific notes (they remember their earlier work in this conversation) instead of redoing it. The person sees their reply, so add only what is needed next. Your standing orders say more.",
+              `A task you hand over runs in the background in its own chat, and ${user.displayName} sees it on a card here. Several can run at once: call \`delegate\` once for each separate job. After handing over, say in one short line what is under way and end your reply; never wait for a task or call \`check_task\` in a loop.`,
+              "",
+              `Then supervise: when a task is done, Shipmate gives you its result in a note marked "Shipmate note" (that note is not from ${user.displayName}). Check the result against what was asked. If it misses, send it back with \`delegate\` and \`continue_task\` set to the task's number, with specific notes, instead of redoing it. ${user.displayName} can already read the result, so reply with the outcome in 1 to 3 short lines and any decision they need to make. Your standing orders say more.`,
             ].join("\n")
           : "## Coordinating\n\nShipmate's crew tools are not reachable from this session, so you cannot hand work to the crew right now; answer yourself and say who would normally take it.",
       );

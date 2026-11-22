@@ -134,6 +134,8 @@ export {
   type CrewSummary,
   captainTools,
   crewTools,
+  type DelegateResult,
+  type DelegateSpec,
   type EditSpec,
   type EquipSpec,
   type HelperHost,

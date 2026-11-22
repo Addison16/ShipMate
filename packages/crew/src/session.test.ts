@@ -44,10 +44,13 @@ describe("createCrewSession", () => {
       approve: async () => {
         throw new Error("unused");
       },
-      delegate: async (slug, task) => {
-        delegated.push(`${slug}:${task}`);
-        return "Tuesday: pasta.";
+      delegate: async (spec) => {
+        delegated.push(`${spec.crew}:${spec.task}`);
+        return { kind: "reply", text: "Tuesday: pasta." };
       },
+      listTasks: async () => "",
+      checkTask: async () => "",
+      stopTask: async () => "",
       createWatch: async () => ({ id: "w", name: "w" }),
       equip: async () => "",
       installMcp: async () => "ok",

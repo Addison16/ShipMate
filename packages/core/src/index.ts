@@ -8,6 +8,7 @@ export * from "./phone.js";
 export * from "./routine.js";
 export * from "./search.js";
 export * from "./skill.js";
+export * from "./task.js";
 export * from "./theme.js";
 export { THEME_BUILD_GUIDE } from "./theme-guide.js";
 export * from "./user.js";

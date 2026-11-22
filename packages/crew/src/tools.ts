@@ -105,8 +105,17 @@ export interface CaptainHost {
   retire(slug: string): Promise<void>;
   /** Put a crew member awaiting review to work (only after the person approves the call). */
   approve(slug: string): Promise<CrewSummary>;
-  /** Run `task` with crew member `slug` and return its final reply. */
-  delegate(slug: string, task: string, signal: AbortSignal | undefined): Promise<string>;
+  /**
+   * Hand a task to a crew member. In a chat it runs in the background and this returns at once
+   * (`started`); where nobody could be told later, it waits and returns their `reply`.
+   */
+  delegate(spec: DelegateSpec, signal: AbortSignal | undefined): Promise<DelegateResult>;
+  /** The tasks handed over in this chat, one per line with their state. */
+  listTasks(): Promise<string>;
+  /** One task's state and its crew member's latest reply. */
+  checkTask(number: number): Promise<string>;
+  /** Stop a task that is waiting or running. Returns what happened. */
+  stopTask(number: number): Promise<string>;
   /** Schedule a watch (routine) owned by the person in this conversation. */
   createWatch(spec: WatchSpec): Promise<{ id: string; name: string }>;
   /** Install a server from the MCP catalog and give it to crew members. */
@@ -119,6 +128,21 @@ export interface CaptainHost {
    */
   equip(slug: string, grant: EquipSpec): Promise<string>;
 }
+
+export interface DelegateSpec {
+  crew: string;
+  task: string;
+  /** A short name for the task's card. */
+  title?: string | undefined;
+  /** The number of a task from this chat to carry on with, instead of starting a new one. */
+  continueTask?: number | undefined;
+}
+
+export type DelegateResult =
+  /** Working in the background; `text` tells the Captain what happens next. */
+  | { kind: "started"; text: string }
+  /** They answered within this turn. */
+  | { kind: "reply"; text: string };
 
 /** What equip_crew_member adds; each list is added to what the crew member already has. */
 export interface EquipSpec {
@@ -150,6 +174,15 @@ export interface SkillHost {
 }
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], details: undefined });
+
+/** A task's number as a model wrote it: 3, "3", "#3" or "task 3". */
+export function taskNumber(value: number | string): number {
+  const n = typeof value === "number" ? value : Number(/\d+/.exec(value)?.[0] ?? Number.NaN);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error("give the task's number, such as 3; list_tasks shows them");
+  }
+  return n;
+}
 
 /** Memory tools every crew member gets. */
 export function memoryTools(memory: MemoryStore, user: ActingUser): ToolDefinition[] {
@@ -626,25 +659,81 @@ export function captainTools(host: CaptainHost, user: ActingUser): ToolDefinitio
     defineTool({
       name: "delegate",
       label: "Delegate",
-      description:
-        "Hand a task to a crew member and get their reply. Prefer this to doing the work yourself whenever a crew member's role fits: they run on their own, usually cheaper, model and keep tool output out of your context. They remember earlier tasks in this conversation, so to correct their work, delegate to them again with specific notes. The person sees the hand-off and the crew member's answer, so do not repeat it at length; add only what they need next.",
+      description: `Hand a task to a crew member. They work on it in the background in a chat of their own, so you and ${user.displayName} can carry on, and several tasks can run at the same time: call this once per task. Do not wait for a task; its result comes to you when it is done. Prefer this to doing the work yourself whenever a crew member's role fits: they run on their own, usually cheaper, model and keep tool output out of your context. To send work back for fixes, or to give a task new instructions, call this again with continue_task set to that task's number.`,
       promptSnippet:
-        "delegate: hand work to the crew member whose role fits (the default for anything beyond a quick answer)",
+        "delegate: hand work to the crew member whose role fits; it runs in the background (the default for anything beyond a quick answer)",
       parameters: Type.Object({
         crew: Type.String({ description: "the crew member's slug" }),
         task: Type.String({
           description:
             "what to do, with all the context they need; they cannot see this conversation",
         }),
+        title: Type.Optional(
+          Type.String({ description: "a short name for the task, 3 to 6 words" }),
+        ),
+        continue_task: Type.Optional(
+          Type.Union([Type.Number(), Type.String()], {
+            description:
+              "the number of an earlier task to carry on with (they remember it); leave out for a new task",
+          }),
+        ),
       }),
       executionMode: "sequential",
       async execute(_id, p, signal) {
-        const reply = await host.delegate(p.crew, p.task, signal);
+        const continueTask =
+          p.continue_task === undefined || p.continue_task === ""
+            ? undefined
+            : taskNumber(p.continue_task);
+        const result = await host.delegate(
+          {
+            crew: p.crew,
+            task: p.task,
+            ...(p.title?.trim() ? { title: p.title.trim() } : {}),
+            ...(continueTask !== undefined ? { continueTask } : {}),
+          },
+          signal,
+        );
+        if (result.kind === "started") return text(result.text);
         return text(
-          reply
-            ? `${reply}\n\n(Check this against what was asked. If it misses, delegate to ${p.crew} again with specific notes instead of redoing the work yourself.)`
+          result.text
+            ? `${result.text}\n\n(Check this against what was asked. If it misses, delegate again with continue_task and specific notes instead of redoing the work yourself.)`
             : `(no reply) Ask ${p.crew} again with clearer instructions, or tell the person it did not work.`,
         );
+      },
+    }),
+    defineTool({
+      name: "list_tasks",
+      label: "List tasks",
+      description:
+        "List the tasks you handed over in this chat: number, name, who has it, and whether it is waiting, running, done, failed or stopped.",
+      promptSnippet: "list_tasks: the tasks handed over in this chat and how each one stands",
+      parameters: Type.Object({}),
+      async execute() {
+        return text(await host.listTasks());
+      },
+    }),
+    defineTool({
+      name: "check_task",
+      label: "Check task",
+      description:
+        "Read one task: how it stands and the crew member's latest reply. Use it when the person asks about a task. Do not call it again and again to wait; the result comes to you when the task is done.",
+      parameters: Type.Object({
+        task: Type.Union([Type.Number(), Type.String()], { description: "the task's number" }),
+      }),
+      async execute(_id, p) {
+        return text(await host.checkTask(taskNumber(p.task)));
+      },
+    }),
+    defineTool({
+      name: "stop_task",
+      label: "Stop task",
+      description:
+        "Stop a task that is waiting or running, when the person asks or it is no longer needed.",
+      parameters: Type.Object({
+        task: Type.Union([Type.Number(), Type.String()], { description: "the task's number" }),
+      }),
+      async execute(_id, p) {
+        return text(await host.stopTask(taskNumber(p.task)));
       },
     }),
   ];

@@ -112,8 +112,8 @@ const forChat = <T extends { name: string }>(conv: { privateChat: boolean }, too
  * Remove the session files pi kept for a deleted chat. Values that are not files (the session
  * ids of the CLI engines, which keep their own records) are left alone.
  */
-async function removeSessionRecords(sessionFiles: Record<string, string>): Promise<void> {
-  for (const file of Object.values(sessionFiles)) {
+async function removeSessionRecords(files: Iterable<string>): Promise<void> {
+  for (const file of files) {
     if (!isAbsolute(file) || !file.endsWith(".jsonl")) continue;
     await rm(file, { force: true }).catch(() => {});
   }
@@ -689,12 +689,15 @@ export class Bridge {
     if (this.#runs.get(id)?.busy) {
       throw new HttpError(409, "the crew is still answering; stop them first");
     }
+    const records = this.#sessionRecords(conv);
     this.#dispose(id);
     conv.sessionFiles = {};
     await this.deps.db
       .update(conversations)
       .set({ sessionFiles: {} })
       .where(eq(conversations.id, id));
+    // A private chat keeps nothing behind, so what was said before the fresh start goes now.
+    if (conv.privateChat) await removeSessionRecords(records);
     const [member] = conv.crewMemberId
       ? await this.deps.db
           .select({ name: crewMembers.name })
@@ -719,11 +722,33 @@ export class Bridge {
 
   /** Delete a chat with everything kept for it: messages, its files and the agents' records. */
   async #remove(conv: ConversationRow): Promise<void> {
+    // Stop a reply that is still being written, so nothing is added once the records are gone.
+    const run = this.#runs.get(conv.id);
+    if (run?.busy) {
+      run.aborted = true;
+      this.deps.approvals.cancelConversation(conv.id);
+      await Promise.all([...run.sessions.values()].map((s) => s.abort().catch(() => {})));
+    }
+    const records = this.#sessionRecords(conv);
     this.#dispose(conv.id);
     const files = await this.deps.files.idsIn(conv.id);
     await this.deps.db.delete(conversations).where(eq(conversations.id, conv.id));
     await this.deps.files.removeFiles(files);
-    await removeSessionRecords(conv.sessionFiles);
+    await removeSessionRecords(records);
+  }
+
+  /**
+   * The session files that belong to this chat alone: the saved ones plus those of agents that
+   * are open right now (a first reply's file is only saved when its turn ends). A routine's run
+   * has none of its own, because a routine that continues shares one file across its runs.
+   */
+  #sessionRecords(conv: ConversationRow): Set<string> {
+    if (conv.surface === "watch") return new Set();
+    const records = new Set(Object.values(conv.sessionFiles));
+    for (const s of this.#runs.get(conv.id)?.sessions.values() ?? []) {
+      if (s.sessionFile) records.add(s.sessionFile);
+    }
+    return records;
   }
 
   /**
@@ -1718,10 +1743,13 @@ export class Bridge {
       const file = session.sessionFile;
       if (file && !options.consultFor && conv.sessionFiles[slug] !== file) {
         conv.sessionFiles = { ...conv.sessionFiles, [slug]: file };
-        await this.deps.db
+        const saved = await this.deps.db
           .update(conversations)
           .set({ sessionFiles: conv.sessionFiles })
-          .where(eq(conversations.id, conv.id));
+          .where(eq(conversations.id, conv.id))
+          .returning({ id: conversations.id });
+        // The chat was deleted while this reply was being written: its record goes too.
+        if (!saved.length && conv.surface !== "watch") await removeSessionRecords([file]);
       }
     }
     return final;

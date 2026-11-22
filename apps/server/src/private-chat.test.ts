@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import type { ServerEvent } from "@shipmate/core";
 import { conversations } from "@shipmate/db";
@@ -114,6 +115,60 @@ describe.skipIf(!db)("Private chats", () => {
     expect((await api("DELETE", `/api/conversations/${chat.id}`)).statusCode).toBe(200);
     expect(await row(chat.id)).toBeUndefined();
     for (const f of files) expect(existsSync(f), f).toBe(false);
+  });
+
+  it("removes the agent's record when started fresh", async () => {
+    const chat = await create({ private: true });
+    t.faux.setResponses([fauxAssistantMessage("Hello.")]);
+    await turn(chat.id, "hello");
+    const files = Object.values((await row(chat.id))?.sessionFiles ?? {});
+    expect(files.length).toBeGreaterThan(0);
+    expect((await api("POST", `/api/conversations/${chat.id}/reset`)).statusCode).toBe(200);
+    for (const f of files) expect(existsSync(f), f).toBe(false);
+    await api("DELETE", `/api/conversations/${chat.id}`);
+  });
+
+  it("leaves no record when ended during its first reply", async () => {
+    // Find where this agent's records are kept.
+    const probe = await create({ private: true });
+    t.faux.setResponses([fauxAssistantMessage("Hello.")]);
+    await turn(probe.id, "hello");
+    const [known] = Object.values((await row(probe.id))?.sessionFiles ?? {});
+    await api("DELETE", `/api/conversations/${probe.id}`);
+    const dir = dirname(known as string);
+    const before = readdirSync(dir).sort();
+
+    const chat = await create({ private: true });
+    let ended: Promise<unknown> | undefined;
+    t.faux.setResponses([
+      () => {
+        ended = api("DELETE", `/api/conversations/${chat.id}`);
+        return fauxAssistantMessage("A long answer.");
+      },
+    ]);
+    const ws = await t.app.injectWS("/api/ws", { headers: { cookie } });
+    ws.send(JSON.stringify({ type: "send", conversationId: chat.id, text: "tell me a secret" }));
+    await until(() => ended !== undefined);
+    await ended;
+    await until(() => !t.app.services.bridge.isBusy(chat.id));
+    await new Promise((r) => setTimeout(r, 300));
+    ws.terminate();
+    expect(await row(chat.id)).toBeUndefined();
+    expect(readdirSync(dir).sort()).toEqual(before);
+  });
+
+  it("keeps a routine's shared record when one of its runs is deleted", async () => {
+    const chat = await create({});
+    t.faux.setResponses([fauxAssistantMessage("Hello.")]);
+    await turn(chat.id, "hello");
+    const files = Object.values((await row(chat.id))?.sessionFiles ?? {});
+    expect(files.length).toBeGreaterThan(0);
+    await t.app.db
+      .update(conversations)
+      .set({ surface: "watch" })
+      .where(eq(conversations.id, chat.id));
+    expect((await api("DELETE", `/api/conversations/${chat.id}`)).statusCode).toBe(200);
+    for (const f of files) expect(existsSync(f), f).toBe(true);
   });
 
   it("is deleted after an hour without use, and ordinary chats are not", async () => {

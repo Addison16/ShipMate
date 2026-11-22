@@ -4,8 +4,10 @@ import { join } from "node:path";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import type { ChatContextDto, LimitsResponse, ServerEvent } from "@shipmate/core";
 import { codexRateLimits, parseRateLimits } from "@shipmate/crew";
+import { usageEvents } from "@shipmate/db";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { chatgptLimit, claudeLimit } from "./services/meters.js";
+import { chatgptLimit, claudeLimit, MeterService } from "./services/meters.js";
 import { TEST_DATABASE_URL, testApp } from "./testing.js";
 
 const db = TEST_DATABASE_URL;
@@ -156,15 +158,50 @@ describe.skipIf(!db)("context and limit meters", () => {
     );
     expect(other.statusCode).toBe(404);
 
+    // After a restart (nothing in memory) the last call is worked out from usage.
+    const fresh = () =>
+      new MeterService({
+        db: t.app.db,
+        providers: t.app.services.providers,
+        file: join(dir, "limits.json"),
+      });
+    expect(await fresh().context(conv.id)).toMatchObject({ engine: "pi", tokens: live?.tokens });
+
     expect((await api("POST", `/api/conversations/${conv.id}/reset`)).statusCode).toBe(200);
     expect((await api("GET", `/api/conversations/${conv.id}/context`)).json().context).toBeNull();
+    // Started fresh, then a restart: the old call is not brought back.
+    expect(await fresh().context(conv.id)).toBeNull();
+  });
+
+  it("shows members only their own API spend", async () => {
+    expect(
+      (await api("POST", "/api/providers", { kind: "openrouter", apiKey: "sk-or-test" }))
+        .statusCode,
+    ).toBe(200);
+    await t.app.db.insert(usageEvents).values({
+      userId: null,
+      model: "openrouter/some-model",
+      inputTokens: 10,
+      costMicroUsd: 2_500_000,
+    });
+    const meters = new MeterService({
+      db: t.app.db,
+      providers: t.app.services.providers,
+      file: join(dir, "limits2.json"),
+    });
+    const me = { id: "00000000-0000-0000-0000-000000000000", monthlyCapCents: null };
+    const spent = async (everyone: boolean) =>
+      (await meters.limits(me, everyone)).limits.find((l) => l.kind === "api")?.spentMicroUsd;
+    expect(await spent(true)).toBe(2_500_000);
+    expect(await spent(false)).toBe(0);
+    await t.app.db.delete(usageEvents).where(eq(usageEvents.model, "openrouter/some-model"));
   });
 
   it("lists limits per provider and the person's own cap", async () => {
     const res = (await api("GET", "/api/limits")).json() as LimitsResponse;
     expect(res.me).toMatchObject({ capCents: null });
-    // Only the test's faux model is set up: no plans, no API-key providers.
-    expect(res.limits).toEqual([]);
+    // No plans are set up; the only provider is the one added above.
+    expect(res.limits.map((l) => l.kind)).toEqual(["api"]);
     const check = await api("POST", "/api/limits/claude-plan/check");
     expect(check.statusCode).toBe(404);
   });

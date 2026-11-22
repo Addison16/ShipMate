@@ -1,6 +1,7 @@
 import type { LimitWindowDto, ProviderLimitDto } from "@shipmate/core";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../api.js";
+import { isAdmin, useUser } from "../auth.js";
 import { formatCents, formatCost } from "../lib/format.js";
 import { useResource } from "../lib/useResource.js";
 import { Badge, Button, Card, cx, ErrorText } from "./ui.js";
@@ -67,9 +68,11 @@ function Bar({ w }: { w: LimitWindowDto }) {
 
 function LimitRow({
   limit,
+  everyone,
   onChecked,
 }: {
   limit: ProviderLimitDto;
+  everyone: boolean;
   onChecked: (l: ProviderLimitDto) => void;
 }) {
   const [checking, setChecking] = useState(false);
@@ -111,7 +114,7 @@ function LimitRow({
       ))}
       {limit.kind === "api" && limit.spentMicroUsd !== null && (
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          {formatCost(limit.spentMicroUsd)} this month, everyone together
+          {formatCost(limit.spentMicroUsd)} this month{everyone ? ", everyone together" : ", yours"}
         </p>
       )}
       {limit.note && <p className="text-xs text-slate-500 dark:text-slate-400">{limit.note}</p>}
@@ -122,6 +125,7 @@ function LimitRow({
 
 /** Usage limits per provider: plan limits, pay-as-you-go spend, and the person's own cap. */
 export function UsageLimits() {
+  const everyone = isAdmin(useUser());
   const limits = useResource(() => api.limits());
   const [list, setList] = useState<ProviderLimitDto[] | null>(null);
   useEffect(() => {
@@ -157,6 +161,7 @@ export function UsageLimits() {
             <LimitRow
               key={l.id}
               limit={l}
+              everyone={everyone}
               onChecked={(fresh) =>
                 setList((all) => all?.map((x) => (x.id === fresh.id ? fresh : x)) ?? null)
               }

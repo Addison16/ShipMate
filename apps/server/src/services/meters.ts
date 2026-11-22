@@ -12,7 +12,7 @@ import {
   type CodexRateLimits,
   codexRateLimits,
 } from "@shipmate/crew";
-import { crewMembers, type Db, usageEvents } from "@shipmate/db";
+import { crewMembers, type Db, messages, usageEvents } from "@shipmate/db";
 import { piProviderId, SELF_HOSTED_KINDS } from "@shipmate/providers";
 import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { CHATGPT_PROVIDER_ID } from "./chatgpt.js";
@@ -95,6 +95,22 @@ export class MeterService {
       .orderBy(desc(usageEvents.createdAt))
       .limit(1);
     if (!row?.slug || !row.name) return null;
+    // Started fresh since that call: the context it measured is gone.
+    const [reset] = await this.deps.db
+      .select({ at: messages.createdAt })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.conversationId, conversationId),
+          sql`${messages.meta} ->> 'sessionReset' = 'true'`,
+        ),
+      )
+      .orderBy(desc(messages.createdAt))
+      .limit(1);
+    if (reset && reset.at >= row.at) {
+      this.#context.set(conversationId, null);
+      return null;
+    }
     const engine = engineOf(row.model);
     // CLI rows add up a whole run, which is not the context size; wait for the next reply.
     if (engine !== "pi") return null;
@@ -140,7 +156,14 @@ export class MeterService {
     return this.#checking;
   }
 
-  async limits(me: { id: string; monthlyCapCents: number | null }): Promise<LimitsResponse> {
+  /**
+   * `everyone`: show API spend for all people together (admins and owners); otherwise each
+   * provider's spend is only this person's, as on the Usage page.
+   */
+  async limits(
+    me: { id: string; monthlyCapCents: number | null },
+    everyone = false,
+  ): Promise<LimitsResponse> {
     const now = this.#now();
     const { start, end } = monthRange(currentMonth(now));
     const [records, rows, mine] = await Promise.all([
@@ -152,7 +175,13 @@ export class MeterService {
           billing: usageEvents.billing,
         })
         .from(usageEvents)
-        .where(and(gte(usageEvents.createdAt, start), lt(usageEvents.createdAt, end)))
+        .where(
+          and(
+            gte(usageEvents.createdAt, start),
+            lt(usageEvents.createdAt, end),
+            everyone ? undefined : eq(usageEvents.userId, me.id),
+          ),
+        )
         .groupBy(sql`split_part(${usageEvents.model}, '/', 1)`, usageEvents.billing),
       this.deps.db
         .select({ cost: sql<string>`coalesce(sum(${usageEvents.costMicroUsd}), 0)` })

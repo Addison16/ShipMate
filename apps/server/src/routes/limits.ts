@@ -1,7 +1,7 @@
 import type { ChatContextDto, LimitsResponse, ProviderLimitDto } from "@shipmate/core";
 import { CodexCliMissingError } from "@shipmate/crew";
 import type { FastifyInstance } from "fastify";
-import { HttpError } from "../auth.js";
+import { atLeast, HttpError } from "../auth.js";
 import type { Services } from "../services.js";
 
 /** Context and usage-limit meters (see MeterService). */
@@ -14,7 +14,11 @@ export async function limitRoutes(app: FastifyInstance, s: Services) {
     },
   );
 
-  app.get("/api/limits", async (req): Promise<LimitsResponse> => s.meters.limits(req.user));
+  app.get(
+    "/api/limits",
+    async (req): Promise<LimitsResponse> =>
+      s.meters.limits(req.user, atLeast(req.user.role, "admin")),
+  );
 
   app.post<{ Params: { id: string } }>(
     "/api/limits/:id/check",

@@ -11,6 +11,8 @@
   one-click updates.
 - [local-models.md](local-models.md): run models on your own hardware with the bundled Ollama.
 - [phone.md](phone.md): push notifications, approvals from the phone, photos and voice.
+- [other-apps.md](other-apps.md): keys so Siri Shortcuts, Home Assistant or a script can message
+  an agent.
 
 More pages land with each phase: deployment, crew authoring, skills, Watches, the Shipyard,
 providers, and the Discord bridge.

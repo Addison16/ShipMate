@@ -26,6 +26,7 @@ import { type CodexPainter, codexPainter } from "./pets/codex.js";
 import { type PetFetch, PetService } from "./pets/service.js";
 import { PushService } from "./push/service.js";
 import type { PushFetch } from "./push/webpush.js";
+import { ApiKeyService } from "./services/api-keys.js";
 import { ApprovalService } from "./services/approvals.js";
 import { AuditService } from "./services/audit.js";
 import { BackupService } from "./services/backups.js";
@@ -86,6 +87,7 @@ export interface Services {
   lists: ListService;
   documents: DocumentService;
   prompts: PromptService;
+  apiKeys: ApiKeyService;
   chatImport: ChatImportService;
   web: WebService;
   profiles: ProfileService;
@@ -403,6 +405,7 @@ export async function createServices(
     lists,
     documents,
     prompts: new PromptService(db),
+    apiKeys: new ApiKeyService({ db, bridge, crew }),
     chatImport: new ChatImportService(db),
     web,
     profiles,

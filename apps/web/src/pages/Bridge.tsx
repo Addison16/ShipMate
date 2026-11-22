@@ -1204,7 +1204,9 @@ function Thread({
 
       {readOnly ? (
         <p className="border-t border-slate-200 bg-white px-3 pt-3 pb-[calc(0.75rem+var(--safe-bottom))] text-center text-sm text-slate-500 sm:px-6 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-          {`This conversation happened in ${surfaceLabel(conversation?.surface ?? "") ?? "another app"}. Reply there to continue it.`}
+          {conversation?.surface === "api"
+            ? "Another app started this chat with one of your keys. It carries on from there."
+            : `This conversation happened in ${surfaceLabel(conversation?.surface ?? "") ?? "another app"}. Reply there to continue it.`}
         </p>
       ) : (
         <form

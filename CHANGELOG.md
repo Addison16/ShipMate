@@ -6,6 +6,11 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Keys for other apps.** Settings → Other apps makes a personal key so Siri Shortcuts, Home
+  Assistant or a script can send a message to one of your agents and read the reply. A key can
+  only message agents and read the chats it started: not your other chats, files or settings.
+  Chats it starts show in your list marked "Other app", their cost counts as yours, and a key
+  can be removed at any time. Steps for Shortcuts and Home Assistant: docs/other-apps.md.
 - **Context and usage limit meters.** A small ring in the chat header shows how full the
   chat's context is (tap it for the numbers and a Start fresh link). It shows for agents on
   Shipmate's own engine and on Claude Code; Codex, Cursor and Gemini CLI manage their own

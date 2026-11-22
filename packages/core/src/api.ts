@@ -78,6 +78,37 @@ export interface LoginRequest {
 }
 
 /**
+ * A personal key for another app (Siri Shortcuts, Home Assistant, a script).
+ * GET /api/keys → { keys: ApiKeyDto[] }
+ * POST /api/keys { name } → { key: ApiKeyDto, token } (the only time the key itself is shown)
+ * DELETE /api/keys/:id → { ok: true }
+ *
+ * What a key can do, sent as `Authorization: Bearer <key>`:
+ * POST /api/v1/ask { message, agent?, newChat?, waitSeconds? } → AskResult
+ * GET /api/v1/chats/:id → AskResult (the latest reply of that chat)
+ * GET /api/v1/agents → { agents: { id, name }[] }
+ */
+export interface ApiKeyDto {
+  id: string;
+  name: string;
+  /** How the key starts, e.g. "shipmate_a1B2". */
+  hint: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+export interface AskResult {
+  /**
+   * "done" with the reply, "working" when the agent needs longer than the wait, or "failed"
+   * when the agent stopped before finishing (the reply then ends with the reason).
+   */
+  status: "done" | "working" | "failed";
+  chatId: string;
+  /** The agent's reply as plain text; null while it is still working. */
+  reply: string | null;
+}
+
+/**
  * One signed-in device (a browser session).
  * GET /api/auth/sessions → { sessions: SessionDto[] }, this device first.
  * DELETE /api/auth/sessions/:id → { ok: true } signs one out.

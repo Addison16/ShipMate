@@ -189,6 +189,27 @@ export const auditEvents = pgTable(
   (t) => [index("audit_time_idx").on(t.createdAt)],
 );
 
+/**
+ * Personal keys for other apps (Siri Shortcuts, Home Assistant, scripts). A key lets its holder
+ * message agents as its owner through /api/v1 and nothing else. Only the key's SHA-256 is stored.
+ */
+export const apiKeys = pgTable(
+  "api_keys",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    /** The first characters of the key, so the person can tell their keys apart. */
+    hint: text("hint").notNull(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("api_keys_user_idx").on(t.userId)],
+);
+
 /** Browser sessions. The cookie holds a random token; only its SHA-256 is stored. */
 export const authSessions = pgTable(
   "auth_sessions",

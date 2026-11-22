@@ -141,7 +141,8 @@ describe.skipIf(!db)("context and limit meters", () => {
     expect(live?.window).toBeGreaterThan(0);
     expect(live?.tokens).toBeGreaterThan(0);
     for (let i = 0; i < 100; i++) {
-      const busy = await t.app.db.$client`select turn_started_at from conversations where id = ${conv.id}`;
+      const busy = await t.app.db
+        .$client`select turn_started_at from conversations where id = ${conv.id}`;
       if (!busy[0]?.turn_started_at) break;
       await new Promise((r) => setTimeout(r, 20));
     }
@@ -149,7 +150,10 @@ describe.skipIf(!db)("context and limit meters", () => {
     expect(got).toEqual(live);
 
     // Someone else's chat is not readable.
-    const other = await api("GET", "/api/conversations/00000000-0000-0000-0000-000000000000/context");
+    const other = await api(
+      "GET",
+      "/api/conversations/00000000-0000-0000-0000-000000000000/context",
+    );
     expect(other.statusCode).toBe(404);
 
     expect((await api("POST", `/api/conversations/${conv.id}/reset`)).statusCode).toBe(200);

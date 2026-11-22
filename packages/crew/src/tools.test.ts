@@ -3,6 +3,7 @@ import {
   type ActingUser,
   type CaptainHost,
   captainTools,
+  type DelegateSpec,
   type EditSpec,
   type EquipSpec,
   type PersonChanges,
@@ -13,6 +14,7 @@ function setup(role: ActingUser["role"] = "owner") {
   const edits: Array<[string, EditSpec]> = [];
   const people: Array<[string, PersonChanges]> = [];
   const equips: Array<[string, EquipSpec]> = [];
+  const delegated: DelegateSpec[] = [];
   const host: CaptainHost = {
     listCrew: async () => [],
     listModels: async () => "",
@@ -39,7 +41,15 @@ function setup(role: ActingUser["role"] = "owner") {
       status: "active",
       captain: false,
     }),
-    delegate: async () => "",
+    delegate: async (spec) => {
+      delegated.push(spec);
+      return spec.task.startsWith("wait")
+        ? { kind: "reply", text: "Tuesday: pasta." }
+        : { kind: "started", text: "Task 1 is now with Galley." };
+    },
+    listTasks: async () => "- task 1",
+    checkTask: async (n) => `task ${n}`,
+    stopTask: async (n) => `stopped ${n}`,
     createWatch: async () => ({ id: "w", name: "w" }),
     installMcp: async () => "ok",
     listMcpCatalog: async () => "",
@@ -61,8 +71,42 @@ function setup(role: ActingUser["role"] = "owner") {
   const run = (name: string, params: any) =>
     // biome-ignore lint/style/noNonNullAssertion: the tool exists
     tools[name]!.execute("call", params, undefined, undefined, {} as never);
-  return { edits, people, equips, run };
+  return { edits, people, equips, delegated, run };
 }
+
+const said = (result: { content: unknown[] }) =>
+  (result.content[0] as { text?: string } | undefined)?.text ?? "";
+
+describe("delegate and the task tools", () => {
+  it("starts a task in the background and passes on what the server says next", async () => {
+    const { delegated, run } = setup();
+    const result = await run("delegate", {
+      crew: "galley",
+      task: "plan dinner",
+      title: " Dinner ",
+    });
+    expect(delegated).toEqual([{ crew: "galley", task: "plan dinner", title: "Dinner" }]);
+    expect(said(result)).toBe("Task 1 is now with Galley.");
+  });
+
+  it("returns the reply with a note to check it when the crew member answered in the turn", async () => {
+    const result = await setup().run("delegate", { crew: "galley", task: "wait for dinner" });
+    expect(said(result)).toContain("Tuesday: pasta.");
+    expect(said(result)).toContain("continue_task");
+  });
+
+  it("reads a task number however a model writes it", async () => {
+    const { delegated, run } = setup();
+    await run("delegate", { crew: "galley", task: "add a dessert", continue_task: "task 3" });
+    await run("delegate", { crew: "galley", task: "add a starter", continue_task: 2 });
+    await run("delegate", { crew: "galley", task: "new job", continue_task: "" });
+    expect(delegated.map((d) => d.continueTask)).toEqual([3, 2, undefined]);
+    expect(said(await run("check_task", { task: "#4" }))).toBe("task 4");
+    expect(said(await run("stop_task", { task: 5 }))).toBe("stopped 5");
+    expect(said(await run("list_tasks", {}))).toBe("- task 1");
+    await expect(run("check_task", { task: "the dinner one" })).rejects.toThrow("task's number");
+  });
+});
 
 describe("Captain settings tools", () => {
   it("maps edit_crew_member fields onto crew.yaml settings", async () => {

@@ -6,6 +6,17 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **The Assistant hands work over and stays free.** A job the main Assistant (the Captain)
+  gives to another agent now runs in the background as a task. Each task has a card in the
+  chat (Waiting to start, Working, Needs you, Done, Could not finish, Stopped), you can keep
+  chatting meanwhile, and several tasks run side by side. When one ends, the agent's reply
+  appears in the chat, and the Assistant checks it, sends it back with notes if something is
+  missing (up to 3 times), or tells you the outcome in a line or two. Open a card to watch the
+  task, write to that agent, or stop it. A line above the message box shows what is still
+  running, and a task's questions and approvals show in the main chat. Settings → General →
+  **Tasks at once** sets how many run together (default 3). Discord, Telegram and Slack get the
+  hand-over and the result as messages; routines and other apps still get one complete answer.
+  See [docs/background-tasks.md](docs/background-tasks.md).
 - **Keys for other apps.** Settings → Other apps makes a personal key so Siri Shortcuts, Home
   Assistant or a script can send a message to one of your agents and read the reply. A key can
   only message agents and read the chats it started: not your other chats, files or settings.

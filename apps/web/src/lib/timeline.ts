@@ -147,7 +147,9 @@ export function timelineReducer(state: TimelineState, action: TimelineAction): T
 function applyEvent(state: TimelineState, ev: ServerEvent): TimelineState {
   if (ev.type === "approval_request") {
     const a = ev.approval;
-    if (!a.conversationId || a.conversationId !== state.conversationId) return state;
+    // A question or approval from a background task also shows in the chat the task came from.
+    const here = [a.conversationId, a.parentConversationId].includes(state.conversationId);
+    if (!state.conversationId || !here) return state;
     if (state.items.some((it) => it.kind === "approval" && it.approval.id === a.id)) return state;
     return {
       ...state,

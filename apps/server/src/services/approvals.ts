@@ -38,6 +38,8 @@ export class ApprovalService {
   request(input: {
     userId: string;
     conversationId: string | null;
+    /** For a background task: the chat it came from, where the card shows too. */
+    parentConversationId?: string | null;
     watchId: string | null;
     crew: { slug: string; name: string };
     toolName: string;
@@ -50,6 +52,7 @@ export class ApprovalService {
     const dto: ApprovalDto = {
       id: randomUUID(),
       conversationId: input.conversationId,
+      ...(input.parentConversationId ? { parentConversationId: input.parentConversationId } : {}),
       routineId: input.watchId,
       crew: input.crew,
       toolName: input.toolName,
@@ -70,6 +73,7 @@ export class ApprovalService {
   ask(input: {
     userId: string;
     conversationId: string | null;
+    parentConversationId?: string | null;
     watchId: string | null;
     crew: { slug: string; name: string };
     question: QuestionDto;
@@ -77,6 +81,7 @@ export class ApprovalService {
     const dto: ApprovalDto = {
       id: randomUUID(),
       conversationId: input.conversationId,
+      ...(input.parentConversationId ? { parentConversationId: input.parentConversationId } : {}),
       routineId: input.watchId,
       crew: input.crew,
       toolName: "ask_person",

@@ -26,7 +26,7 @@ import {
 } from "./claude-cli-turn.js";
 import { chatGptProvider } from "./services/chatgpt.js";
 import { callCost } from "./services/usage.js";
-import { TEST_DATABASE_URL, testApp } from "./testing.js";
+import { TEST_DATABASE_URL, tasksSettled, testApp } from "./testing.js";
 
 const db = TEST_DATABASE_URL;
 
@@ -753,19 +753,22 @@ describe.skipIf(!db)("claude-code-cli backend through the Bridge", () => {
         ]);
       },
       fauxAssistantMessage("Scribe has it."),
+      // Told the result when the task is done.
+      fauxAssistantMessage("Scribe noted the date."),
     ]);
     const { events, ws } = await turn(conv.id, "Write down the date");
+    await tasksSettled(t.app, conv.id);
     ws.terminate();
     expect(events.find((e) => e.type === "error")).toBeUndefined();
-    expect(events.find((e) => e.type === "handoff")).toMatchObject({ to: { slug: "scribe" } });
+    const card = events.find((e) => e.type === "message" && e.message.meta?.taskStarted);
+    expect(card?.type === "message" && card.message.meta?.taskStarted).toMatchObject({
+      crew: { slug: "scribe" },
+    });
     const msgs = (await api("GET", `/api/conversations/${conv.id}/messages`)).json().messages;
-    expect(msgs.map((m: { author: { slug?: string } }) => m.author.slug ?? "user")).toEqual([
-      "user",
-      "captain",
-      "scribe",
-      "captain",
-    ]);
-    expect(msgs[2].content).toContain("Done: note the date");
+    expect(
+      msgs.map((m: { author: { kind: string; slug?: string } }) => m.author.slug ?? m.author.kind),
+    ).toEqual(["user", "captain", "system", "captain", "scribe", "captain"]);
+    expect(msgs[4].content).toContain("note the date");
     // Scribe runs on the Claude subscription, so that is what the Captain sees and can pick from.
     expect(captainContext).toContain(
       "scribe: Scribe, writing (model claude-code/sonnet, Claude subscription, mid-size model)",
@@ -791,30 +794,37 @@ describe.skipIf(!db)("claude-code-cli backend through the Bridge", () => {
       const { events, ws } = await turn(conv.id, "route deckhand swab the deck");
       ws.terminate();
       expect(events.find((e) => e.type === "error")).toBeUndefined();
-      expect(events.find((e) => e.type === "handoff")).toMatchObject({
+      // The job goes to the background as a task, with a card in the chat.
+      const card = events.find((e) => e.type === "message" && e.message.meta?.taskStarted);
+      expect(card?.type === "message" && card.message.meta?.taskStarted).toMatchObject({
         from: { slug: "captain" },
-        to: { slug: "deckhand" },
-        task: "swab the deck",
+        crew: { slug: "deckhand" },
+        prompt: "swab the deck",
       });
+      await tasksSettled(t.app, conv.id);
       // The hand-off shows as bubbles, not as a tool chip.
       expect(events.some((e) => e.type === "tool" && e.toolName.includes("delegate"))).toBe(false);
 
       const msgs = (await api("GET", `/api/conversations/${conv.id}/messages`)).json().messages;
       expect(
-        msgs.map((m: { author: { slug?: string }; content: string }) => [
-          m.author.slug ?? "user",
+        msgs.map((m: { author: { kind: string; slug?: string }; content: string }) => [
+          m.author.slug ?? m.author.kind,
           m.content,
         ]),
       ).toEqual([
         ["user", "route deckhand swab the deck"],
         ["captain", "Routing to deckhand."],
-        ["deckhand", "Deck swabbed."],
+        ["system", "Captain gave Deckhand a task: Swab the deck"],
+        // The tool answers at once; the work itself runs on in the task's own chat.
         [
           "captain",
           expect.stringMatching(
-            /^Wrapped up \(shipmate: .*delegate.*list_crew.*\): Deck swabbed\.\n\n\(Check this against what was asked\./,
+            /^Wrapped up \(shipmate: .*check_task.*delegate.*list_crew.*list_tasks.*stop_task.*\): Task 1 \("Swab the deck"\) is now with Deckhand/,
           ),
         ],
+        ["deckhand", "Deck swabbed."],
+        // Told the result, the Captain speaks once more.
+        ["captain", expect.stringContaining("Deck swabbed.")],
       ]);
 
       const args = calls()[before]?.args ?? [];

@@ -5,8 +5,8 @@ import {
   type TaskRef,
   type TaskStatus,
 } from "@shipmate/core";
-import { conversations, type Db, tasks, users } from "@shipmate/db";
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { conversations, type Db, messages, tasks, users } from "@shipmate/db";
+import { and, asc, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 import { HttpError, type UserRow } from "../auth.js";
 import type { Bridge } from "../bridge.js";
 import { chatTitle } from "../chat/title.js";
@@ -30,6 +30,8 @@ const AT_ONCE_KEY = "tasksAtOnce";
 /** How long a task waits for its chat when the person is writing in it at that moment. */
 /** How long a result waits for the reply being written in the chat it goes to. */
 const REPORT_WAIT_MS = 30_000;
+/** How often a task that got its answer looks for a free slot to carry on in. */
+const SLOT_WAIT_MS = 300;
 const BUSY_RETRIES = 30;
 const BUSY_WAIT_MS = 2000;
 
@@ -62,6 +64,8 @@ export class TaskService {
   #stopping = new Set<string>();
   /** Tasks whose result goes back to a waiting tool call instead of waking the Captain. */
   #quiet = new Set<string>();
+  /** Per task, the pictures its last reply carried, to show with the result. */
+  #pictures = new Map<string, unknown[]>();
   #waiters = new Map<string, Array<(outcome: TaskOutcome) => void>>();
 
   constructor(
@@ -453,7 +457,9 @@ export class TaskService {
       const projectId = conv?.projectId ?? null;
       // One Shipyard workspace, one task at a time.
       if (projectId && [...this.#running.values()].some((r) => r.projectId === projectId)) continue;
-      // Checked again after the awaits: another pump may have taken it meanwhile.
+      // Checked again after the awaits: another pump may have taken it meanwhile, or a task
+      // that got its answer took the slot.
+      if (this.#running.size - this.#paused.size >= limit) break;
       if (this.#running.has(id) || !this.#queue.includes(id)) continue;
       this.#queue = this.#queue.filter((q) => q !== id);
       this.#running.set(id, { projectId });
@@ -491,8 +497,10 @@ export class TaskService {
           };
         } else {
           try {
+            const since = new Date();
             const turn = await this.#turn(owner, row, prompt);
             const text = turn.text.trim();
+            this.#pictures.set(id, await this.#attachments(row.conversationId, since));
             ended =
               this.#stopping.has(id) || turn.aborted
                 ? { status: "stopped", result: text || row.result, error: null }
@@ -557,7 +565,7 @@ export class TaskService {
       try {
         return await this.bridge.runTurn(owner, row.conversationId, row.crewSlug, prompt, {
           task: { parentConversationId: row.parentConversationId },
-          onWaiting: (waiting) => void this.#waiting(row.id, waiting),
+          onWaiting: (waiting) => this.#waiting(row.id, waiting),
         });
       } catch (err) {
         const busy =
@@ -568,9 +576,28 @@ export class TaskService {
     }
   }
 
+  /** Pictures on the replies written in a task's chat since `since`. */
+  async #attachments(conversationId: string, since: Date): Promise<unknown[]> {
+    const rows = await this.db
+      .select({ meta: messages.meta })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.conversationId, conversationId),
+          eq(messages.role, "assistant"),
+          gte(messages.createdAt, since),
+        ),
+      )
+      .orderBy(asc(messages.createdAt))
+      .catch(() => []);
+    return rows.flatMap((r) => {
+      const list = (r.meta as { attachments?: unknown } | null)?.attachments;
+      return Array.isArray(list) ? list : [];
+    });
+  }
+
   async #waiting(id: string, waiting: boolean) {
     if (waiting) this.#paused.add(id);
-    else this.#paused.delete(id);
     // Only while its turn runs, so a late write can never reopen a task that has ended.
     const [row] = await this.db
       .update(tasks)
@@ -579,6 +606,19 @@ export class TaskService {
       .returning()
       .catch(() => []);
     if (row && this.#running.has(id)) this.#changed(row);
+    if (!waiting) {
+      // The answer is in. While it waited its slot went to another task, so it carries on
+      // only when one is free again; taking it happens in one step with the check.
+      const limit = await this.atOnce();
+      while (
+        this.#running.has(id) &&
+        !this.#stopping.has(id) &&
+        this.#running.size - this.#paused.size >= limit
+      ) {
+        await new Promise((r) => setTimeout(r, SLOT_WAIT_MS));
+      }
+      this.#paused.delete(id);
+    }
     // Waiting for the person frees its slot for another task.
     if (waiting) void this.#pump();
   }
@@ -613,12 +653,15 @@ export class TaskService {
     }
     const ref = this.#ref(row);
     const name = ref.crew.name;
+    const pictures = this.#pictures.get(row.id) ?? [];
+    this.#pictures.delete(row.id);
     if (row.status === "done") {
       await this.bridge.post(row.parentConversationId, {
         role: "assistant",
         crewSlug: row.crewSlug,
         content: row.result ?? "",
-        meta: { task: ref },
+        // Pictures the crew member made show here too, and reach Discord, Telegram and Slack.
+        meta: { task: ref, ...(pictures.length ? { attachments: pictures } : {}) },
       });
     } else {
       await this.bridge.post(row.parentConversationId, {

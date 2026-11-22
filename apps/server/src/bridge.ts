@@ -205,7 +205,7 @@ export interface RunTurnOptions {
   /** Set for watch runs: usage is attributed to the watch and approvals mention it. */
   watchId?: string;
   /** Called when the run starts or stops waiting for a person's approval. */
-  onWaiting?: (waiting: boolean) => void;
+  onWaiting?: (waiting: boolean) => void | Promise<void>;
   /**
    * Set for a background task's turn: its chat shows as busy and keeps a note if it fails, like
    * a person's own message, and its questions and approvals also show in the chat it came from.
@@ -1502,7 +1502,7 @@ export class Bridge {
 
     const approvals: ApprovalHost = {
       request: async (call) => {
-        options.onWaiting?.(true);
+        void options.onWaiting?.(true);
         try {
           const summary = call.everyTime
             ? await this.#accessSummary(crew.name, call.toolName, call.input)
@@ -1519,7 +1519,8 @@ export class Bridge {
             ...(call.everyTime ? { everyTime: true } : {}),
           });
         } finally {
-          options.onWaiting?.(false);
+          // May hold the turn a moment: a background task takes a free slot before it goes on.
+          await options.onWaiting?.(false);
         }
       },
       audit: (call) =>
@@ -1552,7 +1553,7 @@ export class Bridge {
         // What the crew member said so far is stored above the question, and the answer is kept
         // in the conversation as a note, so it reads in order after a reload.
         await this.#closeStream(conv, crewRow.id, stream);
-        options.onWaiting?.(true);
+        void options.onWaiting?.(true);
         try {
           const answer = await this.deps.approvals.ask({
             userId: user.id,
@@ -1571,7 +1572,8 @@ export class Bridge {
           this.emit(user.id, { type: "message", conversationId: conv.id, message });
           return answer;
         } finally {
-          options.onWaiting?.(false);
+          // May hold the turn a moment: a background task takes a free slot before it goes on.
+          await options.onWaiting?.(false);
           stream = this.#openStream(user.id, conv.id, crew);
         }
       },

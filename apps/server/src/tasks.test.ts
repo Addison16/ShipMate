@@ -5,7 +5,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import type { ApprovalDto, MessageDto, ServerEvent, TaskDto } from "@shipmate/core";
-import { tasks as tasksTable, users as usersTable } from "@shipmate/db";
+import { messages as messagesTable, tasks as tasksTable, users as usersTable } from "@shipmate/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { MAX_TASK_ROUNDS } from "./services/tasks.js";
 import { TEST_DATABASE_URL, testApp } from "./testing.js";
@@ -388,6 +388,88 @@ describe.skipIf(!db)("background tasks: the Captain as orchestrator", () => {
     chat.ws.terminate();
     expect((await listTasks(chat.id))[0]).toMatchObject({ status: "done", error: null });
     expect(said(await listMessages(chat.id))).toContain("Galley: Picnic on Saturday.");
+  });
+
+  it("makes a task that got its answer wait for a free slot", async () => {
+    await api("PUT", "/api/settings", { tasksAtOnce: 1 });
+    const order: string[] = [];
+    let endLookout!: () => void;
+    const lookoutGate = new Promise<void>((r) => {
+      endLookout = r;
+    });
+    think(async ({ who, last }) => {
+      if (who === "Galley") {
+        if (last.includes("answered: Saturday")) {
+          order.push("Galley carries on");
+          return fauxAssistantMessage("Picnic on Saturday.");
+        }
+        return fauxAssistantMessage([
+          fauxToolCall("ask_person", {
+            question: "Which day?",
+            options: [{ label: "Saturday" }, { label: "Sunday" }],
+          }),
+        ]);
+      }
+      if (who === "Lookout") {
+        order.push("Lookout starts");
+        await lookoutGate;
+        order.push("Lookout ends");
+        return fauxAssistantMessage("Sunny all weekend.");
+      }
+      if (last.includes("Picnic and weather")) {
+        return fauxAssistantMessage([
+          fauxToolCall("delegate", { crew: "galley", task: "Plan the picnic food" }),
+          fauxToolCall("delegate", { crew: "lookout", task: "Check the weather" }),
+        ]);
+      }
+      return fauxAssistantMessage("Okay.");
+    });
+    const chat = await open();
+    await chat.send("Picnic and weather please");
+    // Galley asks, which frees the only slot for Lookout.
+    await until(() => chat.cards.length === 1 && order.includes("Lookout starts"));
+    await api("POST", `/api/approvals/${chat.cards[0]?.id}`, {
+      decision: "allow",
+      answer: "Saturday",
+    });
+    await new Promise((r) => setTimeout(r, 700));
+    expect(order).toEqual(["Lookout starts"]);
+    endLookout();
+    await chat.settled();
+    chat.ws.terminate();
+    expect(order).toEqual(["Lookout starts", "Lookout ends", "Galley carries on"]);
+    expect((await listTasks(chat.id)).map((x) => x.status)).toEqual(["done", "done"]);
+  });
+
+  it("shows a picture the crew member made with its result", async () => {
+    const picture = { id: "5b0b8a52-3a0e-4a53-9a4c-0d2e3f1a7c11", kind: "image", name: "boat.png" };
+    think(async ({ who, last }) => {
+      if (who === "Galley") {
+        // As the picture tool leaves it: on a reply in the task's own chat.
+        const rows = await t.app.db.select().from(tasksTable);
+        const mine = rows.find((r) => r.status === "running");
+        await t.app.db.insert(messagesTable).values({
+          conversationId: mine?.conversationId as string,
+          role: "assistant",
+          content: "",
+          meta: { attachments: [picture] },
+        });
+        return fauxAssistantMessage("Here is the sailboat.");
+      }
+      if (last.includes("Draw a boat")) {
+        return fauxAssistantMessage([
+          fauxToolCall("delegate", { crew: "galley", task: "Draw a red sailboat" }),
+        ]);
+      }
+      return fauxAssistantMessage("Okay.");
+    });
+    const chat = await open();
+    await chat.send("Draw a boat");
+    await chat.settled();
+    chat.ws.terminate();
+    const result = (await listMessages(chat.id)).find((m) => m.meta?.task);
+    expect(result?.content).toBe("Here is the sailboat.");
+    expect(result?.meta?.attachments).toEqual([picture]);
   });
 
   it("stops a task from its card, and tells the Captain about a failed one", async () => {

@@ -3,6 +3,7 @@ import { type ReactNode, useState } from "react";
 import { api } from "../api.js";
 import { useCrewName, useThemeText } from "../appearance.js";
 import { isAdmin, useUser } from "../auth.js";
+import { UsageLimits } from "../components/UsageLimits.js";
 import {
   Badge,
   Card,
@@ -391,6 +392,9 @@ export function UsagePage() {
           )
         }
       />
+      <div className="mb-6">
+        <UsageLimits />
+      </div>
       {/* Two equal columns on phones; the labels share one style so both rows line up. */}
       <div className="mb-6 grid grid-cols-2 items-end gap-3 sm:flex sm:gap-4">
         <TextField

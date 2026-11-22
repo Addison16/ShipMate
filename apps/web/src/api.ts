@@ -4,6 +4,7 @@ import type {
   AuditEventDto,
   BridgeLinkCode,
   CaptainSetupDto,
+  ChatContextDto,
   ConversationDto,
   ConversationSearchResultDto,
   CreateCrewRequest,
@@ -26,6 +27,7 @@ import type {
   InstallStartersRequest,
   InstallStartersResponse,
   IssueDto,
+  LimitsResponse,
   ListDetailDto,
   ListDto,
   ListKind,
@@ -43,6 +45,7 @@ import type {
   ProjectDto,
   ProjectEventDto,
   ProviderDto,
+  ProviderLimitDto,
   ProvidersResponse,
   PullRequestDto,
   SessionDto,
@@ -233,6 +236,11 @@ export const api = {
     reuse?: boolean;
     private?: boolean;
   }) => request<{ conversation: ConversationDto }>("POST", "/api/conversations", body),
+  conversationContext: (id: string) =>
+    request<{ context: ChatContextDto | null }>("GET", `/api/conversations/${enc(id)}/context`),
+  limits: () => request<LimitsResponse>("GET", "/api/limits"),
+  checkLimit: (id: string) =>
+    request<{ limit: ProviderLimitDto }>("POST", `/api/limits/${enc(id)}/check`),
   resetConversation: (id: string) =>
     request<{ message: MessageDto }>("POST", `/api/conversations/${enc(id)}/reset`),
   renameConversation: (id: string, title: string) =>

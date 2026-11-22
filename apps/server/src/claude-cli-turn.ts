@@ -10,6 +10,7 @@ import {
 } from "@shipmate/core";
 import {
   type ClaudeCliEvent,
+  type ClaudeRateLimit,
   type CrewFolder,
   claudeCliBilling,
   MemoryStore,
@@ -66,6 +67,13 @@ export interface CliTurnInput {
   /** A one-off answer (the Captain answering a crew question): no resume, nothing stored. */
   oneOff?: boolean;
   emit: (event: ServerEvent) => void;
+  /** How full the chat's context is and the plan's limit, as the CLI reported them this run. */
+  onMeter?: (m: {
+    context: { tokens: number; window: number } | null;
+    rateLimit: ClaudeRateLimit | null;
+    subscription: boolean;
+    model: string;
+  }) => void;
   /** The Bridge's usage writer: the turn waits for it before ending (cap checks stay exact). */
   record: (
     ctx: UsageContext,
@@ -238,6 +246,12 @@ export class ClaudeCliTurns {
           claudeCliBilling(result),
         );
       }
+      input.onMeter?.({
+        context: result.context,
+        rateLimit: result.rateLimit,
+        subscription: claudeCliBilling(result) === "subscription",
+        model: `claude-code/${result.model ?? model ?? "default"}`,
+      });
       if (!result.aborted && result.isError) {
         throw new Error(result.error ?? "the Claude Code CLI returned an error");
       }

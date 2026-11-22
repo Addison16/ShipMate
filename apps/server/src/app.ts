@@ -26,6 +26,7 @@ import { documentRoutes } from "./routes/documents.js";
 import { fileRoutes } from "./routes/files.js";
 import { geminiCliRoutes } from "./routes/gemini-cli.js";
 import { healthRoutes } from "./routes/health.js";
+import { limitRoutes } from "./routes/limits.js";
 import { listRoutes } from "./routes/lists.js";
 import { localAiRoutes } from "./routes/local-ai.js";
 import { mcpRoutes } from "./routes/mcp.js";
@@ -220,6 +221,7 @@ export async function buildApp(
   await providerRoutes(app, services);
   await crewRoutes(app, services);
   await conversationRoutes(app, services);
+  await limitRoutes(app, services);
   await usageRoutes(app, services);
   await settingsRoutes(app, services);
   await onboardingRoutes(app, services);

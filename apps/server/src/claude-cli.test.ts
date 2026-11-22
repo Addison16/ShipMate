@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { CrewManifest, type ServerEvent } from "@shipmate/core";
-import { claudeCliArgs, claudeCliBilling, runClaudeCli } from "@shipmate/crew";
+import { claudeCliArgs, claudeCliBilling, rateLimitOf, runClaudeCli } from "@shipmate/crew";
 import type { Db } from "@shipmate/db";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -117,6 +117,14 @@ process.stdin.on("end", () => {
       out({ type: "assistant", session_id: sid, message: { id: "m1", content: [{ type: "text", text: "Finished slowly" }] } });
       out({ type: "result", subtype: "success", is_error: false, result: "Finished slowly", session_id: sid, total_cost_usd: 0.001, usage: { input_tokens: 1, output_tokens: 1 } });
     }, 1500);
+    return;
+  }
+  if (prompt.includes("meter")) {
+    out({ type: "rate_limit_event", session_id: sid, uuid: "r1", rate_limit_info: { status: "allowed_warning", resetsAt: 1900000000, utilization: 0.83 } });
+    out({ type: "assistant", session_id: sid, message: { id: "m1", usage: { input_tokens: 10, cache_read_input_tokens: 4000, cache_creation_input_tokens: 990, output_tokens: 1000 }, content: [{ type: "tool_use", id: "tu1", name: "Read", input: {} }] } });
+    out({ type: "assistant", session_id: sid, parent_tool_use_id: "tu1", message: { id: "h1", usage: { input_tokens: 99999, output_tokens: 1 }, content: [] } });
+    out({ type: "assistant", session_id: sid, message: { id: "m2", usage: { input_tokens: 20, cache_read_input_tokens: 5000, cache_creation_input_tokens: 980, output_tokens: 2000 }, content: [{ type: "text", text: "Measured" }] } });
+    out({ type: "result", subtype: "success", is_error: false, result: "Measured", session_id: sid, total_cost_usd: 0.01, usage: { input_tokens: 30, output_tokens: 3000 }, modelUsage: { "claude-haiku-fake": { inputTokens: 5, contextWindow: 100000 }, "claude-fake-1": { inputTokens: 30, cacheReadInputTokens: 9000, contextWindow: 200000 } } });
     return;
   }
   if (prompt.includes("fail")) {
@@ -239,6 +247,35 @@ describe("claude-code-cli backend: manifest and runner", () => {
     expect(args[args.indexOf("--append-system-prompt") + 1]).toBe("# Persona");
     expect(args[args.indexOf("--resume") + 1]).toBe("abc");
     expect(args).not.toContain("--dangerously-skip-permissions");
+  });
+
+  it("reads how full the context is and the plan's limit from the CLI's own output", async () => {
+    const r = await runClaudeCli({ bin: fakeBin, cwd: dir, prompt: "meter" });
+    // The last main-agent call (a helper's inner call is skipped), against the main model's window.
+    expect(r.context).toEqual({ tokens: 20 + 5000 + 980 + 2000, window: 200000 });
+    expect(r.rateLimit).toEqual({
+      status: "allowed_warning",
+      resetsAt: 1900000000 * 1000,
+      utilization: 0.83,
+    });
+    const plain = await runClaudeCli({ bin: fakeBin, cwd: dir, prompt: "hi" });
+    expect(plain.context).toBeNull();
+    expect(plain.rateLimit).toBeNull();
+  });
+
+  it("accepts rate limit info in other shapes and ignores junk", () => {
+    expect(rateLimitOf({ status: "rejected", resetsAt: 1900000000000, utilization: 100 })).toEqual({
+      status: "rejected",
+      resetsAt: 1900000000000,
+      utilization: 1,
+    });
+    expect(rateLimitOf({ status: "allowed" })).toEqual({
+      status: "allowed",
+      resetsAt: null,
+      utilization: null,
+    });
+    expect(rateLimitOf({ status: "nope" })).toBeNull();
+    expect(rateLimitOf(null)).toBeNull();
   });
 
   it("streams a run and reports usage", async () => {

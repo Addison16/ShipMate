@@ -38,6 +38,7 @@ import { type GoogleFetch, GoogleOAuthService } from "./services/google-oauth.js
 import { ListService } from "./services/lists.js";
 import { LocalAiService } from "./services/local-ai.js";
 import { McpService } from "./services/mcp.js";
+import { MeterService } from "./services/meters.js";
 import { type OidcDiscover, OidcService } from "./services/oidc.js";
 import { ProfileService } from "./services/profiles.js";
 import { PromptService } from "./services/prompts.js";
@@ -69,6 +70,7 @@ export interface Services {
   mcp: McpService;
   google: GoogleOAuthService;
   usage: UsageService;
+  meters: MeterService;
   approvals: ApprovalService;
   audit: AuditService;
   skills: SkillService;
@@ -167,7 +169,13 @@ export async function createServices(
   const documents = new DocumentService(db, config.dirs.documents);
   const themes = new ThemeService(db);
   const geminiKey = new GeminiKeyService(db, vault);
+  const meters = new MeterService({
+    db,
+    providers,
+    file: join(config.dirs.pi, "plan-limits.json"),
+  });
   bridge = new Bridge({
+    meters,
     themes,
     db,
     crew,
@@ -382,6 +390,7 @@ export async function createServices(
     mcp,
     google,
     usage,
+    meters,
     approvals,
     audit,
     skills,

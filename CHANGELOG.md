@@ -6,6 +6,13 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Context and usage limit meters.** A small ring in the chat header shows how full the
+  chat's context is (tap it for the numbers and a Start fresh link). It shows for agents on
+  Shipmate's own engine and on Claude Code; Codex, Cursor and Gemini CLI manage their own
+  context and don't report it. Settings → Usage and cost now opens with Usage limits: the
+  Claude plan (from what Claude Code reports while it replies), the ChatGPT plan (read from
+  Codex when you tap Check), this month's spend per API-key provider, your own monthly cap,
+  and "no limits" for your own servers. Nothing is sent to a provider just to check.
 - **Private chat.** Under New chat there is a Private chat button for a one-off talk. The
   agent cannot save anything from it to memory, it is left out of search and of activity
   summaries, and it is deleted when you press End chat or after an hour without use. Limits:

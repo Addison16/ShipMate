@@ -16,12 +16,14 @@ export {
   type ClaudeCliRunOptions,
   type ClaudeCliStatus,
   type ClaudeCliUsage,
+  type ClaudeRateLimit,
   childEnv,
   claudeCliArgs,
   claudeCliBilling,
   claudeCliBin,
   claudeCliStatus,
   claudeConfigDir,
+  rateLimitOf,
   runClaudeCli,
 } from "./claude-cli.js";
 export {
@@ -35,11 +37,15 @@ export {
   type CodexCliRunOptions,
   type CodexCliStatus,
   type CodexCliUsage,
+  type CodexLimitWindow,
+  type CodexRateLimits,
   codexCliArgs,
   codexCliBin,
   codexCliStatus,
   codexHome,
+  codexRateLimits,
   codexSandboxWorks,
+  parseRateLimits,
   runCodexCli,
 } from "./codex-cli.js";
 export {

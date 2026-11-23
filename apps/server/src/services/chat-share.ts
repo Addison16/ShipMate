@@ -43,7 +43,9 @@ export class ChatShareService {
     await this.db
       .update(conversations)
       // updatedAt is kept: sharing is not activity, and must not reorder the chat list.
-      .set({ shareToken: token, sharedThrough, updatedAt: c.updatedAt })
+      // The name is kept as it is now: a chat is named after its first message, and a later
+      // name must not show what was said after sharing.
+      .set({ shareToken: token, sharedThrough, sharedTitle: c.title, updatedAt: c.updatedAt })
       .where(eq(conversations.id, id));
     return { token, sharedThrough: sharedThrough.toISOString(), newer: 0 };
   }
@@ -52,7 +54,7 @@ export class ChatShareService {
     const c = await this.bridge.conversation(user, id);
     await this.db
       .update(conversations)
-      .set({ shareToken: null, sharedThrough: null, updatedAt: c.updatedAt })
+      .set({ shareToken: null, sharedThrough: null, sharedTitle: null, updatedAt: c.updatedAt })
       .where(eq(conversations.id, id));
   }
 
@@ -81,7 +83,7 @@ export class ChatShareService {
       });
     }
     return {
-      title: row.c.title ?? "Chat",
+      title: row.c.sharedTitle ?? "Chat",
       sharedBy: row.owner.displayName,
       sharedThrough: through.toISOString(),
       messages: shown,

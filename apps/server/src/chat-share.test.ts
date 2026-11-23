@@ -107,6 +107,23 @@ describe.skipIf(!db)("Sharing a chat as a link", () => {
     ).toHaveLength(4);
   });
 
+  it("keeps the name it had when shared, so a later name gives nothing away", async () => {
+    // Shared while empty: the chat is then named after its first message.
+    const chat = (await api("POST", "/api/conversations", {})).json().conversation;
+    const { share } = (await api("POST", `/api/conversations/${chat.id}/share`)).json();
+    await say(chat.id, "My secret plan for the party", "Noted.");
+    const seen = async () =>
+      (await api("GET", `/api/shared/${share.token}`, undefined, "")).json() as {
+        title: string;
+        messages: unknown[];
+      };
+    expect(await seen()).toMatchObject({ title: "Chat", messages: [] });
+    // Including new messages brings the name up to date with them.
+    await api("POST", `/api/conversations/${chat.id}/share`);
+    expect((await seen()).title).toBe("My secret plan for the party");
+    await api("DELETE", `/api/conversations/${chat.id}`);
+  });
+
   it("stops working when sharing is stopped or the chat is deleted", async () => {
     const chat = (await api("POST", "/api/conversations", {})).json().conversation;
     await say(chat.id, "Hello", "Hi.");

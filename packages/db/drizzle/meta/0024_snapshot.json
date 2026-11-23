@@ -1,5 +1,5 @@
 {
-  "id": "1bef2faf-34ca-42dc-a391-324024de5462",
+  "id": "ef65c954-42c2-4645-8499-25f5375937f5",
   "prevId": "a1f8d3bf-3b18-423c-bc09-e8eebda54b48",
   "version": "7",
   "dialect": "postgresql",
@@ -474,6 +474,12 @@
         "shared_through": {
           "name": "shared_through",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "shared_title": {
+          "name": "shared_title",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

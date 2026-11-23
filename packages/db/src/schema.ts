@@ -86,6 +86,8 @@ export const conversations = pgTable(
     shareToken: text("share_token").unique(),
     /** The link shows messages up to this moment, so later ones stay private until re-shared. */
     sharedThrough: timestamp("shared_through", { withTimezone: true }),
+    /** The chat's name at that moment; the link shows this one, not a later name. */
+    sharedTitle: text("shared_title"),
     /** A private chat: deleted when ended or left idle, kept out of search and agents' memory. */
     privateChat: boolean("private_chat").notNull().default(false),
     /** For "direct" conversations: the crew member being talked to. */

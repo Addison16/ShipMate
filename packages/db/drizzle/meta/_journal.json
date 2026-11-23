@@ -169,6 +169,13 @@
       "when": 1795370325342,
       "tag": "0023_sign_in_codes",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795402907421,
+      "tag": "0024_chat_share",
+      "breakpoints": true
     }
   ]
 }

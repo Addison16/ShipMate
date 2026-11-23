@@ -3009,6 +3009,7 @@ function toConversationDto(
     preview,
     importedFrom: c.importedFrom,
     private: c.privateChat,
+    shared: c.shareToken !== null,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   };

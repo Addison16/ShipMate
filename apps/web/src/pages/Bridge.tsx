@@ -34,6 +34,7 @@ import {
 } from "../components/CrewChat.js";
 import { NavIcon } from "../components/icons.js";
 import { PetDock } from "../components/Pet.js";
+import { ShareDialog } from "../components/ShareDialog.js";
 import { SidePanel } from "../components/SidePanel.js";
 import { SidePanelProvider } from "../components/SidePanelContext.js";
 import { SlashMenu, slashItems } from "../components/SlashMenu.js";
@@ -128,6 +129,7 @@ function ConversationTags({
       {surface && <Badge tone={c.surface === "discord" ? "accent" : "neutral"}>{surface}</Badge>}
       {c.importedFrom && <Badge>From {IMPORT_NAMES[c.importedFrom] ?? "another app"}</Badge>}
       {c.private && <Badge tone="accent">Private</Badge>}
+      {c.shared && <Badge tone="accent">Shared</Badge>}
       {c.projectId &&
         (linkProject ? (
           <a
@@ -659,6 +661,7 @@ function Thread({
   const [resetting, setResetting] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
   /** Whether older messages remain on the server; null until the first load. */
   const [more, setMore] = useState<boolean | null>(null);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
@@ -1077,6 +1080,13 @@ function Thread({
                   <FreshGlyph />
                   <span className="sr-only 2xl:not-sr-only">Start fresh</span>
                 </Button>
+                {sharing && (
+                  <ShareDialog
+                    conversationId={conversationId}
+                    onClose={() => setSharing(false)}
+                    onChanged={onPinned}
+                  />
+                )}
                 {/* Pin, rename and delete: in a menu until the header is wide enough for all. */}
                 <span className="2xl:hidden">
                   <MoreMenu
@@ -1100,6 +1110,15 @@ function Thread({
                         icon: "pencil",
                         onSelect: () => setRenaming(conversation.title ?? ""),
                       },
+                      ...(conversation.private
+                        ? []
+                        : [
+                            {
+                              label: conversation.shared ? "Shared link" : "Share link",
+                              icon: "share" as const,
+                              onSelect: () => setSharing(true),
+                            },
+                          ]),
                       {
                         label: "Save as file",
                         icon: "download",
@@ -1143,6 +1162,12 @@ function Thread({
                     <NavIcon name="pencil" size={16} />
                     Rename
                   </Button>
+                  {!conversation.private && (
+                    <Button size="sm" variant="ghost" onClick={() => setSharing(true)}>
+                      <NavIcon name="share" size={16} />
+                      Share
+                    </Button>
+                  )}
                   <Button size="sm" variant="ghost" onClick={() => void saveAsFile()}>
                     <NavIcon name="download" size={16} />
                     Save
@@ -1440,7 +1465,7 @@ function withWhom(
 
 type MenuItem = {
   label: string;
-  icon: "pin" | "pencil" | "trash" | "download" | "backup" | "lists";
+  icon: "pin" | "pencil" | "trash" | "download" | "backup" | "lists" | "share";
   danger?: boolean;
   onSelect: () => void;
 };

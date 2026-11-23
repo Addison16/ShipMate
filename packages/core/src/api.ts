@@ -386,6 +386,8 @@ export interface ConversationDto {
    * find it, and the agents cannot save anything from it to memory.
    */
   private: boolean;
+  /** A read-only link to this chat exists (see ChatShareDto). */
+  shared: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -510,6 +512,29 @@ export interface TaskRef {
  * without `conversationId`, the caller's open tasks and their latest finished ones.
  * POST /api/tasks/:id/stop → { task }.
  */
+
+/**
+ * A read-only link to one chat. Anyone who has the link can read the chat as it was when it was
+ * shared (or last updated), without signing in.
+ * GET /api/conversations/:id/share → { share: ChatShareDto | null }
+ * POST /api/conversations/:id/share → { share } makes the link, or moves it up to now
+ * DELETE /api/conversations/:id/share → { ok: true } the link stops working
+ * GET /api/shared/:token (no sign-in) → SharedChatDto
+ */
+export interface ChatShareDto {
+  token: string;
+  /** Messages up to this time are shown. */
+  sharedThrough: string;
+  /** Messages written since then, which the link does not show. */
+  newer: number;
+}
+
+export interface SharedChatDto {
+  title: string;
+  sharedBy: string;
+  sharedThrough: string;
+  messages: { role: "user" | "assistant"; name: string; content: string; createdAt: string }[];
+}
 
 // ---------- usage ----------
 

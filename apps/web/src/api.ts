@@ -34,6 +34,7 @@ import type {
   LocalAiStatusDto,
   LocalModelPullDto,
   LoginRequest,
+  LoginResponse,
   McpServerDto,
   MemoryEntryDto,
   MeResponse,
@@ -59,6 +60,7 @@ import type {
   StartFlowRequest,
   TaskDto,
   TelegramStatusDto,
+  TwoStepSetup,
   UpdateCrewRequest,
   UpdateHouseholdRequest,
   UpdateListItemRequest,
@@ -145,7 +147,11 @@ export const api = {
   me: () => request<MeResponse>("GET", "/api/auth/me", undefined, AUTH_TIMEOUT_MS),
   setup: (body: SetupRequest) => request<{ user: UserDto }>("POST", "/api/setup", body),
   login: (body: LoginRequest) =>
-    request<{ user: UserDto }>("POST", "/api/auth/login", body, AUTH_TIMEOUT_MS),
+    request<LoginResponse>("POST", "/api/auth/login", body, AUTH_TIMEOUT_MS),
+  twoStepSetup: () => request<TwoStepSetup>("POST", "/api/auth/two-step/setup"),
+  twoStepEnable: (body: { code: string; password: string }) =>
+    request<{ backupCodes: string[] }>("POST", "/api/auth/two-step/enable", body),
+  twoStepDisable: (code: string) => request<Ok>("POST", "/api/auth/two-step/disable", { code }),
   updatePreferences: (body: UpdatePreferencesRequest) =>
     request<{ user: UserDto }>("PATCH", "/api/auth/preferences", body),
   logout: () => request<Ok>("POST", "/api/auth/logout"),

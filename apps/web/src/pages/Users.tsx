@@ -123,7 +123,23 @@ export function UsersPage() {
                     formatCents(u.monthlyCapCents)
                   )}
                 </td>
-                <td className={`${td} text-right`}>
+                <td className={`${td} space-x-2 text-right whitespace-nowrap`}>
+                  {owner && u.id !== me.id && u.twoStep && (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `Turn sign-in codes off for ${u.displayName}? Do this when they lost their phone. They can turn codes on again after signing in.`,
+                          )
+                        ) {
+                          void update(u.id, { twoStep: false });
+                        }
+                      }}
+                    >
+                      Turn off codes
+                    </Button>
+                  )}
                   {owner && u.id !== me.id && (
                     <Button size="sm" variant="danger" onClick={() => void remove(u)}>
                       Delete

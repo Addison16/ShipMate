@@ -6,6 +6,12 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Sign-in codes (two-step sign-in).** Settings → Profile and account → Sign-in codes: add
+  Shipmate to an authenticator app (tap on a phone, or scan the picture from a computer), and
+  sign-in then asks for the app's code after your password. You get eight backup codes for a
+  lost phone, the owner can turn codes off for someone on the Users page, and wrong codes
+  count toward the same pause as wrong passwords. Lost everything? Start once with
+  `SHIPMATE_SIGN_IN_CODES=off` (docs/configuration.md). Single sign-on is not affected.
 - **The Assistant hands work over and stays free.** A job the main Assistant (the Captain)
   gives to another agent now runs in the background as a task. Each task has a card in the
   chat (Waiting to start, Working, Needs you, Done, Could not finish, Stopped), you can keep

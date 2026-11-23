@@ -49,6 +49,7 @@ import { SkillService } from "./services/skills.js";
 import { StarterService } from "./services/starters.js";
 import { TaskService } from "./services/tasks.js";
 import { ThemeService } from "./services/themes.js";
+import { TwoStepService } from "./services/two-step.js";
 import { UsageService } from "./services/usage.js";
 import { WatchService } from "./services/watches.js";
 import { WeatherService } from "./services/weather.js";
@@ -89,6 +90,7 @@ export interface Services {
   lists: ListService;
   documents: DocumentService;
   prompts: PromptService;
+  twoStep: TwoStepService;
   apiKeys: ApiKeyService;
   chatImport: ChatImportService;
   web: WebService;
@@ -410,6 +412,7 @@ export async function createServices(
     lists,
     documents,
     prompts: new PromptService(db),
+    twoStep: new TwoStepService(db, vault, config.SHIPMATE_SIGN_IN_CODES === "on"),
     apiKeys: new ApiKeyService({ db, bridge, crew }),
     chatImport: new ChatImportService(db),
     web,

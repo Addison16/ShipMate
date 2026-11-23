@@ -29,6 +29,10 @@ export interface UserDto {
   preferences: UserPreferences;
   /** True until this person has seen the first sign-in welcome (people the owner added). */
   welcomePending: boolean;
+  /** Sign-in asks for an authenticator code after the password. */
+  twoStep: boolean;
+  /** Signs in with a password (not only single sign-on), so sign-in codes can apply. */
+  hasPassword: boolean;
   createdAt: string;
 }
 
@@ -75,6 +79,25 @@ export type UpdatePreferencesRequest = Partial<UserPreferences> & { welcome?: "d
 export interface LoginRequest {
   email: string;
   password: string;
+  /** The authenticator code (or a backup code), once the server has asked for it. */
+  code?: string;
+}
+
+/** POST /api/auth/login: the signed-in user, or a request for the sign-in code. */
+export type LoginResponse = { user: UserDto } | { needsCode: true };
+
+/**
+ * Sign-in codes (two-step sign-in) for the signed-in person.
+ * POST /api/auth/two-step/setup → TwoStepSetup (nothing is on yet)
+ * POST /api/auth/two-step/enable { code, password } → { backupCodes: string[] } (shown once)
+ * POST /api/auth/two-step/disable { code } → { ok: true }
+ * Owner, for someone who lost their phone: PATCH /api/users/:id { twoStep: false }.
+ */
+export interface TwoStepSetup {
+  /** The setup key to type into an authenticator app by hand. */
+  secret: string;
+  /** The same as an otpauth:// address, for a QR code or a tap on the phone. */
+  uri: string;
 }
 
 /**
@@ -142,6 +165,8 @@ export interface UpdateUserRequest {
   role?: UserRole;
   monthlyCapCents?: number | null;
   password?: string;
+  /** Owner only, for someone else: turn their sign-in codes off (they lost their phone). */
+  twoStep?: false;
 }
 /** DELETE /api/users/:id (owner; not self) → { ok: true } */
 

@@ -28,6 +28,11 @@ const Env = z.object({
   SHIPMATE_MCP: z.enum(["on", "off"]).default("on"),
   /** "off" keeps the owner's web terminal (Settings > Terminal) off, whatever the setting says. */
   SHIPMATE_TERMINAL: z.enum(["on", "off"]).default("on"),
+  /**
+   * "off" lets everyone sign in with just their password while it is set: the way back in for
+   * an owner who lost both their phone and their backup codes. Remove it afterwards.
+   */
+  SHIPMATE_SIGN_IN_CODES: z.enum(["on", "off"]).default("on"),
   /** "off" skips checking GitHub for new releases (offline installs). */
   SHIPMATE_UPDATE_CHECK: z.enum(["on", "off"]).default("on"),
   /** Helper image for one-click updates (a Watchtower build that runs once). */

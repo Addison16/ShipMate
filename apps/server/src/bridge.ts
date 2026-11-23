@@ -276,8 +276,10 @@ interface Run {
 export class Bridge {
   #sockets = new Map<string, Set<Send>>();
   #taps = new Set<(userId: string, event: ServerEvent) => void>();
-  /** Group chats: conversation id → the people added to it (the starter is not listed). */
+  /** Group chats: conversation id → the people in it, the starter included. */
   #groups = new Map<string, Set<string>>();
+  /** Chats that stopped being a group since start: conversation id → the starter. */
+  #ungrouped = new Map<string, string>();
   #runs = new Map<string, Run>();
   /** Per conversation, the turn in progress as a page that opens now should show it. */
   #live = new Map<string, LiveTurn>();
@@ -374,8 +376,12 @@ export class Bridge {
   #audience(userId: string, event: ServerEvent): Iterable<string> {
     if (!GROUP_EVENTS.has(event.type) || !("conversationId" in event)) return [userId];
     const group = event.conversationId ? this.#groups.get(event.conversationId) : undefined;
-    if (!group) return [userId];
-    return new Set([userId, ...group]);
+    // Only the people in it now: someone removed while their message is being answered stops
+    // getting the reply.
+    if (group) return group;
+    // A chat that stopped being a group mid-reply goes on to its starter alone.
+    const starter = event.conversationId ? this.#ungrouped.get(event.conversationId) : undefined;
+    return [starter ?? userId];
   }
 
   #dto(
@@ -469,8 +475,12 @@ export class Bridge {
           .values(wanted.map((userId) => ({ conversationId: id, userId })));
       }
     });
-    if (wanted.length) this.#groups.set(id, new Set([conv.userId, ...wanted]));
-    else this.#groups.delete(id);
+    if (wanted.length) {
+      this.#groups.set(id, new Set([conv.userId, ...wanted]));
+      this.#ungrouped.delete(id);
+    } else {
+      if (this.#groups.delete(id)) this.#ungrouped.set(id, conv.userId);
+    }
     // Everyone affected reloads their chat list: the chat appears, changes or goes.
     for (const person of new Set([...before, ...wanted, conv.userId])) {
       this.#notify(person, { type: "chats_changed" });
@@ -491,7 +501,10 @@ export class Bridge {
       );
     const set = this.#groups.get(id);
     set?.delete(user.id);
-    if (set && set.size <= 1) this.#groups.delete(id);
+    if (set && set.size <= 1) {
+      this.#groups.delete(id);
+      this.#ungrouped.set(id, conv.userId);
+    }
     for (const person of new Set([user.id, conv.userId, ...(set ?? [])])) {
       this.#notify(person, { type: "chats_changed" });
     }
@@ -935,6 +948,7 @@ export class Bridge {
     this.#dispose(conv.id);
     const group = this.#groups.get(conv.id);
     this.#groups.delete(conv.id);
+    this.#ungrouped.delete(conv.id);
     for (const person of group ?? []) {
       if (person !== conv.userId) this.#notify(person, { type: "chats_changed" });
     }
@@ -1089,14 +1103,6 @@ export class Bridge {
     run.unprompted = 0;
     run.wroteAt = new Date();
     clearTimeout(run.idleTimer);
-    // In a group chat the agents act for whoever wrote the message: their role, their lists,
-    // their spending cap. Sessions hold the person they were opened for, so a change of writer
-    // reopens them (from their files, so nothing said is lost).
-    if (run.actingUserId !== undefined && run.actingUserId !== user.id) {
-      for (const s of run.sessions.values()) s.dispose();
-      run.sessions.clear();
-    }
-    run.actingUserId = user.id;
     await this.#freshen(run);
     this.emit(user.id, { type: "status", conversationId, busy: true });
     try {
@@ -1440,6 +1446,15 @@ export class Bridge {
     prompt: string,
     options: TurnOptions,
   ): Promise<string> {
+    // In a group chat the agents act for whoever wrote the message: their role, their lists,
+    // their spending cap. Sessions hold the person they were opened for, so every turn checks
+    // who it is for (a person's message, a routine, a task's result reported to the starter)
+    // and reopens them on a change (from their files, so nothing said is lost).
+    if (run.actingUserId !== user.id) {
+      for (const s of run.sessions.values()) s.dispose();
+      run.sessions.clear();
+      run.actingUserId = user.id;
+    }
     // On the crew default, it runs where the default does (the Claude subscription included).
     const folder = onCrewDefault(
       this.deps.crew.folder(slug),

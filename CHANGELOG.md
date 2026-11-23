@@ -6,6 +6,8 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+## 0.4.0 — 2026-11-22
+
 - **Group chats.** In a chat's menu, Add people ticks who else in the household joins it. They
   see everything said in it, before and after, get replies as they are written, and can write
   too; the chat shows in their list tagged "Group". The agent answers whoever wrote last with
@@ -132,6 +134,12 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
   agent still remembers its first answer). On phones and tablets, Enter now makes a new line
   and the Send button sends, since a touch keyboard has no Shift+Enter. Tap a tool chip to
   read its whole line.
+- **Group chat fixes.** The Assistant now always works with the permissions of the person
+  whose message it is answering, also right after a background task reported back. Someone
+  removed from a group chat while a reply is being written stops getting that reply.
+
+## 0.3.5 and earlier
+
 - **Leaving the app no longer loses work**: agents always kept working on the server after you
   left, but when something went wrong while you were away, the error only went to open pages,
   so you came back to your message with no reply and no reason. Now the reason is saved in the

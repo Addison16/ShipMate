@@ -1,6 +1,6 @@
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import type { ServerEvent } from "@shipmate/core";
-import { conversations, usageEvents } from "@shipmate/db";
+import { conversations, usageEvents, users } from "@shipmate/db";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TEST_DATABASE_URL, testApp } from "./testing.js";
@@ -233,6 +233,54 @@ describe.skipIf(!db)("Group chats", () => {
         })
       ).statusCode,
     ).toBe(404);
+  });
+
+  it("acts for the writer even after a turn that no person's message started", async () => {
+    const made = (await api("POST", "/api/conversations", {})).json().conversation.id as string;
+    await api("PUT", `/api/conversations/${made}/people`, { userIds: [ids.kid] });
+    const [starter] = await t.app.db
+      .select()
+      .from(users)
+      .where(eq(users.id, ids.owner ?? ""));
+    if (!starter) throw new Error("no owner");
+    // Such a turn (a task's result coming back, a routine) runs as the starter.
+    t.faux.setResponses([fauxAssistantMessage("The task is done.")]);
+    await t.app.services.bridge.runTurn(starter, made, "captain", "A task finished.", {});
+    const seen = await say("kid", made, "Thanks. What is next?", "Dinner.");
+    // The agent was set up again for the writer: its latest instructions name them, not the
+    // starter, and its tools are theirs.
+    const ctx = JSON.parse(seen) as { messages: { role: string }[] };
+    const latest = JSON.stringify(ctx.messages.filter((m) => m.role === "system").at(-1));
+    expect(latest).toContain("so you and Robin can carry on");
+    expect(latest).not.toContain("so you and Addison can carry on");
+    await api("DELETE", `/api/conversations/${made}`);
+  });
+
+  it("stops sending a reply to someone removed while it is written", async () => {
+    const made = (await api("POST", "/api/conversations", {})).json().conversation.id as string;
+    await api("PUT", `/api/conversations/${made}/people`, { userIds: [ids.kid] });
+    let removed: Promise<unknown> | undefined;
+    t.faux.setResponses([
+      async () => {
+        removed = api("PUT", `/api/conversations/${made}/people`, { userIds: [] });
+        await removed;
+        return fauxAssistantMessage("For the starter only.");
+      },
+    ]);
+    const owner = await listen("owner");
+    const kid = await listen("kid");
+    kid.ws.send(JSON.stringify({ type: "send", conversationId: made, text: "One last thing" }));
+    await until(() => owner.events.some((e) => e.type === "status" && !e.busy));
+    await idle(made);
+    const replies = (events: ServerEvent[]) =>
+      events.flatMap((e) =>
+        e.type === "message" && e.message.role === "assistant" ? [e.message.content] : [],
+      );
+    expect(replies(owner.events)).toEqual(["For the starter only."]);
+    expect(replies(kid.events)).toEqual([]);
+    owner.ws.terminate();
+    kid.ws.terminate();
+    await api("DELETE", `/api/conversations/${made}`);
   });
 
   it("ends for someone who leaves or is removed, and survives a restart", async () => {

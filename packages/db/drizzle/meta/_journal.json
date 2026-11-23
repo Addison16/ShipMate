@@ -176,6 +176,13 @@
       "when": 1795402907421,
       "tag": "0024_chat_share",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795405113979,
+      "tag": "0025_group_chat",
+      "breakpoints": true
     }
   ]
 }

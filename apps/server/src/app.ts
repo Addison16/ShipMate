@@ -153,6 +153,7 @@ export async function buildApp(
     void services.files.sweep().catch(() => {});
     fileSweep = setInterval(() => void services.files.sweep().catch(() => {}), 3600_000);
     fileSweep.unref();
+    await services.bridge.loadGroups();
     // Private chats left alone for an hour are deleted, also ones a restart cut off.
     const sweepPrivate = () => void services.bridge.sweepPrivateChats().catch(() => {});
     sweepPrivate();

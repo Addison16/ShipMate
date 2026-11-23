@@ -3,8 +3,9 @@ import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AttachmentDto, AttachmentKind } from "@shipmate/core";
 import { attachments, conversations, type Db } from "@shipmate/db";
-import { and, eq, inArray, isNull, lt } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { HttpError } from "../auth.js";
+import { chatIdOpenTo, chatOpenTo } from "../chat-access.js";
 
 type Row = typeof attachments.$inferSelect;
 
@@ -130,7 +131,7 @@ export class AttachmentService {
     const [conv] = await this.db
       .select({ id: conversations.id })
       .from(conversations)
-      .where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)))
+      .where(and(eq(conversations.id, conversationId), chatOpenTo(userId)))
       .limit(1);
     if (!conv) throw new HttpError(404, "conversation not found");
     const name = cleanName(input.name);
@@ -246,12 +247,21 @@ export class AttachmentService {
     return out;
   }
 
-  /** The file for download, if it is this person's. */
+  /** The file for download, if it is this person's or sits in a group chat they are in. */
   async open(userId: string, id: string) {
     const [row] = await this.db
       .select()
       .from(attachments)
-      .where(and(eq(attachments.id, id), eq(attachments.userId, userId)))
+      .where(
+        and(
+          eq(attachments.id, id),
+          or(
+            eq(attachments.userId, userId),
+            // Once sent, everyone in the chat it was sent in. Before that, only its sender.
+            and(isNotNull(attachments.messageId), chatIdOpenTo(attachments.conversationId, userId)),
+          ),
+        ),
+      )
       .limit(1);
     if (!row) throw new HttpError(404, "file not found");
     return { row, stream: () => createReadStream(this.#path(row.id)) };

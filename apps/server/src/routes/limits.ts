@@ -9,7 +9,8 @@ export async function limitRoutes(app: FastifyInstance, s: Services) {
   app.get<{ Params: { id: string } }>(
     "/api/conversations/:id/context",
     async (req): Promise<{ context: ChatContextDto | null }> => {
-      await s.bridge.conversation(req.user, req.params.id);
+      // Everyone in a group chat sees the same meter.
+      await s.bridge.openConversation(req.user, req.params.id);
       return { context: await s.meters.context(req.params.id) };
     },
   );

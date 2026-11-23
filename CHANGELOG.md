@@ -6,6 +6,12 @@ published as `ghcr.io/addison16/shipmate:<version>` (plus `:<major>.<minor>`, `:
 
 ## Unreleased
 
+- **Group chats.** In a chat's menu, Add people ticks who else in the household joins it. They
+  see everything said in it, before and after, get replies as they are written, and can write
+  too; the chat shows in their list tagged "Group". The agent answers whoever wrote last with
+  that person's permissions, and the cost counts as theirs; questions and approvals go to that
+  person only. Only the person who started the chat can rename, share or delete it or change
+  who is in it; anyone added can leave. Not for private chats or project chats.
 - **Share a chat as a link.** In a chat's menu, Share link makes a read-only link. Anyone who
   has it can read the chat as it was at that moment, without signing in: the words only, no
   files or tool details. Later messages stay out until you press "Include new messages".
